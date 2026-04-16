@@ -1,0 +1,1016 @@
+(function initUiPanel(scope) {
+  const app = (scope.DialogueCaptions = scope.DialogueCaptions || {});
+  const chunker = app.chunker;
+  const platform = app.platform;
+
+  const PANEL_ID = "dc-panel";
+  const ESTIMATED_ROW_HEIGHT = 88;
+  const WINDOW_BUFFER_ROWS = 8;
+  const MIN_PANEL_WIDTH = 280;
+  const MIN_PANEL_HEIGHT = 220;
+
+  class DialoguePanel {
+    constructor(options) {
+      this.options = options || {};
+      this.settings = this.options.settings || {};
+      this.features = this.options.features || {};
+
+      this.root = null;
+      this.body = null;
+      this.statusEl = null;
+      this.listViewport = null;
+      this.topSpacer = null;
+      this.windowContainer = null;
+      this.bottomSpacer = null;
+
+      this.autoScrollButton = null;
+      this.keyboardButton = null;
+      this.chunkSizeSelect = null;
+      this.stepWrap = null;
+      this.stepSelect = null;
+      this.sizeWrap = null;
+      this.opacityWrap = null;
+      this.opacityInput = null;
+      this.textScaleWrap = null;
+      this.textScaleInput = null;
+      this.header = null;
+      this.closeButton = null;
+      this.launcherButton = null;
+      this.jumpBottomButton = null;
+
+      this.chunks = [];
+      this.activeIndex = -1;
+      this.currentWindowStart = -1;
+      this.currentWindowEnd = -1;
+      this.dragState = null;
+      this.resizeState = null;
+      this.launcherDragState = null;
+      this.launcherSuppressClickUntil = 0;
+      this.resizeHandles = [];
+      this.pointerInside = false;
+      this.stickToBottom = true;
+      this.programmaticScrollUntil = 0;
+
+      this.cleanupFns = [];
+      this.rafRenderId = 0;
+      this.statusTimer = 0;
+    }
+
+    mount() {
+      const previous = document.getElementById(PANEL_ID);
+      if (previous) {
+        previous.remove();
+      }
+
+      this.root = document.createElement("section");
+      this.root.id = PANEL_ID;
+      this.root.className = "dc-panel";
+      this.root.tabIndex = 0;
+      this.resizeHandles = [];
+      const resizeCorners = ["top-left", "top-right", "bottom-left", "bottom-right"];
+      for (let index = 0; index < resizeCorners.length; index += 1) {
+        const corner = resizeCorners[index];
+        const handle = document.createElement("div");
+        handle.className = "dc-resize-handle dc-resize-" + corner;
+        handle.setAttribute("data-corner", corner);
+        handle.title = "Resize panel";
+        this.resizeHandles.push(handle);
+      }
+
+      const header = document.createElement("header");
+      header.className = "dc-header";
+      this.header = header;
+
+      const titleWrap = document.createElement("div");
+      titleWrap.className = "dc-title-wrap";
+      const title = document.createElement("h2");
+      title.className = "dc-title";
+      title.textContent = "Dialogue Captions";
+      const subtitle = document.createElement("div");
+      subtitle.className = "dc-subtitle";
+      subtitle.textContent = "MMO subtitle log";
+      titleWrap.append(title, subtitle);
+
+      const controls = document.createElement("div");
+      controls.className = "dc-controls";
+
+      this.closeButton = document.createElement("button");
+      this.closeButton.type = "button";
+      this.closeButton.className = "dc-btn dc-btn-close";
+      this.closeButton.textContent = "Close";
+      this.closeButton.title = "Close panel";
+
+      this.autoScrollButton = document.createElement("button");
+      this.autoScrollButton.type = "button";
+      this.autoScrollButton.className = "dc-btn";
+      this.autoScrollButton.title = "Toggle auto-scroll";
+
+      this.keyboardButton = document.createElement("button");
+      this.keyboardButton.type = "button";
+      this.keyboardButton.className = "dc-btn dc-btn-keys";
+      this.keyboardButton.title = "Keyboard mode: focus-only or global";
+
+      const sizeWrap = document.createElement("label");
+      sizeWrap.className = "dc-size-wrap";
+      sizeWrap.textContent = "Chunk";
+      this.sizeWrap = sizeWrap;
+
+      this.chunkSizeSelect = document.createElement("select");
+      this.chunkSizeSelect.className = "dc-size-select";
+      const sizeOptions = [
+        { value: "short", label: "Short" },
+        { value: "medium", label: "Medium" },
+        { value: "long", label: "Long" }
+      ];
+      for (const optionData of sizeOptions) {
+        const option = document.createElement("option");
+        option.value = optionData.value;
+        option.textContent = optionData.label;
+        this.chunkSizeSelect.append(option);
+      }
+      this.chunkSizeSelect.value = this.settings.chunkSize || "medium";
+      sizeWrap.append(this.chunkSizeSelect);
+
+      const stepWrap = document.createElement("label");
+      stepWrap.className = "dc-step-wrap";
+      stepWrap.textContent = "Step";
+      this.stepWrap = stepWrap;
+
+      this.stepSelect = document.createElement("select");
+      this.stepSelect.className = "dc-size-select";
+      const stepOptions = [
+        { value: "3", label: "3s" },
+        { value: "8", label: "8s" },
+        { value: "5", label: "5s" },
+        { value: "12", label: "12s" }
+      ];
+      for (const optionData of stepOptions) {
+        const option = document.createElement("option");
+        option.value = optionData.value;
+        option.textContent = optionData.label;
+        this.stepSelect.append(option);
+      }
+      this.stepSelect.value = String(this.settings.keyboardStepSeconds || 8);
+      stepWrap.append(this.stepSelect);
+
+      const opacityWrap = document.createElement("label");
+      opacityWrap.className = "dc-opacity-wrap";
+      opacityWrap.textContent = "Alpha";
+      this.opacityWrap = opacityWrap;
+
+      this.opacityInput = document.createElement("input");
+      this.opacityInput.type = "range";
+      this.opacityInput.className = "dc-opacity-input";
+      this.opacityInput.min = "35";
+      this.opacityInput.max = "100";
+      this.opacityInput.step = "1";
+      this.opacityInput.value = String(this.settings.panelOpacity || 100);
+      this.opacityInput.title = "Panel transparency";
+      opacityWrap.append(this.opacityInput);
+
+      const textScaleWrap = document.createElement("label");
+      textScaleWrap.className = "dc-text-scale-wrap";
+      textScaleWrap.textContent = "Text";
+      this.textScaleWrap = textScaleWrap;
+
+      this.textScaleInput = document.createElement("input");
+      this.textScaleInput.type = "range";
+      this.textScaleInput.className = "dc-text-scale-input";
+      this.textScaleInput.min = "100";
+      this.textScaleInput.max = "160";
+      this.textScaleInput.step = "5";
+      this.textScaleInput.value = String(this.settings.textScale || 100);
+      this.textScaleInput.title = "Text size";
+      textScaleWrap.append(this.textScaleInput);
+
+      controls.append(
+        this.closeButton,
+        this.autoScrollButton,
+        this.keyboardButton,
+        stepWrap,
+        sizeWrap,
+        opacityWrap,
+        textScaleWrap
+      );
+      header.append(titleWrap, controls);
+
+      this.body = document.createElement("div");
+      this.body.className = "dc-body";
+
+      this.statusEl = document.createElement("div");
+      this.statusEl.className = "dc-status";
+
+      this.listViewport = document.createElement("div");
+      this.listViewport.className = "dc-list-viewport";
+
+      const content = document.createElement("div");
+      content.className = "dc-list-content";
+
+      this.topSpacer = document.createElement("div");
+      this.topSpacer.className = "dc-spacer";
+
+      this.windowContainer = document.createElement("div");
+      this.windowContainer.className = "dc-window";
+
+      this.bottomSpacer = document.createElement("div");
+      this.bottomSpacer.className = "dc-spacer";
+
+      content.append(this.topSpacer, this.windowContainer, this.bottomSpacer);
+      this.listViewport.append(content);
+
+      const footer = document.createElement("div");
+      footer.className = "dc-footer";
+      this.jumpBottomButton = document.createElement("button");
+      this.jumpBottomButton.type = "button";
+      this.jumpBottomButton.className = "dc-jump-bottom is-hidden";
+      this.jumpBottomButton.textContent = "Jump to Latest";
+      this.jumpBottomButton.title = "Scroll to newest dialogue";
+      footer.append(this.jumpBottomButton);
+
+      this.body.append(this.statusEl, this.listViewport, footer);
+      this.root.append(header, this.body);
+      for (let index = 0; index < this.resizeHandles.length; index += 1) {
+        this.root.append(this.resizeHandles[index]);
+      }
+      document.body.append(this.root);
+
+      this.launcherButton = document.createElement("button");
+      this.launcherButton.type = "button";
+      this.launcherButton.className = "dc-launcher";
+      this.launcherButton.textContent = "Dialogue Captions";
+      this.launcherButton.title = "Open panel (drag to move)";
+      document.body.append(this.launcherButton);
+
+      this.bindEvents();
+      this.applySettings();
+    }
+
+    destroy() {
+      if (this.rafRenderId) {
+        platform.cancelFrame(this.rafRenderId);
+        this.rafRenderId = 0;
+      }
+      if (this.statusTimer) {
+        window.clearTimeout(this.statusTimer);
+        this.statusTimer = 0;
+      }
+      for (let index = 0; index < this.cleanupFns.length; index += 1) {
+        this.cleanupFns[index]();
+      }
+      this.cleanupFns.length = 0;
+      if (this.root) {
+        this.root.remove();
+        this.root = null;
+      }
+      if (this.launcherButton) {
+        this.launcherButton.remove();
+        this.launcherButton = null;
+      }
+    }
+
+    addListener(target, type, handler, options) {
+      if (!target) {
+        return;
+      }
+      target.addEventListener(type, handler, options);
+      this.cleanupFns.push(() => target.removeEventListener(type, handler, options));
+    }
+
+    bindEvents() {
+      if (!this.root) {
+        return;
+      }
+
+      const onPanelPointerDown = () => {
+        if (this.root) {
+          this.root.focus();
+        }
+      };
+      this.addListener(this.root, "pointerdown", onPanelPointerDown);
+
+      const onPointerEnter = () => {
+        this.pointerInside = true;
+      };
+      const onPointerLeave = () => {
+        this.pointerInside = false;
+      };
+      this.addListener(this.root, "pointerenter", onPointerEnter);
+      this.addListener(this.root, "pointerleave", onPointerLeave);
+
+      const onHeaderPointerDown = (event) => this.handleHeaderPointerDown(event);
+      this.addListener(this.header, "pointerdown", onHeaderPointerDown);
+      for (let index = 0; index < this.resizeHandles.length; index += 1) {
+        const handle = this.resizeHandles[index];
+        const corner = handle.getAttribute("data-corner") || "";
+        const onResizeDown = (event) => this.handleResizePointerDown(event, corner);
+        this.addListener(handle, "pointerdown", onResizeDown);
+      }
+
+      const onClose = () => this.updateSettings({ panelClosed: true });
+      const onAuto = () => {
+        if (!this.features.autoScrollControl) {
+          return;
+        }
+        this.updateSettings({ autoScroll: !this.settings.autoScroll });
+      };
+      const onKeyboard = () => {
+        if (!this.features.globalKeyboardMode) {
+          return;
+        }
+        this.updateSettings({ globalKeyboardEnabled: !this.settings.globalKeyboardEnabled });
+      };
+
+      this.addListener(this.closeButton, "click", onClose);
+      this.addListener(this.autoScrollButton, "click", onAuto);
+      this.addListener(this.keyboardButton, "click", onKeyboard);
+
+      const onChunkSizeChange = () => {
+        if (!this.features.chunkSizeControl) {
+          return;
+        }
+        this.updateSettings({ chunkSize: this.chunkSizeSelect.value });
+        if (typeof this.options.onChunkSizeChange === "function") {
+          this.options.onChunkSizeChange(this.chunkSizeSelect.value);
+        }
+      };
+      this.addListener(this.chunkSizeSelect, "change", onChunkSizeChange);
+
+      const onStepSecondsChange = () => {
+        this.updateSettings({ keyboardStepSeconds: Number(this.stepSelect.value || 8) });
+      };
+      this.addListener(this.stepSelect, "change", onStepSecondsChange);
+
+      const onOpacityInput = () => {
+        this.updateSettings({ panelOpacity: Number(this.opacityInput.value) });
+      };
+      this.addListener(this.opacityInput, "input", onOpacityInput);
+
+      const onTextScaleInput = () => {
+        this.updateSettings({ textScale: Number(this.textScaleInput.value) });
+      };
+      this.addListener(this.textScaleInput, "input", onTextScaleInput);
+
+      const onLauncherClick = () => {
+        if (Date.now() < this.launcherSuppressClickUntil) {
+          return;
+        }
+        this.updateSettings({ panelClosed: false });
+      };
+      const onLauncherPointerDown = (event) => this.handleLauncherPointerDown(event);
+      this.addListener(this.launcherButton, "click", onLauncherClick);
+      this.addListener(this.launcherButton, "pointerdown", onLauncherPointerDown);
+
+      const onListClick = (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const chunkButton = target.closest(".dc-chunk");
+        if (!chunkButton) {
+          return;
+        }
+        const index = Number(chunkButton.getAttribute("data-index"));
+        if (!Number.isInteger(index)) {
+          return;
+        }
+        if (typeof this.options.onSeek === "function") {
+          this.options.onSeek(index);
+        }
+      };
+      this.addListener(this.listViewport, "click", onListClick);
+
+      const onJumpBottom = () => {
+        if (this.chunks.length > 0) {
+          const latestIndex = this.chunks.length - 1;
+          this.activeIndex = latestIndex;
+        }
+        this.scrollToBottom();
+        this.scheduleWindowRender();
+        this.updateJumpBottomVisibility();
+      };
+      this.addListener(this.jumpBottomButton, "click", onJumpBottom);
+
+      const onScroll = () => {
+        if (Date.now() < this.programmaticScrollUntil) {
+          this.updateJumpBottomVisibility();
+          this.scheduleWindowRender();
+          return;
+        }
+        if (!this.settings.autoScroll) {
+          this.stickToBottom = this.isNearBottom(1.8);
+          this.updateJumpBottomVisibility();
+          this.scheduleWindowRender();
+          return;
+        }
+        if (this.isNearBottom(2.6)) {
+          this.stickToBottom = true;
+        } else if (this.getBottomDistance() > ESTIMATED_ROW_HEIGHT * 3.5) {
+          this.stickToBottom = false;
+        }
+        this.updateJumpBottomVisibility();
+        this.scheduleWindowRender();
+      };
+      this.addListener(this.listViewport, "scroll", onScroll, { passive: true });
+    }
+
+    updateSettings(patch) {
+      this.settings = { ...this.settings, ...patch };
+      this.applySettings();
+      if (typeof this.options.onSettingsChange === "function") {
+        this.options.onSettingsChange(this.settings, patch);
+      }
+    }
+
+    applySettings() {
+      if (!this.root || !this.body) {
+        return;
+      }
+
+      const panelClosed = Boolean(this.settings.panelClosed);
+      this.root.style.display = panelClosed ? "none" : "flex";
+      if (this.launcherButton) {
+        this.launcherButton.style.display = panelClosed ? "inline-flex" : "none";
+      }
+      if (panelClosed) {
+        this.pointerInside = false;
+      }
+      this.root.classList.remove("is-collapsed");
+      this.body.style.display = "flex";
+
+      const isNarrowViewport = window.matchMedia("(max-width: 980px)").matches;
+      if (isNarrowViewport) {
+        this.root.style.width = "";
+        this.root.style.height = "";
+      } else if (
+        this.settings.panelSize &&
+        Number.isFinite(this.settings.panelSize.width) &&
+        Number.isFinite(this.settings.panelSize.height)
+      ) {
+        const boundedWidth = Math.max(
+          MIN_PANEL_WIDTH,
+          Math.min(window.innerWidth - 8, Number(this.settings.panelSize.width))
+        );
+        const boundedHeight = Math.max(
+          MIN_PANEL_HEIGHT,
+          Math.min(window.innerHeight - 8, Number(this.settings.panelSize.height))
+        );
+        this.root.style.width = Math.round(boundedWidth) + "px";
+        this.root.style.height = Math.round(boundedHeight) + "px";
+      } else {
+        this.root.style.width = "";
+        this.root.style.height = "";
+      }
+
+      const autoLabel = this.settings.autoScroll ? "Auto On" : "Auto Off";
+      this.autoScrollButton.textContent = autoLabel;
+      this.autoScrollButton.classList.toggle("is-active", Boolean(this.settings.autoScroll));
+      this.autoScrollButton.style.display = this.features.autoScrollControl ? "" : "none";
+
+      const keyLabel = this.settings.globalKeyboardEnabled ? "Keys Global" : "Keys Focus";
+      this.keyboardButton.textContent = keyLabel;
+      this.keyboardButton.classList.toggle("is-active", Boolean(this.settings.globalKeyboardEnabled));
+      this.keyboardButton.style.display = this.features.globalKeyboardMode ? "" : "none";
+
+      const normalizedSize = this.settings.chunkSize || "medium";
+      if (this.chunkSizeSelect.value !== normalizedSize) {
+        this.chunkSizeSelect.value = normalizedSize;
+      }
+      if (this.sizeWrap) {
+        this.sizeWrap.style.display = "none";
+      }
+      const normalizedStep = String(Number(this.settings.keyboardStepSeconds || 8));
+      if (this.stepSelect && this.stepSelect.value !== normalizedStep) {
+        this.stepSelect.value = normalizedStep;
+      }
+      if (this.stepWrap) {
+        this.stepWrap.style.display = "none";
+      }
+
+      const panelOpacity = Number(this.settings.panelOpacity || 100);
+      const normalizedOpacity = Math.max(35, Math.min(100, panelOpacity));
+      this.root.style.opacity = String(normalizedOpacity / 100);
+      if (this.opacityInput && this.opacityInput.value !== String(normalizedOpacity)) {
+        this.opacityInput.value = String(normalizedOpacity);
+      }
+      const textScale = Number(this.settings.textScale || 100);
+      const normalizedTextScale = Math.max(100, Math.min(160, textScale));
+      this.root.style.setProperty("--dc-text-scale", String(normalizedTextScale / 100));
+      if (this.textScaleInput && this.textScaleInput.value !== String(normalizedTextScale)) {
+        this.textScaleInput.value = String(normalizedTextScale);
+      }
+
+      if (this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
+        this.root.style.left = this.settings.panelPosition.left + "px";
+        this.root.style.top = this.settings.panelPosition.top + "px";
+        this.root.style.right = "auto";
+        this.root.style.bottom = "auto";
+      } else {
+        this.root.style.left = "";
+        this.root.style.top = "";
+        this.root.style.right = "";
+        this.root.style.bottom = "";
+      }
+
+      if (this.launcherButton) {
+        if (
+          this.settings.launcherPosition &&
+          Number.isFinite(this.settings.launcherPosition.left) &&
+          Number.isFinite(this.settings.launcherPosition.top)
+        ) {
+          this.launcherButton.style.left = this.settings.launcherPosition.left + "px";
+          this.launcherButton.style.top = this.settings.launcherPosition.top + "px";
+          this.launcherButton.style.right = "auto";
+          this.launcherButton.style.bottom = "auto";
+        } else {
+          this.launcherButton.style.left = "";
+          this.launcherButton.style.top = "";
+          this.launcherButton.style.right = "";
+          this.launcherButton.style.bottom = "";
+        }
+      }
+      this.updateJumpBottomVisibility();
+    }
+
+    handleHeaderPointerDown(event) {
+      if (!this.root || !this.header) {
+        return;
+      }
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+      if (event.target.closest("button, input, select, label, option")) {
+        return;
+      }
+
+      const rect = this.root.getBoundingClientRect();
+      this.root.style.left = rect.left + "px";
+      this.root.style.top = rect.top + "px";
+      this.root.style.right = "auto";
+      this.root.style.bottom = "auto";
+
+      this.dragState = {
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: rect.left,
+        startTop: rect.top
+      };
+
+      const onMove = (moveEvent) => this.handleDragMove(moveEvent);
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        this.finishDrag();
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      event.preventDefault();
+    }
+
+    handleDragMove(event) {
+      if (!this.root || !this.dragState) {
+        return;
+      }
+      const deltaX = event.clientX - this.dragState.startX;
+      const deltaY = event.clientY - this.dragState.startY;
+      const width = this.root.offsetWidth || 360;
+      const height = this.root.offsetHeight || 320;
+
+      const nextLeft = Math.max(0, Math.min(window.innerWidth - width, this.dragState.startLeft + deltaX));
+      const nextTop = Math.max(0, Math.min(window.innerHeight - height, this.dragState.startTop + deltaY));
+      this.root.style.left = Math.round(nextLeft) + "px";
+      this.root.style.top = Math.round(nextTop) + "px";
+    }
+
+    finishDrag() {
+      if (!this.root || !this.dragState) {
+        this.dragState = null;
+        return;
+      }
+      const left = Number.parseInt(this.root.style.left || "0", 10);
+      const top = Number.parseInt(this.root.style.top || "0", 10);
+      this.dragState = null;
+      this.updateSettings({
+        panelPosition: {
+          left: Number.isFinite(left) ? left : 0,
+          top: Number.isFinite(top) ? top : 0
+        }
+      });
+    }
+
+    handleResizePointerDown(event, corner) {
+      if (!this.root) {
+        return;
+      }
+      if (!corner || corner.indexOf("-") < 0) {
+        return;
+      }
+
+      const rect = this.root.getBoundingClientRect();
+      this.root.style.left = rect.left + "px";
+      this.root.style.top = rect.top + "px";
+      this.root.style.right = "auto";
+      this.root.style.bottom = "auto";
+
+      this.resizeState = {
+        corner: corner,
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: rect.left,
+        startTop: rect.top,
+        startWidth: rect.width,
+        startHeight: rect.height
+      };
+
+      const onMove = (moveEvent) => this.handleResizeMove(moveEvent);
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        this.finishResize();
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    handleResizeMove(event) {
+      if (!this.root || !this.resizeState) {
+        return;
+      }
+      const state = this.resizeState;
+      const deltaX = event.clientX - state.startX;
+      const deltaY = event.clientY - state.startY;
+      const rightEdge = state.startLeft + state.startWidth;
+      const bottomEdge = state.startTop + state.startHeight;
+      const resizesLeft = state.corner.indexOf("left") >= 0;
+      const resizesTop = state.corner.indexOf("top") >= 0;
+
+      let nextWidth = resizesLeft ? state.startWidth - deltaX : state.startWidth + deltaX;
+      let nextHeight = resizesTop ? state.startHeight - deltaY : state.startHeight + deltaY;
+
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, window.innerWidth - 4);
+      const maxHeight = Math.max(MIN_PANEL_HEIGHT, window.innerHeight - 4);
+      nextWidth = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, nextWidth));
+      nextHeight = Math.max(MIN_PANEL_HEIGHT, Math.min(maxHeight, nextHeight));
+
+      let nextLeft = resizesLeft ? rightEdge - nextWidth : state.startLeft;
+      let nextTop = resizesTop ? bottomEdge - nextHeight : state.startTop;
+      nextLeft = Math.max(0, Math.min(window.innerWidth - nextWidth, nextLeft));
+      nextTop = Math.max(0, Math.min(window.innerHeight - nextHeight, nextTop));
+
+      this.root.style.left = Math.round(nextLeft) + "px";
+      this.root.style.top = Math.round(nextTop) + "px";
+      this.root.style.width = Math.round(nextWidth) + "px";
+      this.root.style.height = Math.round(nextHeight) + "px";
+      this.scheduleWindowRender();
+    }
+
+    finishResize() {
+      if (!this.root || !this.resizeState) {
+        this.resizeState = null;
+        return;
+      }
+      const left = Number.parseInt(this.root.style.left || "0", 10);
+      const top = Number.parseInt(this.root.style.top || "0", 10);
+      const width = Number.parseInt(this.root.style.width || "0", 10);
+      const height = Number.parseInt(this.root.style.height || "0", 10);
+      this.resizeState = null;
+      this.updateSettings({
+        panelPosition: {
+          left: Number.isFinite(left) ? left : 0,
+          top: Number.isFinite(top) ? top : 0
+        },
+        panelSize: {
+          width: Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
+          height: Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
+        }
+      });
+    }
+
+    handleLauncherPointerDown(event) {
+      if (!this.launcherButton || this.launcherButton.style.display === "none") {
+        return;
+      }
+      const rect = this.launcherButton.getBoundingClientRect();
+      this.launcherButton.style.left = rect.left + "px";
+      this.launcherButton.style.top = rect.top + "px";
+      this.launcherButton.style.right = "auto";
+      this.launcherButton.style.bottom = "auto";
+
+      this.launcherDragState = {
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: rect.left,
+        startTop: rect.top,
+        width: rect.width || 120,
+        height: rect.height || 36,
+        moved: false
+      };
+
+      const onMove = (moveEvent) => this.handleLauncherDragMove(moveEvent);
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        this.finishLauncherDrag();
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    }
+
+    handleLauncherDragMove(event) {
+      if (!this.launcherButton || !this.launcherDragState) {
+        return;
+      }
+      const state = this.launcherDragState;
+      const deltaX = event.clientX - state.startX;
+      const deltaY = event.clientY - state.startY;
+      if (!state.moved && Math.hypot(deltaX, deltaY) >= 4) {
+        state.moved = true;
+      }
+      if (!state.moved) {
+        return;
+      }
+      const nextLeft = Math.max(0, Math.min(window.innerWidth - state.width, state.startLeft + deltaX));
+      const nextTop = Math.max(0, Math.min(window.innerHeight - state.height, state.startTop + deltaY));
+      this.launcherButton.style.left = Math.round(nextLeft) + "px";
+      this.launcherButton.style.top = Math.round(nextTop) + "px";
+    }
+
+    finishLauncherDrag() {
+      if (!this.launcherButton || !this.launcherDragState) {
+        this.launcherDragState = null;
+        return;
+      }
+      const moved = Boolean(this.launcherDragState.moved);
+      this.launcherDragState = null;
+      if (!moved) {
+        return;
+      }
+      const left = Number.parseInt(this.launcherButton.style.left || "0", 10);
+      const top = Number.parseInt(this.launcherButton.style.top || "0", 10);
+      this.launcherSuppressClickUntil = Date.now() + 250;
+      this.updateSettings({
+        launcherPosition: {
+          left: Number.isFinite(left) ? left : 0,
+          top: Number.isFinite(top) ? top : 0
+        }
+      });
+    }
+
+    setStatus(message, temporary) {
+      if (!this.statusEl) {
+        return;
+      }
+      this.statusEl.textContent = message || "";
+      this.statusEl.classList.add("is-visible");
+
+      if (this.statusTimer) {
+        window.clearTimeout(this.statusTimer);
+        this.statusTimer = 0;
+      }
+      if (temporary) {
+        this.statusTimer = window.setTimeout(() => {
+          if (this.statusEl) {
+            this.statusEl.classList.remove("is-visible");
+          }
+          this.statusTimer = 0;
+        }, 2600);
+      }
+    }
+
+    setChunks(chunks) {
+      const shouldStick =
+        Boolean(this.settings.autoScroll) && (this.stickToBottom || this.isNearBottom(2.6));
+      this.chunks = Array.isArray(chunks) ? chunks : [];
+      if (this.activeIndex >= this.chunks.length) {
+        this.activeIndex = this.chunks.length - 1;
+      }
+      this.currentWindowStart = -1;
+      this.currentWindowEnd = -1;
+      this.scheduleWindowRender(true);
+      if (shouldStick) {
+        this.scrollToBottom();
+      }
+      this.updateJumpBottomVisibility();
+    }
+
+    setActiveIndex(index, options) {
+      if (!Array.isArray(this.chunks) || !this.chunks.length) {
+        this.activeIndex = -1;
+        return;
+      }
+      const bounded = Math.max(0, Math.min(this.chunks.length - 1, index));
+      const hasChanged = bounded !== this.activeIndex;
+      this.activeIndex = bounded;
+
+      if (hasChanged && this.settings.autoScroll && options && options.ensureVisible) {
+        if (bounded >= Math.max(0, this.chunks.length - 2)) {
+          this.stickToBottom = true;
+        }
+        this.ensureIndexVisible(bounded);
+      }
+      this.updateJumpBottomVisibility();
+      this.scheduleWindowRender(!hasChanged);
+    }
+
+    ensureIndexVisible(index) {
+      if (!this.listViewport) {
+        return;
+      }
+      if (index >= Math.max(0, this.chunks.length - 2)) {
+        this.stickToBottom = true;
+        this.scrollToBottom();
+        return;
+      }
+      const viewportHeight = this.listViewport.clientHeight || 1;
+      const rowTop = index * ESTIMATED_ROW_HEIGHT;
+      const rowBottom = rowTop + ESTIMATED_ROW_HEIGHT;
+      const viewTop = this.listViewport.scrollTop;
+      const viewBottom = viewTop + viewportHeight;
+      if (rowTop < viewTop || rowBottom > viewBottom) {
+        this.programmaticScrollUntil = Date.now() + 120;
+        this.listViewport.scrollTop = Math.max(0, rowTop - Math.round(viewportHeight * 0.35));
+      }
+    }
+
+    getBottomDistance() {
+      if (!this.listViewport) {
+        return 0;
+      }
+      return this.listViewport.scrollHeight - (this.listViewport.scrollTop + this.listViewport.clientHeight);
+    }
+
+    isNearBottom(multiplier) {
+      if (!this.listViewport) {
+        return true;
+      }
+      const distance = this.getBottomDistance();
+      const factor = Number.isFinite(multiplier) ? Number(multiplier) : 1.2;
+      return distance <= ESTIMATED_ROW_HEIGHT * factor;
+    }
+
+    scrollToBottom() {
+      if (!this.listViewport) {
+        return;
+      }
+      this.stickToBottom = true;
+      this.programmaticScrollUntil = Date.now() + 220;
+      const target = Math.max(0, this.listViewport.scrollHeight - this.listViewport.clientHeight);
+      this.listViewport.scrollTop = target;
+      platform.requestFrame(() => {
+        if (!this.listViewport) {
+          return;
+        }
+        const nextTarget = Math.max(0, this.listViewport.scrollHeight - this.listViewport.clientHeight);
+        this.listViewport.scrollTop = nextTarget;
+        platform.requestFrame(() => {
+          if (!this.listViewport) {
+            return;
+          }
+          const finalTarget = Math.max(0, this.listViewport.scrollHeight - this.listViewport.clientHeight);
+          this.listViewport.scrollTop = finalTarget;
+        });
+      });
+    }
+
+    isPointerInside() {
+      if (!this.root || this.root.style.display === "none") {
+        return false;
+      }
+      if (this.pointerInside) {
+        return true;
+      }
+      try {
+        if (typeof this.root.matches === "function" && this.root.matches(":hover")) {
+          return true;
+        }
+      } catch {
+        // Ignore selector/matches errors.
+      }
+      return false;
+    }
+
+    updateJumpBottomVisibility() {
+      if (!this.jumpBottomButton || !this.listViewport || !this.root) {
+        return;
+      }
+      const isClosed = this.root.style.display === "none";
+      const shouldShow =
+        !isClosed && this.chunks.length > 0 && !this.isNearBottom(1.4);
+      this.jumpBottomButton.classList.toggle("is-hidden", !shouldShow);
+    }
+
+    scheduleWindowRender(skipIfQueued) {
+      if (skipIfQueued && this.rafRenderId) {
+        return;
+      }
+      if (this.rafRenderId) {
+        platform.cancelFrame(this.rafRenderId);
+      }
+      this.rafRenderId = platform.requestFrame(() => {
+        this.rafRenderId = 0;
+        this.renderWindow();
+      });
+    }
+
+    renderWindow() {
+      if (!this.listViewport || !this.windowContainer || !this.topSpacer || !this.bottomSpacer) {
+        return;
+      }
+
+      const chunkCount = this.chunks.length;
+      if (!chunkCount) {
+        this.topSpacer.style.height = "0px";
+        this.bottomSpacer.style.height = "0px";
+        this.windowContainer.replaceChildren();
+        return;
+      }
+
+      const viewportHeight = Math.max(1, this.listViewport.clientHeight || 1);
+      const estimatedTotalHeight = Math.max(ESTIMATED_ROW_HEIGHT, chunkCount * ESTIMATED_ROW_HEIGHT);
+      const maxEstimatedScrollTop = Math.max(0, estimatedTotalHeight - viewportHeight);
+      const rawScrollTop = this.listViewport.scrollTop;
+      const scrollTop = Math.max(0, Math.min(maxEstimatedScrollTop, rawScrollTop));
+      if (Math.abs(scrollTop - rawScrollTop) >= 1) {
+        this.listViewport.scrollTop = scrollTop;
+      }
+
+      const firstVisibleRaw = Math.floor(scrollTop / ESTIMATED_ROW_HEIGHT);
+      const firstVisible = Math.max(0, Math.min(chunkCount - 1, firstVisibleRaw));
+      const visibleRows = Math.ceil(viewportHeight / ESTIMATED_ROW_HEIGHT);
+
+      let start = Math.max(0, firstVisible - WINDOW_BUFFER_ROWS);
+      let end = Math.min(chunkCount - 1, firstVisible + visibleRows + WINDOW_BUFFER_ROWS);
+
+      if (this.activeIndex >= 0) {
+        start = Math.min(start, Math.max(0, this.activeIndex - WINDOW_BUFFER_ROWS));
+        end = Math.max(end, Math.min(chunkCount - 1, this.activeIndex + WINDOW_BUFFER_ROWS));
+      }
+
+      if (start > end) {
+        const fallbackIndex =
+          this.activeIndex >= 0 ? Math.min(chunkCount - 1, this.activeIndex) : Math.max(0, chunkCount - 1);
+        start = fallbackIndex;
+        end = fallbackIndex;
+      }
+
+      const shouldRebuild = start !== this.currentWindowStart || end !== this.currentWindowEnd;
+      this.currentWindowStart = start;
+      this.currentWindowEnd = end;
+
+      this.topSpacer.style.height = start * ESTIMATED_ROW_HEIGHT + "px";
+      this.bottomSpacer.style.height = Math.max(0, chunkCount - end - 1) * ESTIMATED_ROW_HEIGHT + "px";
+
+      if (!shouldRebuild) {
+        this.updateActiveClass();
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      for (let index = start; index <= end; index += 1) {
+        const chunk = this.chunks[index];
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "dc-chunk";
+        item.setAttribute("data-index", String(index));
+
+        const time = document.createElement("span");
+        time.className = "dc-chunk-time";
+        time.textContent = chunker.formatTimestamp(chunk.start);
+
+        const text = document.createElement("span");
+        text.className = "dc-chunk-text";
+        text.textContent = chunk.text;
+
+        item.append(time, text);
+        if (index === this.activeIndex) {
+          item.classList.add("is-current");
+        }
+        fragment.append(item);
+      }
+
+      this.windowContainer.replaceChildren(fragment);
+    }
+
+    updateActiveClass() {
+      if (!this.windowContainer) {
+        return;
+      }
+      const current = this.windowContainer.querySelector(".dc-chunk.is-current");
+      if (current) {
+        current.classList.remove("is-current");
+      }
+      if (this.activeIndex < this.currentWindowStart || this.activeIndex > this.currentWindowEnd) {
+        return;
+      }
+      const next = this.windowContainer.querySelector("[data-index='" + this.activeIndex + "']");
+      if (next) {
+        next.classList.add("is-current");
+      }
+    }
+  }
+
+  app.DialoguePanel = DialoguePanel;
+})(window);

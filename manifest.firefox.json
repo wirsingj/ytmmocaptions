@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Dialogue Captions",
+  "version": "0.25.21",
+  "description": "MMO-style dialogue panel for YouTube subtitles with chunk navigation.",
+  "host_permissions": [
+    "https://www.youtube.com/watch*"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "dialogue-captions@example.local",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      },
+      "strict_min_version": "140.0"
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "scripts/platform.js",
+        "scripts/page-context.js",
+        "scripts/settings-store.js",
+        "scripts/feature-flags.js",
+        "scripts/chunker.js",
+        "scripts/transcript.js",
+        "scripts/ui-panel.js",
+        "scripts/content-script.js"
+      ],
+      "css": [
+        "styles/panel.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "scripts/page-bridge.js"
+      ],
+      "matches": [
+        "https://www.youtube.com/*"
+      ]
+    }
+  ]
+}

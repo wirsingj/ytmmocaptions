@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build / package outputs
+build/
+dist/
+*.zip
+*.xpi
+*.crx
+
+# Local test/dev artifacts (not required for production repo)
+tests/
+.playwright-user-data*/
+
+# Logs / coverage / temp
+*.log
+coverage/
+.nyc_output/
+tmp/
+temp/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,17 @@
+{
+  "name": "dialogue-captions",
+  "version": "0.25.21",
+  "private": true,
+  "description": "Cross-browser YouTube subtitle dialogue panel extension.",
+  "scripts": {
+    "build": "node scripts/bump-version.mjs && node scripts/build.mjs",
+    "test": "node tests/run-tests.js",
+    "test:e2e": "node tests/e2e-extension-debug.js",
+    "lint:firefox": "npx --yes web-ext lint --source-dir build/firefox",
+    "package:chrome": "powershell -ExecutionPolicy Bypass -File scripts/package-chrome.ps1",
+    "package:firefox": "powershell -ExecutionPolicy Bypass -File scripts/package-firefox.ps1",
+    "build:firefox:xpi": "npm run build && npm run package:firefox",
+    "build:chrome:zip": "npm run build && npm run package:chrome",
+    "release:check": "npm run build && npm run test && npm run package:firefox && npm run package:chrome && npm run lint:firefox"
+  }
+}
