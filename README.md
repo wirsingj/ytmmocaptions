@@ -2,6 +2,12 @@
 
 Dialogue Captions is a Chrome/Firefox extension that turns YouTube subtitles into an MMO-style dialogue panel.
 
+## Downloads
+
+Latest packaged builds are checked into `downloads/`:
+- `downloads/ytmmocaptions-chrome-v<version>.zip`
+- `downloads/ytmmocaptions-firefox-v<version>.xpi`
+
 ## Core UX
 
 - Bottom-left floating chat panel with scroll history.

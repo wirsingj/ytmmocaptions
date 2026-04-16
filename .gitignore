@@ -7,6 +7,9 @@ dist/
 *.zip
 *.xpi
 *.crx
+!downloads/
+!downloads/*.zip
+!downloads/*.xpi
 
 # Local test/dev artifacts (not required for production repo)
 tests/
