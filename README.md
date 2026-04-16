@@ -57,7 +57,7 @@ npm run build:firefox:xpi
 ```
 
 Output:
-- `build/firefox/ytmmocaptions-firefox.xpi`
+- `build/firefox/ytmmocaptions-firefox-v<version>.xpi`
 
 To generate a Chrome upload package (`.zip`):
 
@@ -66,7 +66,7 @@ npm run build:chrome:zip
 ```
 
 Output:
-- `build/chrome/ytmmocaptions-chrome.zip`
+- `build/chrome/ytmmocaptions-chrome-v<version>.zip`
 
 To run full pre-submission scan + package for both stores:
 
@@ -85,7 +85,7 @@ npm run release:check
 5. Select `build/chrome`.
 
 For Chrome Web Store upload, use:
-- `build/chrome/ytmmocaptions-chrome.zip`
+- `build/chrome/ytmmocaptions-chrome-v<version>.zip`
 
 ### Firefox
 
@@ -96,7 +96,7 @@ For Chrome Web Store upload, use:
 5. Select `build/firefox/manifest.json`.
 
 For AMO signing/upload, use:
-- `build/firefox/ytmmocaptions-firefox.xpi`
+- `build/firefox/ytmmocaptions-firefox-v<version>.xpi`
 
 ## Store Compliance Notes
 
@@ -109,30 +109,3 @@ For AMO signing/upload, use:
 - Privacy details are in `PRIVACY.md`.
 - License terms are in `LICENSE`.
 - Firefox manifest includes `browser_specific_settings.gecko.data_collection_permissions.required=["none"]`.
-
-## Monetization Prep (No Payments Yet)
-
-The extension now includes a lightweight feature-flag scaffold for `free` vs `premium`.
-
-- Placeholder entitlement checks:
-  - license key starting with `PREMIUM-` enables premium
-  - account id starting with `acct_premium_` enables premium
-- Premium-gated controls by default:
-  - chunk size control
-  - auto-scroll toggle
-  - global keyboard mode toggle
-
-You can set placeholders from the console:
-
-```js
-await window.DialogueCaptions.featureFlags.setLicenseKey("PREMIUM-demo");
-await window.DialogueCaptions.featureFlags.setAccountId("acct_premium_demo");
-await window.DialogueCaptions.featureFlags.setPlan("premium");
-await window.DialogueCaptions.featureFlags.setFeatureOverride("chunkSizeControl", true);
-```
-
-Clear overrides:
-
-```js
-await window.DialogueCaptions.featureFlags.clearFeatureOverrides();
-```
