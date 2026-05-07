@@ -8,6 +8,9 @@
   const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
+  const DEFAULT_PANEL_MAX_WIDTH = 520;
+  const DEFAULT_PANEL_MAX_HEIGHT = 330;
+  const DEFAULT_PANEL_MARGIN = 12;
   const LAUNCHER_MARGIN = 14;
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
@@ -456,6 +459,7 @@
       this.body.style.display = "flex";
 
       const isNarrowViewport = window.matchMedia("(max-width: 980px)").matches;
+      const defaultPanelRect = isNarrowViewport ? null : this.getDefaultPanelRect();
       if (isNarrowViewport) {
         this.root.style.width = "";
         this.root.style.height = "";
@@ -474,6 +478,9 @@
         );
         this.root.style.width = Math.round(boundedWidth) + "px";
         this.root.style.height = Math.round(boundedHeight) + "px";
+      } else if (defaultPanelRect) {
+        this.root.style.width = defaultPanelRect.width + "px";
+        this.root.style.height = defaultPanelRect.height + "px";
       } else {
         this.root.style.width = "";
         this.root.style.height = "";
@@ -525,6 +532,11 @@
         this.root.style.top = this.settings.panelPosition.top + "px";
         this.root.style.right = "auto";
         this.root.style.bottom = "auto";
+      } else if (defaultPanelRect) {
+        this.root.style.left = defaultPanelRect.left + "px";
+        this.root.style.top = defaultPanelRect.top + "px";
+        this.root.style.right = "auto";
+        this.root.style.bottom = "auto";
       } else {
         this.root.style.left = "";
         this.root.style.top = "";
@@ -535,6 +547,37 @@
       this.applyLauncherPosition();
       this.normalizeSavedPanelPosition();
       this.updateJumpBottomVisibility();
+    }
+
+    getDefaultPanelRect() {
+      const frame = this.getYouTubeFrameRect();
+      const frameWidth = Math.max(0, frame.right - frame.left);
+      const frameHeight = Math.max(0, frame.bottom - frame.top);
+      if (frameWidth < 160 || frameHeight < 90) {
+        return null;
+      }
+      const width = Math.max(
+        MIN_PANEL_WIDTH,
+        Math.min(DEFAULT_PANEL_MAX_WIDTH, Math.round(frameWidth * 0.34))
+      );
+      const height = Math.max(
+        MIN_PANEL_HEIGHT,
+        Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.round(frameHeight * 0.39))
+      );
+      const clamped = this.clampPositionToRect(
+        frame.left + DEFAULT_PANEL_MARGIN,
+        frame.bottom - height - DEFAULT_PANEL_MARGIN,
+        width,
+        height,
+        frame,
+        DEFAULT_PANEL_MARGIN
+      );
+      return {
+        left: clamped.left,
+        top: clamped.top,
+        width: width,
+        height: height
+      };
     }
 
     getYouTubeFrameRect() {
