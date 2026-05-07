@@ -160,6 +160,20 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.ok(range.lastWord - range.firstWord + 1 >= 3);
   });
 
+  await runCase("reading glow centers around the estimated spoken word instead of leading ahead", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 10,
+      text: "zero one two three four five six seven eight nine"
+    };
+    const range = bubbleState.getReadingGlowRange(bubble, 5, { leadSeconds: 0, windowWords: 5 });
+    assert.ok(range.firstWord <= 5);
+    assert.ok(range.lastWord >= 5);
+    assert.equal(range.firstWord, 3);
+    assert.equal(range.lastWord, 7);
+  });
+
   await runCase("reading glow split preserves text without layout-side mutations", () => {
     const bubbleState = loadBubbleState();
     const text = "alpha beta gamma delta";

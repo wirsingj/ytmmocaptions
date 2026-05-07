@@ -227,8 +227,8 @@
       Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
         ? Number(opts.leadSeconds)
         : wordsPerSecond >= 4.8
-          ? 0.18
-          : 0.28;
+          ? 0.04
+          : 0.06;
     const progress = clamp((now + leadSeconds - start) / duration, 0, 0.999);
     const baseWindow =
       Number.isFinite(opts.windowWords) && opts.windowWords > 0
@@ -240,7 +240,9 @@
             : 4;
     const windowWords = Math.max(3, Math.min(6, baseWindow));
     const center = getWeightedWordIndex(words, progress);
-    const firstWord = Math.max(0, Math.min(wordCount - 1, center));
+    const halfWindow = Math.floor((windowWords - 1) / 2);
+    const maxFirstWord = Math.max(0, wordCount - windowWords);
+    const firstWord = Math.max(0, Math.min(maxFirstWord, center - halfWindow));
     const lastWord = Math.min(wordCount - 1, firstWord + windowWords - 1);
 
     return {
