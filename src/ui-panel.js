@@ -1125,6 +1125,11 @@
       const hasChanged = bounded !== this.activeIndex;
       this.activeIndex = bounded;
 
+      if (hasChanged) {
+        this.clearReadingGlowExcept(bounded);
+        this.lastGlowIndex = -1;
+        this.lastGlowWordStart = -1;
+      }
       if (hasChanged && this.settings.autoScroll && options && options.ensureVisible) {
         if (bounded >= Math.max(0, this.chunks.length - 2)) {
           this.stickToBottom = true;
@@ -1141,6 +1146,7 @@
         return;
       }
       if (options && options.forceGlowReset) {
+        this.clearReadingGlowExcept(this.activeIndex);
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
       }
@@ -1368,10 +1374,8 @@
       if (!this.windowContainer) {
         return;
       }
-      const current = this.windowContainer.querySelector(".dc-chunk.is-current");
-      if (current) {
-        current.classList.remove("is-current");
-      }
+      const currentItems = this.windowContainer.querySelectorAll(".dc-chunk.is-current");
+      currentItems.forEach((item) => item.classList.remove("is-current"));
       if (this.activeIndex < this.currentWindowStart || this.activeIndex > this.currentWindowEnd) {
         return;
       }
@@ -1379,6 +1383,32 @@
       if (next) {
         next.classList.add("is-current");
       }
+    }
+
+    clearReadingGlowExcept(activeIndex) {
+      if (!this.windowContainer) {
+        return;
+      }
+      const highlighted = this.windowContainer.querySelectorAll(".dc-reading-glow");
+      const chunkIndexes = new Set();
+      highlighted.forEach((node) => {
+        const chunkNode = node instanceof Element ? node.closest(".dc-chunk") : null;
+        if (!chunkNode) {
+          return;
+        }
+        const index = Number(chunkNode.getAttribute("data-index"));
+        if (Number.isInteger(index) && index !== activeIndex) {
+          chunkIndexes.add(index);
+        }
+      });
+
+      chunkIndexes.forEach((index) => {
+        const textElement = this.windowContainer.querySelector("[data-index='" + index + "'] .dc-chunk-text");
+        const chunk = this.chunks[index];
+        if (textElement && chunk) {
+          this.renderChunkText(textElement, chunk, false);
+        }
+      });
     }
 
     updateActiveReadingGlow() {
