@@ -448,10 +448,10 @@
   position: relative;
   border-radius: 6px;
   background:
-    radial-gradient(ellipse at center, rgba(222, 214, 195, 0.16), rgba(222, 214, 195, 0.065) 50%, transparent 72%);
+    radial-gradient(ellipse at center, rgba(222, 214, 195, 0.24), rgba(222, 214, 195, 0.1) 52%, transparent 76%);
   box-shadow:
-    0 0 5px rgba(222, 214, 195, 0.1),
-    0 0 10px rgba(222, 214, 195, 0.045);
+    0 0 7px rgba(222, 214, 195, 0.16),
+    0 0 13px rgba(222, 214, 195, 0.07);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -482,9 +482,9 @@
   }
   22% {
     box-shadow:
-      0 0 0 1px rgba(222, 214, 195, 0.28),
-      inset 0 0 18px rgba(222, 214, 195, 0.08);
-    filter: brightness(1.08);
+      0 0 0 1px rgba(222, 214, 195, 0.34),
+      inset 0 0 20px rgba(222, 214, 195, 0.12);
+    filter: brightness(1.12);
   }
   100% {
     box-shadow: 0 0 0 1px rgba(222, 214, 195, 0.2);
