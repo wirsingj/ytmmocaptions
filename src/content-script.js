@@ -4,11 +4,12 @@
   const chunker = app.chunker;
   const settingsStore = app.settingsStore;
   const featureFlags = app.featureFlags;
+  const bubbleState = app.bubbleState;
   const platform = app.platform;
   const pageContext = app.pageContext;
   const DialoguePanel = app.DialoguePanel;
 
-  if (!transcript || !chunker || !settingsStore || !featureFlags || !platform || !DialoguePanel) {
+  if (!transcript || !chunker || !settingsStore || !featureFlags || !bubbleState || !platform || !DialoguePanel) {
     console.warn("[Dialogue Captions] Missing required modules.");
     return;
   }
@@ -560,61 +561,12 @@
         .replace(/[^\w]/g, "");
     }
 
-    trimLeadingCaptionOverlap(previousText, nextText) {
-      return this.trimLeadingCaptionOverlapInfo(previousText, nextText).text;
-    }
-
-    trimLeadingCaptionOverlapInfo(previousText, nextText) {
-      const previous = this.normalizeLiveCaptionText(previousText);
-      const next = this.normalizeLiveCaptionText(nextText);
-      if (!previous || !next) {
-        return { text: next, removedTokens: 0, originalTokens: next ? next.split(/\s+/).filter(Boolean).length : 0 };
-      }
-
-      const previousTokens = previous.split(/\s+/).filter(Boolean);
-      const nextTokens = next.split(/\s+/).filter(Boolean);
-      const originalTokens = nextTokens.length;
-      const maxOverlap = Math.min(18, previousTokens.length, nextTokens.length);
-      for (let size = maxOverlap; size >= 3; size -= 1) {
-        let matches = true;
-        for (let index = 0; index < size; index += 1) {
-          const left = this.normalizeCaptionToken(previousTokens[previousTokens.length - size + index]);
-          const right = this.normalizeCaptionToken(nextTokens[index]);
-          if (!left || left !== right) {
-            matches = false;
-            break;
-          }
-        }
-        if (!matches) {
-          continue;
-        }
-        const trimmed = this.normalizeLiveCaptionText(nextTokens.slice(size).join(" "));
-        return {
-          text: trimmed || next,
-          removedTokens: trimmed ? size : 0,
-          originalTokens: originalTokens
-        };
-      }
-      return { text: next, removedTokens: 0, originalTokens: originalTokens };
-    }
-
-    adjustChunkSeekStartForTrim(chunk, trimInfo) {
-      if (!chunk || !trimInfo || !trimInfo.removedTokens || !trimInfo.originalTokens) {
-        return Number.isFinite(chunk && chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk && chunk.start || 0);
-      }
-      const start = Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0);
-      const end = Math.max(start + 0.25, Number(chunk.end || start + this.getKeyboardStepSeconds()));
-      const ratio = Math.max(0, Math.min(0.85, Number(trimInfo.removedTokens) / Math.max(1, Number(trimInfo.originalTokens))));
-      return Math.max(0, start + (end - start) * ratio);
-    }
-
     trimLiveChunkAgainstPrevious(previousText, chunk) {
-      const info = this.trimLeadingCaptionOverlapInfo(previousText, chunk && chunk.text ? chunk.text : "");
-      return {
-        ...chunk,
-        text: info.text,
-        seekStart: this.adjustChunkSeekStartForTrim(chunk, info)
-      };
+      return bubbleState.trimChunkAgainstPrevious(previousText, chunk, {
+        normalizeText: (value) => this.normalizeLiveCaptionText(value),
+        normalizeToken: (value) => this.normalizeCaptionToken(value),
+        fallbackDurationSeconds: this.getKeyboardStepSeconds()
+      });
     }
 
     getPreviousLiveBubble(bubble) {
@@ -1422,15 +1374,9 @@
     }
 
     triggerBubbleStartFlashIfReady(chunk, visibleIndex, currentTime) {
-      if (!chunk || !chunk.flashOnStart || chunk.flashOnStart.done || !this.panel) {
+      if (!this.panel || !bubbleState.consumeFlashOnStart(chunk, currentTime)) {
         return;
       }
-      const flashAt = Number(chunk.flashOnStart.at);
-      const now = Number(currentTime);
-      if (!Number.isFinite(flashAt) || !Number.isFinite(now) || now < flashAt) {
-        return;
-      }
-      chunk.flashOnStart.done = true;
       if (typeof this.panel.flashChunk === "function") {
         this.panel.flashChunk(visibleIndex);
       }
@@ -1657,39 +1603,11 @@
     }
 
     createBubbleRecord(data) {
-      const start = Math.max(0, Number(data && data.start ? data.start : 0));
-      const end = Math.max(start + 0.25, Number(data && data.end ? data.end : start + 0.25));
-      const seekStart = Number.isFinite(data && data.seekStart) ? Math.max(0, Number(data.seekStart)) : start;
-      const locked = Boolean(data && data.locked);
-      return {
-        id: "",
-        sourceId: data && data.sourceId ? String(data.sourceId) : "",
-        partIndex: Number.isInteger(data && data.partIndex) ? data.partIndex : 0,
-        start: start,
-        end: end,
-        seekStart: seekStart,
-        ts_start: start,
-        ts_stop: end,
-        text: this.cleanCaptionCandidateText(data && data.text ? data.text : ""),
-        locked: locked,
-        immutable: locked
-      };
+      return bubbleState.createBubbleRecord(data, (value) => this.cleanCaptionCandidateText(value));
     }
 
     withDisplayIds(records) {
-      const source = Array.isArray(records) ? records : [];
-      const output = [];
-      for (let index = 0; index < source.length; index += 1) {
-        const record = source[index];
-        if (!record || !record.text) {
-          continue;
-        }
-        output.push({
-          ...record,
-          id: output.length
-        });
-      }
-      return output;
+      return bubbleState.withDisplayIds(records);
     }
 
     rebuildLiveBubbleText(bubble) {
@@ -1715,7 +1633,7 @@
       bubble.end = Math.max(bubble.start + 0.25, Number.isFinite(end) ? end : bubble.start + 0.25);
     }
 
-    appendBucketToLiveBubble(bubble, chunk, trimLeading) {
+    appendBucketToLiveBubble(bubble, chunk) {
       if (!bubble || bubble.locked) {
         return;
       }
@@ -1723,9 +1641,7 @@
       if (!bubble.bucketIndexes.includes(bucketIndex)) {
         bubble.bucketIndexes.push(bucketIndex);
       }
-      bubble.bucketTexts[bucketIndex] = trimLeading
-        ? this.trimLeadingCaptionOverlap(bubble.text, chunk.text)
-        : this.cleanCaptionCandidateText(chunk.text);
+      bubble.bucketTexts[bucketIndex] = this.cleanCaptionCandidateText(chunk.text);
       bubble.bucketStarts[bucketIndex] = Number(chunk.start || 0);
       bubble.bucketEnds[bucketIndex] = Number(chunk.end || 0);
       bubble.bucketSeekStarts[bucketIndex] = Number.isFinite(chunk.seekStart)
@@ -1772,7 +1688,7 @@
             const previousBubble = this.getPreviousLiveBubble(existingBubble);
             const nextChunk = previousBubble ? this.trimLiveChunkAgainstPrevious(previousBubble.text, { ...chunk, text }) : { ...chunk, text };
             if (nextChunk.text) {
-              this.appendBucketToLiveBubble(existingBubble, nextChunk, false);
+              this.appendBucketToLiveBubble(existingBubble, nextChunk);
             }
           }
           continue;
@@ -1799,7 +1715,7 @@
           continue;
         }
 
-        this.appendBucketToLiveBubble(activeBubble, nextChunk, true);
+        this.appendBucketToLiveBubble(activeBubble, nextChunk);
       }
 
       for (let index = 0; index < this.liveBubbles.length; index += 1) {
@@ -2257,15 +2173,7 @@
       if (!Array.isArray(this.allChunks) || index < 0 || index >= this.allChunks.length) {
         return;
       }
-      const flashAt = Number(seekStart);
-      if (!Number.isFinite(flashAt)) {
-        return;
-      }
-      this.allChunks[index].flashOnStart = {
-        at: flashAt,
-        source: source || "seek",
-        done: false
-      };
+      bubbleState.markFlashOnStart(this.allChunks[index], seekStart, source);
     }
 
     enforcePlaybackState(wasPaused) {
