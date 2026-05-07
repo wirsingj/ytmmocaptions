@@ -157,4 +157,16 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.equal(parts.map((part) => part.text).join(""), text);
     assert.equal(parts.filter((part) => part.active).length, 1);
   });
+
+  await runCase("reading glow can lead the playback position to avoid visual lag", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 8,
+      text: "one two three four five six seven eight"
+    };
+    const noLead = bubbleState.getReadingGlowRange(bubble, 3, { leadSeconds: 0 });
+    const withLead = bubbleState.getReadingGlowRange(bubble, 3, { leadSeconds: 1 });
+    assert.ok(withLead.firstWord > noLead.firstWord);
+  });
 };

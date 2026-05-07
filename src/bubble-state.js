@@ -185,9 +185,15 @@
 
     const opts = options && typeof options === "object" ? options : {};
     const duration = Math.max(0.25, end - start);
-    const progress = clamp((now - start) / duration, 0, 0.999);
     const wordCount = words.length;
     const wordsPerSecond = wordCount / duration;
+    const leadSeconds =
+      Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
+        ? Number(opts.leadSeconds)
+        : wordsPerSecond >= 4.8
+          ? 0.22
+          : 0.34;
+    const progress = clamp((now + leadSeconds - start) / duration, 0, 0.999);
     const baseWindow =
       Number.isFinite(opts.windowWords) && opts.windowWords > 0
         ? Math.round(opts.windowWords)
