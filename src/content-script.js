@@ -347,7 +347,10 @@
 
     sanitizeOverlayCandidateText(input) {
       return String(input || "")
-        .replace(/\b[a-z][a-z -]{1,24}\s*\((?:auto-generated|automatic captions)\)/gi, " ")
+        .replace(
+          /(^|[\s>])(?:English|[A-Z][A-Za-z -]{1,28})\s*\(\s*(?:auto-generated|automatic captions)\s*\)/g,
+          "$1"
+        )
         .replace(/\bclick for settings\b/gi, " ")
         .replace(/\bsubtitles\/closed captions\b/gi, " ")
         .replace(/\[\s*[_-]+\s*\]/g, " ");
@@ -382,7 +385,7 @@
       }
       const beforeWords = normalized.split(/\s+/).filter(Boolean).length;
       const afterWords = collapsed.split(/\s+/).filter(Boolean).length;
-      if (beforeWords - afterWords >= 6) {
+      if (afterWords < beforeWords) {
         return collapsed;
       }
       return normalized;
@@ -1004,7 +1007,7 @@
         return;
       }
 
-      const normalized = this.normalizeLiveCaptionText(text);
+      const normalized = this.cleanCaptionCandidateText(text);
       if (!normalized || !this.toCaptionCanonical(normalized)) {
         return;
       }
@@ -1438,12 +1441,17 @@
         return true;
       }
 
+      const bucketCount = Array.isArray(previousChunk.bucketIndexes) ? previousChunk.bucketIndexes.length : 1;
+      const previousLength = this.normalizeLiveCaptionText(previousChunk.text).length;
+      const combined = this.normalizeLiveCaptionText(previousChunk.text + " " + nextChunk.text);
+      if (bucketCount >= 3 || previousLength >= 420 || combined.length >= 560) {
+        return true;
+      }
+
       if (!this.textEndsNaturally(previousChunk.text)) {
         return false;
       }
 
-      const combined = this.normalizeLiveCaptionText(previousChunk.text + " " + nextChunk.text);
-      const previousLength = this.normalizeLiveCaptionText(previousChunk.text).length;
       return previousLength >= 190 || combined.length >= 330;
     }
 
@@ -1458,10 +1466,10 @@
         start: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0),
         end: Number(chunk.end || 0),
         seekStart: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0),
-        text: this.normalizeLiveCaptionText(chunk.text),
+        text: this.cleanCaptionCandidateText(chunk.text),
         locked: false,
         bucketIndexes: [bucketIndex],
-        bucketTexts: { [bucketIndex]: this.normalizeLiveCaptionText(chunk.text) },
+        bucketTexts: { [bucketIndex]: this.cleanCaptionCandidateText(chunk.text) },
         bucketStarts: { [bucketIndex]: Number(chunk.start || 0) },
         bucketEnds: { [bucketIndex]: Number(chunk.end || 0) },
         bucketSeekStarts: {
@@ -1481,13 +1489,13 @@
       let seekStart = Number.POSITIVE_INFINITY;
       for (let index = 0; index < ordered.length; index += 1) {
         const bucketIndex = ordered[index];
-        const bucketText = bubble.bucketTexts ? bubble.bucketTexts[bucketIndex] : "";
+        const bucketText = this.cleanCaptionCandidateText(bubble.bucketTexts ? bubble.bucketTexts[bucketIndex] : "");
         text = this.mergeLiveCaptionText(text, bucketText);
         start = Math.min(start, Number(bubble.bucketStarts && bubble.bucketStarts[bucketIndex]));
         end = Math.max(end, Number(bubble.bucketEnds && bubble.bucketEnds[bucketIndex]));
         seekStart = Math.min(seekStart, Number(bubble.bucketSeekStarts && bubble.bucketSeekStarts[bucketIndex]));
       }
-      bubble.text = this.normalizeLiveCaptionText(text);
+      bubble.text = this.cleanCaptionCandidateText(text);
       bubble.start = Number.isFinite(seekStart) ? seekStart : Number.isFinite(start) ? start : 0;
       bubble.seekStart = bubble.start;
       bubble.end = Math.max(bubble.start + 0.25, Number.isFinite(end) ? end : bubble.start + 0.25);
@@ -1500,7 +1508,7 @@
       }
       bubble.bucketTexts[bucketIndex] = trimLeading
         ? this.trimLeadingCaptionOverlap(bubble.text, chunk.text)
-        : this.normalizeLiveCaptionText(chunk.text);
+        : this.cleanCaptionCandidateText(chunk.text);
       bubble.bucketStarts[bucketIndex] = Number(chunk.start || 0);
       bubble.bucketEnds[bucketIndex] = Number(chunk.end || 0);
       bubble.bucketSeekStarts[bucketIndex] = Number.isFinite(chunk.seekStart)
@@ -1521,7 +1529,7 @@
 
       for (let index = 0; index < source.length; index += 1) {
         const chunk = source[index];
-        const text = this.normalizeLiveCaptionText(chunk && chunk.text ? chunk.text : "");
+        const text = this.cleanCaptionCandidateText(chunk && chunk.text ? chunk.text : "");
         if (!chunk || !text) {
           continue;
         }
