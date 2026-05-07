@@ -25,8 +25,8 @@
   border: 1px solid var(--dc-border);
   border-radius: 14px;
   background:
-    radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(28, 28, 30, 0.42) 0%, rgba(22, 22, 23, 0.72) 48%, rgba(12, 12, 13, 0.94) 100%),
-    rgba(12, 12, 13, 0.52);
+    radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(28, 28, 30, 0.58) 0%, rgba(22, 22, 23, 0.78) 48%, rgba(12, 12, 13, 0.94) 100%),
+    rgba(12, 12, 13, 0.6);
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(8px);
   display: flex;
@@ -42,7 +42,7 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(255, 255, 255, 0.1), transparent 54%),
+    radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(255, 255, 255, 0.07), transparent 58%),
     radial-gradient(ellipse at calc(100% - var(--dc-fade-x)) calc(100% - var(--dc-fade-y)), rgba(0, 0, 0, 0.26), transparent 62%);
 }
 
@@ -53,7 +53,7 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(255, 255, 255, 0.13), transparent 46%),
+    radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(255, 255, 255, 0.08), transparent 50%),
     radial-gradient(ellipse at calc(100% - var(--dc-fade-x)) calc(100% - var(--dc-fade-y)), rgba(0, 0, 0, 0.18), transparent 58%);
   mix-blend-mode: screen;
   opacity: 0.95;
@@ -432,10 +432,10 @@
   position: relative;
   border-radius: 7px;
   background:
-    radial-gradient(ellipse at center, rgba(222, 214, 195, 0.34), rgba(222, 214, 195, 0.14) 58%, transparent 80%);
+    radial-gradient(ellipse at center, rgba(222, 214, 195, 0.48), rgba(222, 214, 195, 0.22) 60%, transparent 84%);
   box-shadow:
-    0 0 10px rgba(222, 214, 195, 0.2),
-    0 0 18px rgba(222, 214, 195, 0.1);
+    0 0 12px rgba(222, 214, 195, 0.3),
+    0 0 24px rgba(222, 214, 195, 0.16);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }

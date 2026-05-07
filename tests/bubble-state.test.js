@@ -137,7 +137,7 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.ok(late.lastWord <= 7);
   });
 
-  await runCase("reading glow uses a small rolling phrase window for rapid text", () => {
+  await runCase("reading glow uses a readable rolling phrase window for rapid text", () => {
     const bubbleState = loadBubbleState();
     const bubble = {
       start: 0,
@@ -145,8 +145,19 @@ exports.run = async function runBubbleStateTests(ctx) {
       text: "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen"
     };
     const range = bubbleState.getReadingGlowRange(bubble, 1.5);
-    assert.ok(range.lastWord - range.firstWord + 1 <= 5);
-    assert.ok(range.lastWord - range.firstWord + 1 >= 2);
+    assert.ok(range.lastWord - range.firstWord + 1 <= 6);
+    assert.ok(range.lastWord - range.firstWord + 1 >= 3);
+  });
+
+  await runCase("reading glow covers about three or more words by default", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 8,
+      text: "one two three four five six seven eight"
+    };
+    const range = bubbleState.getReadingGlowRange(bubble, 1);
+    assert.ok(range.lastWord - range.firstWord + 1 >= 3);
   });
 
   await runCase("reading glow split preserves text without layout-side mutations", () => {

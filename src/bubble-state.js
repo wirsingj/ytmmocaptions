@@ -201,8 +201,8 @@
           ? 5
           : wordsPerSecond >= 3.2
             ? 4
-            : 3;
-    const windowWords = Math.max(2, Math.min(5, baseWindow));
+            : 4;
+    const windowWords = Math.max(3, Math.min(6, baseWindow));
     const center = Math.floor(progress * wordCount);
     const firstWord = Math.max(0, Math.min(wordCount - 1, center));
     const lastWord = Math.min(wordCount - 1, firstWord + windowWords - 1);
