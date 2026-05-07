@@ -1617,6 +1617,7 @@
       const source = Array.isArray(bubbles) ? bubbles : [];
       const polished = [];
       const maxLiveBubbleChars = 260;
+      let minNextStart = 0;
 
       for (let index = 0; index < source.length; index += 1) {
         const bubble = source[index];
@@ -1624,17 +1625,34 @@
         if (!bubble || !text) {
           continue;
         }
-        const parts = this.splitTextByNaturalBreaks(text, maxLiveBubbleChars, false);
-        if (parts.length <= 1) {
+        if (!bubble.locked) {
           const matchedStart = this.findTextTrackStartForText(text, Number(bubble.start || bubble.seekStart || 0));
-          const alignedStart = Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0);
+          const alignedStart = Math.max(minNextStart, Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0));
+          const end = Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25));
           polished.push({
             ...bubble,
             start: alignedStart,
-            end: Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25)),
+            end: end,
             seekStart: alignedStart,
             text: text
           });
+          minNextStart = alignedStart + 0.05;
+          continue;
+        }
+
+        const parts = this.splitTextByNaturalBreaks(text, maxLiveBubbleChars, false);
+        if (parts.length <= 1) {
+          const matchedStart = this.findTextTrackStartForText(text, Number(bubble.start || bubble.seekStart || 0));
+          const alignedStart = Math.max(minNextStart, Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0));
+          const end = Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25));
+          polished.push({
+            ...bubble,
+            start: alignedStart,
+            end: end,
+            seekStart: alignedStart,
+            text: text
+          });
+          minNextStart = alignedStart + 0.05;
           continue;
         }
 
@@ -1645,18 +1663,19 @@
           const partStart = start + (duration * partIndex) / parts.length;
           const partEnd = start + (duration * (partIndex + 1)) / parts.length;
           const matchedStart = this.findTextTrackStartForText(parts[partIndex], partStart);
-          const alignedStart = Number.isFinite(matchedStart) ? matchedStart : partStart;
+          const alignedStart = Math.max(minNextStart, Number.isFinite(matchedStart) ? matchedStart : partStart);
+          const endTime = Math.max(alignedStart + 0.25, partEnd);
           polished.push({
             ...bubble,
             start: alignedStart,
-            end: Math.max(alignedStart + 0.25, partEnd),
+            end: endTime,
             seekStart: alignedStart,
             text: parts[partIndex]
           });
+          minNextStart = alignedStart + 0.05;
         }
       }
 
-      polished.sort((left, right) => Number(left.start || 0) - Number(right.start || 0));
       for (let index = 0; index < polished.length; index += 1) {
         polished[index].id = index;
       }
