@@ -940,6 +940,7 @@
       }
       if (!Number.isFinite(this.liveMaxBucketIndexSeen) || this.liveMaxBucketIndexSeen < 0) {
         this.liveMaxBucketIndexSeen = currentBucketIndex;
+        this.sealFinishedLiveBubbles(currentBucketIndex);
         return;
       }
       if (currentBucketIndex <= this.liveMaxBucketIndexSeen) {
@@ -947,6 +948,7 @@
       }
       this.liveLockCutoffIndex = Math.max(this.liveLockCutoffIndex, currentBucketIndex - 4);
       this.liveMaxBucketIndexSeen = currentBucketIndex;
+      this.sealFinishedLiveBubbles(currentBucketIndex);
     }
 
     captureLiveCaptionLine() {
@@ -1661,6 +1663,7 @@
         return null;
       }
       bubble.locked = true;
+      bubble.immutable = true;
       if (!this.liveDisplayBubbleCache || !(this.liveDisplayBubbleCache instanceof Map)) {
         this.liveDisplayBubbleCache = new Map();
       }
@@ -1668,6 +1671,43 @@
         this.liveDisplayBubbleCache.set(bubble.uid, this.createLockedDisplayBubbles(bubble));
       }
       return bubble;
+    }
+
+    getLiveBubbleLatestBucketIndex(bubble) {
+      if (!bubble || !Array.isArray(bubble.bucketIndexes) || !bubble.bucketIndexes.length) {
+        return -1;
+      }
+      let latest = -1;
+      for (let index = 0; index < bubble.bucketIndexes.length; index += 1) {
+        const bucketIndex = Number(bubble.bucketIndexes[index]);
+        if (Number.isFinite(bucketIndex)) {
+          latest = Math.max(latest, bucketIndex);
+        }
+      }
+      return latest;
+    }
+
+    shouldSealLiveBubble(bubble, currentBucketIndex) {
+      if (!bubble || bubble.locked) {
+        return false;
+      }
+      const latestBucketIndex = this.getLiveBubbleLatestBucketIndex(bubble);
+      if (latestBucketIndex < 0 || !Number.isFinite(currentBucketIndex)) {
+        return false;
+      }
+      return latestBucketIndex < currentBucketIndex || latestBucketIndex <= this.liveLockCutoffIndex;
+    }
+
+    sealFinishedLiveBubbles(currentBucketIndex) {
+      if (!Array.isArray(this.liveBubbles) || !this.liveBubbles.length) {
+        return;
+      }
+      for (let index = 0; index < this.liveBubbles.length; index += 1) {
+        const bubble = this.liveBubbles[index];
+        if (this.shouldSealLiveBubble(bubble, currentBucketIndex)) {
+          this.lockLiveBubble(bubble);
+        }
+      }
     }
 
     syncLiveBubblesFromBuckets(chunks) {
@@ -1712,7 +1752,7 @@
           continue;
         }
 
-        if (this.shouldStartNewLiveBubble(activeBubble, nextChunk)) {
+        if (activeBubble.locked || this.shouldStartNewLiveBubble(activeBubble, nextChunk)) {
           this.lockLiveBubble(activeBubble);
           const nextBubble = this.createLiveBubbleFromChunk(nextChunk);
           this.liveBubbles.push(nextBubble);
@@ -1721,6 +1761,10 @@
         }
 
         this.appendBucketToLiveBubble(activeBubble, nextChunk);
+      }
+
+      if (Number.isFinite(this.liveMaxBucketIndexSeen)) {
+        this.sealFinishedLiveBubbles(this.liveMaxBucketIndexSeen);
       }
 
       for (let index = 0; index < this.liveBubbles.length; index += 1) {
@@ -1784,7 +1828,7 @@
 
     createLockedDisplayBubbles(bubble) {
       const records = [];
-      const maxLiveBubbleChars = 280;
+      const maxLiveBubbleChars = 240;
       const sourceId = bubble && bubble.uid ? bubble.uid : "";
       const text = this.cleanCaptionCandidateText(bubble && bubble.text ? bubble.text : "");
       if (!bubble || !text) {

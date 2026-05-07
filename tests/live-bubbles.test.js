@@ -27,10 +27,19 @@ exports.run = async function runLiveBubbleTests(ctx) {
       start,
       source.indexOf("    rebuildChunks()", start)
     );
-    assert.ok(method.includes("const maxLiveBubbleChars = 280"));
+    assert.ok(method.includes("const maxLiveBubbleChars = 240"));
     assert.ok(method.includes("splitTextByNaturalBreaks(text, maxLiveBubbleChars, false)"));
     assert.ok(method.includes("seekStart: alignedStart"));
     assert.ok(method.includes("locked: true"));
+  });
+
+  await runCase("finished live bubble entities are sealed before display rendering", () => {
+    assert.ok(source.includes("sealFinishedLiveBubbles(currentBucketIndex)"));
+    assert.ok(source.includes("shouldSealLiveBubble(bubble, currentBucketIndex)"));
+    assert.ok(source.includes("latestBucketIndex < currentBucketIndex"));
+    assert.ok(source.includes("bubble.immutable = true"));
+    assert.ok(source.includes("this.sealFinishedLiveBubbles(this.liveMaxBucketIndexSeen)"));
+    assert.ok(source.includes("activeBubble.locked || this.shouldStartNewLiveBubble(activeBubble, nextChunk)"));
   });
 
   await runCase("overlay text is deduped and merged instead of duplicated", () => {
