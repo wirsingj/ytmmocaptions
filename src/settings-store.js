@@ -8,7 +8,7 @@
     licenseKey: "",
     accountId: "",
     featureOverrides: {},
-    panelOpacity: 90,
+    panelOpacity: 88,
     textScale: 110,
     panelPosition: null,
     panelSize: null,
