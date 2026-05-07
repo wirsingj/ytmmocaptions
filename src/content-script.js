@@ -1690,8 +1690,7 @@
           continue;
         }
         if (!bubble.locked) {
-          const matchedStart = this.findTextTrackStartForText(text, Number(bubble.start || bubble.seekStart || 0));
-          const alignedStart = Math.max(minNextStart, Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0));
+          const alignedStart = Math.max(minNextStart, this.getChunkSeekStart(bubble));
           const end = Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25));
           records.push(this.createBubbleRecord({
             sourceId: bubble.uid,
@@ -1745,8 +1744,7 @@
       const end = Math.max(start + 0.25, Number(bubble.end || start + 0.25));
       const parts = this.splitTextByNaturalBreaks(text, maxLiveBubbleChars, false);
       if (parts.length <= 1) {
-        const matchedStart = this.findTextTrackStartForText(text, Number(bubble.start || bubble.seekStart || 0));
-        const alignedStart = Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0);
+        const alignedStart = this.getChunkSeekStart(bubble);
         records.push(this.createBubbleRecord({
           sourceId: sourceId,
           partIndex: 0,
@@ -1763,8 +1761,7 @@
       for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
         const partStart = start + (duration * partIndex) / parts.length;
         const partEnd = start + (duration * (partIndex + 1)) / parts.length;
-        const matchedStart = this.findTextTrackStartForText(parts[partIndex], partStart);
-        const alignedStart = Number.isFinite(matchedStart) ? matchedStart : partStart;
+        const alignedStart = partStart;
         records.push(this.createBubbleRecord({
           sourceId: sourceId,
           partIndex: partIndex,
@@ -2022,102 +2019,6 @@
       return Math.max(0, Number(chunk.start || 0));
     }
 
-    getCaptionTokenList(text) {
-      return this.toCaptionCanonical(text)
-        .split(" ")
-        .map((token) => token.trim())
-        .filter(Boolean);
-    }
-
-    containsTokenSequence(tokens, sequence) {
-      if (!Array.isArray(tokens) || !Array.isArray(sequence) || !sequence.length || tokens.length < sequence.length) {
-        return false;
-      }
-      for (let index = 0; index <= tokens.length - sequence.length; index += 1) {
-        let matches = true;
-        for (let offset = 0; offset < sequence.length; offset += 1) {
-          if (tokens[index + offset] !== sequence[offset]) {
-            matches = false;
-            break;
-          }
-        }
-        if (matches) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    findTextTrackStartForText(text, estimatedStart) {
-      if (!this.video || !this.video.textTracks || !this.video.textTracks.length) {
-        return null;
-      }
-      const chunkTokens = this.getCaptionTokenList(text);
-      if (chunkTokens.length < 3) {
-        return null;
-      }
-
-      const phraseLength = Math.min(6, Math.max(3, chunkTokens.length >= 6 ? 5 : chunkTokens.length));
-      const phraseTokens = chunkTokens.slice(0, phraseLength);
-      const estimate = Math.max(0, Number(estimatedStart || 0));
-      const minStart = Math.max(0, estimate - 18);
-      const maxStart = estimate + 28;
-      let bestStart = null;
-      let bestDistance = Number.POSITIVE_INFINITY;
-
-      for (let trackIndex = 0; trackIndex < this.video.textTracks.length; trackIndex += 1) {
-        const track = this.video.textTracks[trackIndex];
-        try {
-          if (track && track.mode === "disabled") {
-            track.mode = "hidden";
-          }
-        } catch {
-          // Ignore mode assignment failures.
-        }
-        const cueList = track && track.cues ? track.cues : null;
-        if (!cueList || typeof cueList.length !== "number") {
-          continue;
-        }
-        for (let cueIndex = 0; cueIndex < cueList.length; cueIndex += 1) {
-          const cue = cueList[cueIndex];
-          const start = Number(cue && cue.startTime);
-          if (!Number.isFinite(start) || start < minStart || start > maxStart) {
-            continue;
-          }
-          let cueText = "";
-          for (let offset = 0; offset < 3 && cueIndex + offset < cueList.length; offset += 1) {
-            const nextCue = cueList[cueIndex + offset];
-            const nextStart = Number(nextCue && nextCue.startTime);
-            if (!Number.isFinite(nextStart) || nextStart - start > 4.5) {
-              break;
-            }
-            cueText = this.mergeLiveCaptionText(
-              cueText,
-              this.cleanCaptionCandidateText(nextCue && nextCue.text ? nextCue.text : "")
-            );
-          }
-          const cueTokens = this.getCaptionTokenList(cueText);
-          if (!this.containsTokenSequence(cueTokens, phraseTokens)) {
-            continue;
-          }
-          const distance = Math.abs(start - estimate);
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            bestStart = start;
-          }
-        }
-      }
-
-      return Number.isFinite(bestStart) ? bestStart : null;
-    }
-
-    findTextTrackStartForChunk(chunk) {
-      if (!chunk) {
-        return null;
-      }
-      return this.findTextTrackStartForText(chunk.text, Number(chunk.start || this.getChunkSeekStart(chunk) || 0));
-    }
-
     getCurrentVideoElement() {
       const direct = document.querySelector("video.html5-main-video");
       if (direct instanceof HTMLVideoElement) {
@@ -2224,8 +2125,9 @@
       this.ensureChunkVisible(index);
       const chunk = this.allChunks[index];
       const seekLeadSeconds = Number.isFinite(opts.seekLeadSeconds) ? Math.max(0, Number(opts.seekLeadSeconds)) : 0.45;
-      const matchedCueStart = this.findTextTrackStartForChunk(chunk);
-      const seekStart = Number.isFinite(matchedCueStart) ? matchedCueStart : this.getChunkSeekStart(chunk);
+      // Click-to-seek should be atomic and repeatable. Re-running fuzzy text
+      // matching here can snap to repeated words in a neighboring bubble.
+      const seekStart = this.getChunkSeekStart(chunk);
       let targetTime = Math.max(0, seekStart - seekLeadSeconds);
       if (Number.isFinite(opts.minTargetTime)) {
         targetTime = Math.max(targetTime, Number(opts.minTargetTime));
