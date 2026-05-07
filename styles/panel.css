@@ -447,12 +447,12 @@
 
 .dc-reading-glow {
   position: relative;
-  border-radius: 7px;
+  border-radius: 6px;
   background:
-    radial-gradient(ellipse at center, rgba(222, 214, 195, 0.48), rgba(222, 214, 195, 0.22) 60%, transparent 84%);
+    radial-gradient(ellipse at center, rgba(222, 214, 195, 0.16), rgba(222, 214, 195, 0.065) 50%, transparent 72%);
   box-shadow:
-    0 0 12px rgba(222, 214, 195, 0.3),
-    0 0 24px rgba(222, 214, 195, 0.16);
+    0 0 5px rgba(222, 214, 195, 0.1),
+    0 0 10px rgba(222, 214, 195, 0.045);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
