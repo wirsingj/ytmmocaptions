@@ -18,7 +18,7 @@ The extension does not:
 The extension stores only local preference settings in extension storage:
 - preference schema version for safe future migrations;
 - plan/feature gate state (`free`/`premium` and local feature override booleans);
-- panel opacity;
+- panel background blend/transparency;
 - text size;
 - panel position and size;
 - launcher/pill position;

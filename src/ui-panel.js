@@ -171,7 +171,7 @@
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
-      opacityWrap.textContent = "Alpha";
+      opacityWrap.textContent = "Blend";
       this.opacityWrap = opacityWrap;
 
       this.opacityInput = document.createElement("input");
@@ -181,7 +181,7 @@
       this.opacityInput.max = "100";
       this.opacityInput.step = "1";
       this.opacityInput.value = String(this.settings.panelOpacity || 100);
-      this.opacityInput.title = "Panel transparency";
+      this.opacityInput.title = "Panel background blend";
       opacityWrap.append(this.opacityInput);
 
       const textScaleWrap = document.createElement("label");
@@ -556,7 +556,7 @@
 
       const panelOpacity = Number(this.settings.panelOpacity || 100);
       const normalizedOpacity = Math.max(35, Math.min(100, panelOpacity));
-      this.root.style.opacity = String(normalizedOpacity / 100);
+      this.applyPanelBlend(normalizedOpacity);
       if (this.opacityInput && this.opacityInput.value !== String(normalizedOpacity)) {
         this.opacityInput.value = String(normalizedOpacity);
       }
@@ -592,6 +592,24 @@
       this.normalizeSavedPanelPosition();
       this.updatePanelFade();
       this.updateJumpBottomVisibility();
+    }
+
+    applyPanelBlend(opacityPercent) {
+      if (!this.root) {
+        return;
+      }
+      const alpha = Math.max(0.35, Math.min(1, Number(opacityPercent) / 100));
+      const setAlpha = (name, value) => {
+        this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
+      };
+      setAlpha("--dc-panel-alpha-inner", 0.08 + alpha * 0.58);
+      setAlpha("--dc-panel-alpha-mid", 0.18 + alpha * 0.68);
+      setAlpha("--dc-panel-alpha-outer", 0.28 + alpha * 0.66);
+      setAlpha("--dc-panel-alpha-base", 0.08 + alpha * 0.52);
+      setAlpha("--dc-panel-fade-light", 0.03 + alpha * 0.055);
+      setAlpha("--dc-panel-fade-shadow", 0.09 + alpha * 0.2);
+      setAlpha("--dc-panel-fade-shadow-soft", (0.09 + alpha * 0.2) * 0.7);
+      this.root.style.opacity = "1";
     }
 
     updatePanelFade() {
