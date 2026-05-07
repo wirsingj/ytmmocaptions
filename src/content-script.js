@@ -1626,7 +1626,15 @@
         }
         const parts = this.splitTextByNaturalBreaks(text, maxLiveBubbleChars, false);
         if (parts.length <= 1) {
-          polished.push({ ...bubble, text: text });
+          const matchedStart = this.findTextTrackStartForText(text, Number(bubble.start || bubble.seekStart || 0));
+          const alignedStart = Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0);
+          polished.push({
+            ...bubble,
+            start: alignedStart,
+            end: Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25)),
+            seekStart: alignedStart,
+            text: text
+          });
           continue;
         }
 
@@ -1636,16 +1644,19 @@
         for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
           const partStart = start + (duration * partIndex) / parts.length;
           const partEnd = start + (duration * (partIndex + 1)) / parts.length;
+          const matchedStart = this.findTextTrackStartForText(parts[partIndex], partStart);
+          const alignedStart = Number.isFinite(matchedStart) ? matchedStart : partStart;
           polished.push({
             ...bubble,
-            start: partStart,
-            end: Math.max(partStart + 0.25, partEnd),
-            seekStart: partIndex === 0 ? bubble.seekStart : partStart,
+            start: alignedStart,
+            end: Math.max(alignedStart + 0.25, partEnd),
+            seekStart: alignedStart,
             text: parts[partIndex]
           });
         }
       }
 
+      polished.sort((left, right) => Number(left.start || 0) - Number(right.start || 0));
       for (let index = 0; index < polished.length; index += 1) {
         polished[index].id = index;
       }
@@ -1896,6 +1907,102 @@
       return Math.max(0, Number(chunk.start || 0));
     }
 
+    getCaptionTokenList(text) {
+      return this.toCaptionCanonical(text)
+        .split(" ")
+        .map((token) => token.trim())
+        .filter(Boolean);
+    }
+
+    containsTokenSequence(tokens, sequence) {
+      if (!Array.isArray(tokens) || !Array.isArray(sequence) || !sequence.length || tokens.length < sequence.length) {
+        return false;
+      }
+      for (let index = 0; index <= tokens.length - sequence.length; index += 1) {
+        let matches = true;
+        for (let offset = 0; offset < sequence.length; offset += 1) {
+          if (tokens[index + offset] !== sequence[offset]) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    findTextTrackStartForText(text, estimatedStart) {
+      if (!this.video || !this.video.textTracks || !this.video.textTracks.length) {
+        return null;
+      }
+      const chunkTokens = this.getCaptionTokenList(text);
+      if (chunkTokens.length < 3) {
+        return null;
+      }
+
+      const phraseLength = Math.min(6, Math.max(3, chunkTokens.length >= 6 ? 5 : chunkTokens.length));
+      const phraseTokens = chunkTokens.slice(0, phraseLength);
+      const estimate = Math.max(0, Number(estimatedStart || 0));
+      const minStart = Math.max(0, estimate - 18);
+      const maxStart = estimate + 28;
+      let bestStart = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      for (let trackIndex = 0; trackIndex < this.video.textTracks.length; trackIndex += 1) {
+        const track = this.video.textTracks[trackIndex];
+        try {
+          if (track && track.mode === "disabled") {
+            track.mode = "hidden";
+          }
+        } catch {
+          // Ignore mode assignment failures.
+        }
+        const cueList = track && track.cues ? track.cues : null;
+        if (!cueList || typeof cueList.length !== "number") {
+          continue;
+        }
+        for (let cueIndex = 0; cueIndex < cueList.length; cueIndex += 1) {
+          const cue = cueList[cueIndex];
+          const start = Number(cue && cue.startTime);
+          if (!Number.isFinite(start) || start < minStart || start > maxStart) {
+            continue;
+          }
+          let cueText = "";
+          for (let offset = 0; offset < 3 && cueIndex + offset < cueList.length; offset += 1) {
+            const nextCue = cueList[cueIndex + offset];
+            const nextStart = Number(nextCue && nextCue.startTime);
+            if (!Number.isFinite(nextStart) || nextStart - start > 4.5) {
+              break;
+            }
+            cueText = this.mergeLiveCaptionText(
+              cueText,
+              this.cleanCaptionCandidateText(nextCue && nextCue.text ? nextCue.text : "")
+            );
+          }
+          const cueTokens = this.getCaptionTokenList(cueText);
+          if (!this.containsTokenSequence(cueTokens, phraseTokens)) {
+            continue;
+          }
+          const distance = Math.abs(start - estimate);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestStart = start;
+          }
+        }
+      }
+
+      return Number.isFinite(bestStart) ? bestStart : null;
+    }
+
+    findTextTrackStartForChunk(chunk) {
+      if (!chunk) {
+        return null;
+      }
+      return this.findTextTrackStartForText(chunk.text, Number(chunk.start || this.getChunkSeekStart(chunk) || 0));
+    }
+
     getCurrentVideoElement() {
       const direct = document.querySelector("video.html5-main-video");
       if (direct instanceof HTMLVideoElement) {
@@ -2002,7 +2109,9 @@
       this.ensureChunkVisible(index);
       const chunk = this.allChunks[index];
       const seekLeadSeconds = Number.isFinite(opts.seekLeadSeconds) ? Math.max(0, Number(opts.seekLeadSeconds)) : 0.45;
-      let targetTime = Math.max(0, this.getChunkSeekStart(chunk) - seekLeadSeconds);
+      const matchedCueStart = this.findTextTrackStartForChunk(chunk);
+      const seekStart = Number.isFinite(matchedCueStart) ? matchedCueStart : this.getChunkSeekStart(chunk);
+      let targetTime = Math.max(0, seekStart - seekLeadSeconds);
       if (Number.isFinite(opts.minTargetTime)) {
         targetTime = Math.max(targetTime, Number(opts.minTargetTime));
       }
