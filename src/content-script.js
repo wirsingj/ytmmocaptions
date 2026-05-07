@@ -75,10 +75,6 @@
         this.settings.collapsed = false;
         settingsStore.save(this.settings);
       }
-      if (this.settings.panelClosed) {
-        this.settings.panelClosed = false;
-        settingsStore.save(this.settings);
-      }
       await this.refreshEntitlement();
       this.panel = new DialoguePanel({
         settings: this.settings,

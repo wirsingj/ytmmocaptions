@@ -4,9 +4,11 @@
   const platform = app.platform;
 
   const PANEL_ID = "dc-panel";
+  const ACTIVE_PAGE_CLASS = "dc-panel-open";
   const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
+  const LAUNCHER_MARGIN = 14;
 
   class DialoguePanel {
     constructor(options) {
@@ -236,7 +238,7 @@
       this.launcherButton = document.createElement("button");
       this.launcherButton.type = "button";
       this.launcherButton.className = "dc-launcher";
-      this.launcherButton.textContent = "Dialogue Captions";
+      this.launcherButton.textContent = "Captions";
       this.launcherButton.title = "Open panel (drag to move)";
       document.body.append(this.launcherButton);
 
@@ -265,6 +267,7 @@
         this.launcherButton.remove();
         this.launcherButton = null;
       }
+      document.documentElement.classList.remove(ACTIVE_PAGE_CLASS);
     }
 
     addListener(target, type, handler, options) {
@@ -305,7 +308,7 @@
         this.addListener(handle, "pointerdown", onResizeDown);
       }
 
-      const onClose = () => this.updateSettings({ panelClosed: true });
+      const onClose = () => this.closeToNearestCorner();
       const onAuto = () => {
         if (!this.features.autoScrollControl) {
           return;
@@ -432,6 +435,7 @@
 
       const panelClosed = Boolean(this.settings.panelClosed);
       this.root.style.display = panelClosed ? "none" : "flex";
+      document.documentElement.classList.toggle(ACTIVE_PAGE_CLASS, !panelClosed);
       if (this.launcherButton) {
         this.launcherButton.style.display = panelClosed ? "inline-flex" : "none";
       }
@@ -538,6 +542,47 @@
       this.normalizeSavedPanelPosition();
       this.normalizeSavedLauncherPosition();
       this.updateJumpBottomVisibility();
+    }
+
+    closeToNearestCorner() {
+      if (!this.root) {
+        this.updateSettings({ panelClosed: true });
+        return;
+      }
+
+      const rect = this.root.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const corners = [
+        { x: 0, y: 0, name: "top-left" },
+        { x: window.innerWidth, y: 0, name: "top-right" },
+        { x: 0, y: window.innerHeight, name: "bottom-left" },
+        { x: window.innerWidth, y: window.innerHeight, name: "bottom-right" }
+      ];
+      let nearest = corners[0];
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < corners.length; index += 1) {
+        const corner = corners[index];
+        const distance = Math.hypot(centerX - corner.x, centerY - corner.y);
+        if (distance < nearestDistance) {
+          nearest = corner;
+          nearestDistance = distance;
+        }
+      }
+
+      const launcherWidth = 96;
+      const launcherHeight = 32;
+      const left = nearest.name.indexOf("right") >= 0
+        ? window.innerWidth - launcherWidth - LAUNCHER_MARGIN
+        : LAUNCHER_MARGIN;
+      const top = nearest.name.indexOf("bottom") >= 0
+        ? window.innerHeight - launcherHeight - LAUNCHER_MARGIN
+        : LAUNCHER_MARGIN;
+
+      this.updateSettings({
+        panelClosed: true,
+        launcherPosition: this.clampPositionToViewport(left, top, launcherWidth, launcherHeight)
+      });
     }
 
     clampPositionToViewport(left, top, width, height) {
