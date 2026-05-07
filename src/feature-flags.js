@@ -49,16 +49,6 @@
 
   async function resolveEntitlement(settings) {
     const normalizedPlan = normalizePlan(settings && settings.plan);
-    const licenseKey = settings && typeof settings.licenseKey === "string" ? settings.licenseKey.trim() : "";
-    const accountId = settings && typeof settings.accountId === "string" ? settings.accountId.trim() : "";
-
-    if (licenseKey.toUpperCase().startsWith("PREMIUM-")) {
-      return { plan: "premium", source: "license_key_placeholder" };
-    }
-    if (accountId.toLowerCase().startsWith("acct_premium_")) {
-      return { plan: "premium", source: "account_placeholder" };
-    }
-
     return { plan: normalizedPlan, source: "settings" };
   }
 
@@ -71,14 +61,6 @@
 
   async function setPlan(plan) {
     return updateSettings({ plan: normalizePlan(plan) });
-  }
-
-  async function setLicenseKey(licenseKey) {
-    return updateSettings({ licenseKey: typeof licenseKey === "string" ? licenseKey : "" });
-  }
-
-  async function setAccountId(accountId) {
-    return updateSettings({ accountId: typeof accountId === "string" ? accountId : "" });
   }
 
   async function setFeatureOverride(featureKey, enabled) {
@@ -103,8 +85,6 @@
     buildFeatureState,
     resolveEntitlement,
     setPlan,
-    setLicenseKey,
-    setAccountId,
     setFeatureOverride,
     clearFeatureOverrides
   };

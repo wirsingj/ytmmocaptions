@@ -269,8 +269,7 @@
       "VISITOR_DATA",
       "PAGE_CL",
       "PAGE_BUILD_LABEL",
-      "LOGGED_IN",
-      "XSRF_TOKEN"
+      "LOGGED_IN"
     ]);
 
     return {
@@ -333,13 +332,7 @@
         return false;
       }
       const host = parsed.hostname.toLowerCase();
-      const allowedHost =
-        host === "youtube.com" ||
-        host === "www.youtube.com" ||
-        host.endsWith(".youtube.com") ||
-        host === "youtube-nocookie.com" ||
-        host === "www.youtube-nocookie.com";
-      if (!allowedHost) {
+      if (host !== "www.youtube.com") {
         return false;
       }
       const path = parsed.pathname.toLowerCase();

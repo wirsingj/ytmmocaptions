@@ -1,0 +1,13 @@
+{
+  "captions": {
+    "playerCaptionsTracklistRenderer": {
+      "captionTracks": [
+        {
+          "baseUrl": "https://example.com/api/timedtext?v=abc123",
+          "languageCode": "en",
+          "kind": ""
+        }
+      ]
+    }
+  }
+}

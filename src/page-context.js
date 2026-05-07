@@ -152,6 +152,14 @@
     if (!platform || typeof platform.runtimeGetURL !== "function") {
       return;
     }
+    try {
+      const parsed = new URL(scope.location.href);
+      if (parsed.hostname !== "www.youtube.com" || parsed.pathname !== "/watch" || !parsed.searchParams.get("v")) {
+        return;
+      }
+    } catch {
+      return;
+    }
     if (bridgeEnsureAttempts >= BRIDGE_BOOT_MAX_ATTEMPTS) {
       return;
     }

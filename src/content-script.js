@@ -14,10 +14,6 @@
     return;
   }
 
-  if (pageContext && typeof pageContext.ensureBridgeInjected === "function") {
-    pageContext.ensureBridgeInjected();
-  }
-
   const GLOBAL_CONTROLLER_KEY = "__dialogueCaptionsController";
 
   function isTypingContext(target) {
@@ -77,18 +73,6 @@
 
     async init() {
       this.settings = await settingsStore.load();
-      if (Number(this.settings.keyboardStepSeconds) !== 8) {
-        this.settings.keyboardStepSeconds = 8;
-        settingsStore.save(this.settings);
-      }
-      if (this.settings.collapsed) {
-        this.settings.collapsed = false;
-        settingsStore.save(this.settings);
-      }
-      if (!this.settings.panelClosed) {
-        this.settings.panelClosed = true;
-        settingsStore.save(this.settings);
-      }
       await this.refreshEntitlement();
       this.panel = new DialoguePanel({
         settings: this.settings,
@@ -138,6 +122,17 @@
         this.panel = null;
       }
       this.video = null;
+    }
+
+    ensurePageBridgeForWatchPage() {
+      if (!pageContext || typeof pageContext.ensureBridgeInjected !== "function") {
+        return false;
+      }
+      if (!transcript.isWatchPage(window.location.href) || !transcript.getVideoId(window.location.href)) {
+        return false;
+      }
+      pageContext.ensureBridgeInjected();
+      return true;
     }
 
     async waitForVideoElement(timeoutMs) {
@@ -242,7 +237,7 @@
         if (isTypingContext(event.target)) {
           return false;
         }
-        return this.panel.isPointerInside();
+        return this.settings.globalKeyboardEnabled || this.panel.isPointerInside();
       };
 
       const onKeyDown = (event) => {
@@ -1260,6 +1255,7 @@
       }
 
       this.captionWorkStarted = true;
+      this.ensurePageBridgeForWatchPage();
       if (this.panel) {
         this.panel.setStatus("Loading subtitles...");
       }

@@ -267,6 +267,28 @@
       .trim();
   }
 
+  function normalizeCueList(cues) {
+    const source = Array.isArray(cues) ? cues : [];
+    return source
+      .map(function (cue) {
+        const text = normalizeCueText(cue && cue.text ? cue.text : "");
+        const start = Number(cue && cue.start);
+        const end = Number(cue && cue.end);
+        if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+          return null;
+        }
+        return {
+          start: Math.max(0, start),
+          end: Math.max(Math.max(0, start) + 0.25, end),
+          text: text
+        };
+      })
+      .filter(Boolean)
+      .sort(function (left, right) {
+        return left.start - right.start;
+      });
+  }
+
   function extractJsonObjectFromOpenBrace(source, openBraceIndex) {
     if (openBraceIndex < 0) {
       return null;
@@ -582,7 +604,7 @@
 
   function mapJson3ToCues(payload) {
     const events = payload && Array.isArray(payload.events) ? payload.events : [];
-    return events
+    return normalizeCueList(events
       .map(function (event) {
         if (!event || typeof event.tStartMs !== "number" || !Array.isArray(event.segs)) {
           return null;
@@ -605,7 +627,7 @@
           text: text
         };
       })
-      .filter(Boolean);
+      .filter(Boolean));
   }
 
   function walkObjects(root, visit, seen) {
@@ -714,11 +736,11 @@
       .filter(Boolean);
 
     if (textCues.length) {
-      return textCues;
+      return normalizeCueList(textCues);
     }
 
     const paragraphNodes = collectNodesByLocalName(xml, "p");
-    return paragraphNodes
+    return normalizeCueList(paragraphNodes
       .map(function (node) {
         const text = normalizeCueText(node.textContent || "");
         if (!text) {
@@ -735,7 +757,7 @@
           text: text
         };
       })
-      .filter(Boolean);
+      .filter(Boolean));
   }
 
   function mapVttToCues(vttText) {
@@ -776,7 +798,7 @@
         text: cueText
       });
     }
-    return cues;
+    return normalizeCueList(cues);
   }
 
   function parseCuesByPayloadKind(payloadKind, body) {
@@ -809,7 +831,7 @@
 
   function mapTextTrackToCues(track) {
     const cues = cueListToArray(track && track.cues);
-    return cues
+    return normalizeCueList(cues
       .map(function (cue) {
         const text = normalizeCueText(cue && typeof cue.text === "string" ? cue.text : "");
         if (!text) {
@@ -823,7 +845,7 @@
           text: text
         };
       })
-      .filter(Boolean);
+      .filter(Boolean));
   }
 
   function parseTimestampLabel(label) {

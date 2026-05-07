@@ -575,6 +575,7 @@
       this.updatePanelFade();
       this.applyLauncherPosition();
       this.normalizeSavedPanelPosition();
+      this.updatePanelFade();
       this.updateJumpBottomVisibility();
     }
 

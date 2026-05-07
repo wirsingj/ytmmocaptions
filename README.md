@@ -7,6 +7,7 @@ Dialogue Captions is a Chrome/Firefox extension that turns YouTube subtitles int
 Latest packaged builds are checked into `downloads/`:
 - `downloads/ytmmocaptions-chrome-v<version>.zip`
 - `downloads/ytmmocaptions-firefox-v<version>.xpi`
+- `downloads/dialogue-captions-friend-v0.25.61.zip` is an older convenience bundle with helper `.bat` files for friend testing. Prefer the latest browser-specific files above for normal testing.
 
 ## Core UX
 
@@ -15,9 +16,7 @@ Latest packaged builds are checked into `downloads/`:
 - `Space` goes to next chunk.
 - `Shift+Space` goes to previous chunk.
 - Clicking a chunk seeks the video.
-- Keyboard controls are safe by default:
-  - Focus mode: active when panel is focused.
-  - Global mode: user must explicitly enable it with the `Keys Global` button.
+- Keyboard controls are safe by default and only run when the pointer is over the panel.
 
 ## Project Structure
 
@@ -25,12 +24,15 @@ Latest packaged builds are checked into `downloads/`:
 ytmmocaptions/
   src/
     platform.js
+    page-context.js
     settings-store.js
     feature-flags.js
     chunker.js
+    bubble-state.js
     transcript.js
     ui-panel.js
     content-script.js
+    page-bridge.js
   styles/
     panel.css
   scripts/
@@ -55,6 +57,12 @@ npm run build
 The build script generates clean artifacts:
 - `build/chrome`
 - `build/firefox`
+
+`npm run build` does not change version numbers. To intentionally bump the patch version before a release, run:
+
+```powershell
+npm run version:bump
+```
 
 To generate a Firefox upload/install package (`.xpi`) with AMO-safe archive paths:
 
@@ -108,11 +116,11 @@ For AMO signing/upload, use:
 
 ## Store Compliance Notes
 
-- Host permission scope is restricted to `https://www.youtube.com/watch*`.
-- Content scripts are loaded on `https://www.youtube.com/*` only for YouTube SPA route detection, then feature logic is gated to watch pages.
+- Host permissions are kept to YouTube only. Browser host-permission paths may be ignored by Chrome/Firefox, so runtime activation is also route-gated to `/watch?v=...`.
+- Content scripts are loaded on `https://www.youtube.com/*` only for YouTube SPA route detection; page-bridge caption hooks are injected only after the user opens the panel/caption work starts on a valid watch page.
 - No personal data collection.
 - Only local settings are stored via extension storage.
-- Keyboard safety default is `Keys Focus` (not global). Users must explicitly opt in to `Keys Global`.
+- Keyboard shortcuts are not global in the release UI; they activate when the pointer is over the panel and are ignored while typing.
 - If transcript/subtitles are unavailable, the extension shows a clear in-panel message and exits safely.
 - Privacy details are in `PRIVACY.md`.
 - License terms are in `LICENSE`.

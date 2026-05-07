@@ -11,8 +11,7 @@ dist/
 !downloads/*.zip
 !downloads/*.xpi
 
-# Local test/dev artifacts (not required for production repo)
-tests/
+# Local browser automation artifacts
 .playwright-user-data*/
 
 # Logs / coverage / temp

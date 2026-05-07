@@ -16,35 +16,46 @@ The extension does not:
 ## Local Data Stored
 
 The extension stores only local preference settings in extension storage:
+- plan/feature gate state (`free`/`premium` and local feature override booleans);
+- panel opacity;
+- text size;
+- panel position and size;
+- launcher/pill position;
+- panel open/closed state;
 - chunk size (`short`, `medium`, `long`);
+- keyboard step length;
 - auto-scroll enabled/disabled;
 - panel collapsed/expanded state;
-- keyboard mode (`focus-only` or `global`).
+- keyboard mode setting, currently release-gated so shortcuts are pointer-over-panel only by default.
 
 These settings remain on the user's browser profile unless removed by uninstalling the extension or clearing extension storage.
 
 ## Permissions Used
 
-- `https://www.youtube.com/watch*`
-  Used only to run the content script on YouTube watch pages where subtitle navigation is needed.
+- `storage`
+  Used to save the local settings listed above.
+
+- YouTube host access
+  Used only on YouTube pages so the extension can detect watch-page navigation and read captions for the current video.
 
 The extension's content script is injected on `https://www.youtube.com/*` only to detect YouTube SPA route changes.
 Feature logic remains gated to watch pages (`/watch`) and the panel does not activate on other page types.
+Chrome and Firefox may ignore path portions of host-permission patterns, so the extension also checks the route before starting caption work.
 
 No additional host permissions are requested.
 
 ## Network Access
 
-The extension reads YouTube subtitle data required for on-page functionality. It does not send data to external servers controlled by the developer.
+The extension reads YouTube subtitle/caption data and limited YouTube page configuration required for on-page functionality. Subtitle/caption text and page configuration are processed locally in the browser and are not transmitted to the developer.
 
 If subtitles or transcript data are unavailable, the extension fails gracefully and shows an in-panel status message. No fallback data is uploaded or collected.
 
 ## Keyboard Behavior Safety
 
-Keyboard controls are not globally enabled by default.
+Keyboard controls are not globally enabled in the release UI.
 
-- Default mode: `Keys Focus` (shortcuts work only when the extension panel is focused).
-- Optional mode: `Keys Global` (user must explicitly enable it in-panel).
+- Default mode: shortcuts work only when the pointer is over the extension panel.
+- Any future global keyboard mode remains gated and must preserve the safety checks below.
 - Shortcuts are ignored while typing in inputs, textareas, selects, or editable fields.
 
 ## Third-Party Services

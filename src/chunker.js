@@ -46,9 +46,6 @@
         chunkStart = cue.start;
       }
 
-      const candidate = bufferText ? bufferText + " " + cue.text : cue.text;
-      const reachedHardLimit = candidate.length >= maxChars;
-      const reachedSentenceBoundary = cueEndsSentence(cue.text) && candidate.length >= Math.round(maxChars * 0.55);
       const reachedPauseBoundary = bufferText.length > 0 && pause >= PAUSE_THRESHOLD_SECONDS;
 
       if (reachedPauseBoundary) {
@@ -56,7 +53,10 @@
         chunkStart = cue.start;
       }
 
-      bufferText = bufferText ? bufferText + " " + cue.text : cue.text;
+      const candidate = bufferText ? bufferText + " " + cue.text : cue.text;
+      const reachedHardLimit = candidate.length >= maxChars;
+      const reachedSentenceBoundary = cueEndsSentence(cue.text) && candidate.length >= Math.round(maxChars * 0.55);
+      bufferText = candidate;
       chunkEnd = cue.end;
 
       const isLastCue = index === cues.length - 1;
@@ -70,6 +70,9 @@
 
   function findChunkIndexAtTime(chunks, time) {
     if (!Array.isArray(chunks) || !chunks.length) {
+      return -1;
+    }
+    if (Number(time) < Number(chunks[0].start || 0)) {
       return -1;
     }
 

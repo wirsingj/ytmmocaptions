@@ -1,0 +1,10 @@
+[
+  { "start": 0.0, "end": 1.2, "text": "Hello there adventurer" },
+  { "start": 1.3, "end": 2.8, "text": "Welcome to the city." },
+  {
+    "start": 2.9,
+    "end": 5.8,
+    "text": "Please visit the market for supplies before sunset."
+  },
+  { "start": 7.5, "end": 8.5, "text": "Good luck!" }
+]

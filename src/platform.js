@@ -2,27 +2,22 @@
   const app = (scope.DialogueCaptions = scope.DialogueCaptions || {});
   const browserApi = typeof scope.browser !== "undefined" ? scope.browser : null;
   const chromeApi = typeof scope.chrome !== "undefined" ? scope.chrome : null;
-  const storageLocal =
-    (browserApi && browserApi.storage && browserApi.storage.local) ||
-    (chromeApi && chromeApi.storage && chromeApi.storage.local) ||
-    null;
+  const browserStorageLocal = browserApi && browserApi.storage && browserApi.storage.local;
+  const chromeStorageLocal = chromeApi && chromeApi.storage && chromeApi.storage.local;
 
   function callStorage(methodName, payload, fallbackValue) {
-    if (!storageLocal || typeof storageLocal[methodName] !== "function") {
+    if (browserStorageLocal && typeof browserStorageLocal[methodName] === "function") {
+      return Promise.resolve(browserStorageLocal[methodName](payload)).then((result) =>
+        typeof result === "undefined" ? fallbackValue : result
+      );
+    }
+
+    if (!chromeStorageLocal || typeof chromeStorageLocal[methodName] !== "function") {
       return Promise.resolve(fallbackValue);
     }
 
-    try {
-      const maybePromise = storageLocal[methodName](payload);
-      if (maybePromise && typeof maybePromise.then === "function") {
-        return Promise.resolve(maybePromise);
-      }
-    } catch (error) {
-      return Promise.reject(error);
-    }
-
     return new Promise((resolve, reject) => {
-      storageLocal[methodName](payload, (result) => {
+      chromeStorageLocal[methodName](payload, (result) => {
         const runtimeError = chromeApi && chromeApi.runtime ? chromeApi.runtime.lastError : null;
         if (runtimeError) {
           reject(new Error(runtimeError.message));

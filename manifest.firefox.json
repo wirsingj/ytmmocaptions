@@ -6,9 +6,12 @@
   "host_permissions": [
     "https://www.youtube.com/watch*"
   ],
+  "permissions": [
+    "storage"
+  ],
   "browser_specific_settings": {
     "gecko": {
-      "id": "dialogue-captions@example.local",
+      "id": "dialogue-captions@wirsingj.github.io",
       "data_collection_permissions": {
         "required": [
           "none"

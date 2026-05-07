@@ -5,8 +5,6 @@
   const STORAGE_KEY = "dialogueCaptions.settings.v1";
   const DEFAULTS = Object.freeze({
     plan: "free",
-    licenseKey: "",
-    accountId: "",
     featureOverrides: {},
     panelOpacity: 88,
     textScale: 110,
@@ -108,8 +106,6 @@
 
     return {
       plan: source.plan === "premium" ? "premium" : DEFAULTS.plan,
-      licenseKey: typeof source.licenseKey === "string" ? source.licenseKey : DEFAULTS.licenseKey,
-      accountId: typeof source.accountId === "string" ? source.accountId : DEFAULTS.accountId,
       featureOverrides: featureOverrides,
       panelOpacity: normalizePanelOpacity(source.panelOpacity),
       textScale: normalizeTextScale(source.textScale),
