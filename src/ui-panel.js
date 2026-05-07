@@ -8,8 +8,8 @@
   const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
-  const DEFAULT_PANEL_MAX_WIDTH = 520;
-  const DEFAULT_PANEL_MAX_HEIGHT = 330;
+  const DEFAULT_PANEL_MAX_WIDTH = 572;
+  const DEFAULT_PANEL_MAX_HEIGHT = 363;
   const DEFAULT_PANEL_MARGIN = 12;
   const LAUNCHER_MARGIN = 14;
   const LAUNCHER_WIDTH = 96;
@@ -558,11 +558,11 @@
       }
       const width = Math.max(
         MIN_PANEL_WIDTH,
-        Math.min(DEFAULT_PANEL_MAX_WIDTH, Math.round(frameWidth * 0.34))
+        Math.min(DEFAULT_PANEL_MAX_WIDTH, Math.round(frameWidth * 0.374))
       );
       const height = Math.max(
         MIN_PANEL_HEIGHT,
-        Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.round(frameHeight * 0.39))
+        Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.round(frameHeight * 0.429))
       );
       const clamped = this.clampPositionToRect(
         frame.left + DEFAULT_PANEL_MARGIN,

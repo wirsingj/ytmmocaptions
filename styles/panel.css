@@ -14,18 +14,18 @@
   position: fixed;
   left: 14px;
   bottom: 14px;
-  width: min(28vw, 520px);
-  min-width: 320px;
-  height: min(36vh, 330px);
+  width: min(31vw, 572px);
+  min-width: 350px;
+  height: min(40vh, 363px);
   z-index: 2147483000;
   color: var(--dc-text);
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   border: 1px solid var(--dc-border);
   border-radius: 14px;
   background:
-    linear-gradient(105deg, rgba(12, 12, 13, 0.1) 0%, rgba(255, 255, 255, 0.045) 100%),
+    linear-gradient(35deg, rgba(7, 7, 8, 0.2) 0%, rgba(18, 18, 19, 0.08) 52%, rgba(255, 255, 255, 0.07) 100%),
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.09), transparent 38%),
-    linear-gradient(135deg, rgba(35, 36, 38, 0.91), rgba(18, 18, 19, 0.84) 58%, rgba(9, 10, 11, 0.76)),
+    linear-gradient(135deg, rgba(35, 36, 38, 0.92), rgba(18, 18, 19, 0.84) 58%, rgba(9, 10, 11, 0.72)),
     var(--dc-bg);
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(8px);
