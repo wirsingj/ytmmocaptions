@@ -4,6 +4,7 @@
   const platform = app.platform;
 
   const PANEL_ID = "dc-panel";
+  const LAUNCHER_ID = "dc-launcher";
   const ACTIVE_PAGE_CLASS = "dc-panel-open";
   const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
@@ -66,10 +67,7 @@
     }
 
     mount() {
-      const previous = document.getElementById(PANEL_ID);
-      if (previous) {
-        previous.remove();
-      }
+      this.removeExistingUiNodes();
 
       this.root = document.createElement("section");
       this.root.id = PANEL_ID;
@@ -238,6 +236,7 @@
 
       this.launcherButton = document.createElement("button");
       this.launcherButton.type = "button";
+      this.launcherButton.id = LAUNCHER_ID;
       this.launcherButton.className = "dc-launcher";
       this.launcherButton.textContent = "Captions";
       this.launcherButton.title = "Open panel (drag to move)";
@@ -273,7 +272,17 @@
         this.launcherButton.remove();
         this.launcherButton = null;
       }
+      this.removeExistingUiNodes();
       document.documentElement.classList.remove(ACTIVE_PAGE_CLASS);
+    }
+
+    removeExistingUiNodes() {
+      const knownNodes = document.querySelectorAll("#" + PANEL_ID + ", #" + LAUNCHER_ID + ", .dc-launcher");
+      knownNodes.forEach((node) => {
+        if (node instanceof Element) {
+          node.remove();
+        }
+      });
     }
 
     addListener(target, type, handler, options) {
