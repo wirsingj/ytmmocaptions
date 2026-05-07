@@ -561,14 +561,19 @@
     }
 
     trimLeadingCaptionOverlap(previousText, nextText) {
+      return this.trimLeadingCaptionOverlapInfo(previousText, nextText).text;
+    }
+
+    trimLeadingCaptionOverlapInfo(previousText, nextText) {
       const previous = this.normalizeLiveCaptionText(previousText);
       const next = this.normalizeLiveCaptionText(nextText);
       if (!previous || !next) {
-        return next;
+        return { text: next, removedTokens: 0, originalTokens: next ? next.split(/\s+/).filter(Boolean).length : 0 };
       }
 
       const previousTokens = previous.split(/\s+/).filter(Boolean);
       const nextTokens = next.split(/\s+/).filter(Boolean);
+      const originalTokens = nextTokens.length;
       const maxOverlap = Math.min(18, previousTokens.length, nextTokens.length);
       for (let size = maxOverlap; size >= 3; size -= 1) {
         let matches = true;
@@ -584,9 +589,32 @@
           continue;
         }
         const trimmed = this.normalizeLiveCaptionText(nextTokens.slice(size).join(" "));
-        return trimmed || next;
+        return {
+          text: trimmed || next,
+          removedTokens: trimmed ? size : 0,
+          originalTokens: originalTokens
+        };
       }
-      return next;
+      return { text: next, removedTokens: 0, originalTokens: originalTokens };
+    }
+
+    adjustChunkSeekStartForTrim(chunk, trimInfo) {
+      if (!chunk || !trimInfo || !trimInfo.removedTokens || !trimInfo.originalTokens) {
+        return Number.isFinite(chunk && chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk && chunk.start || 0);
+      }
+      const start = Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0);
+      const end = Math.max(start + 0.25, Number(chunk.end || start + this.getKeyboardStepSeconds()));
+      const ratio = Math.max(0, Math.min(0.85, Number(trimInfo.removedTokens) / Math.max(1, Number(trimInfo.originalTokens))));
+      return Math.max(0, start + (end - start) * ratio);
+    }
+
+    trimLiveChunkAgainstPrevious(previousText, chunk) {
+      const info = this.trimLeadingCaptionOverlapInfo(previousText, chunk && chunk.text ? chunk.text : "");
+      return {
+        ...chunk,
+        text: info.text,
+        seekStart: this.adjustChunkSeekStartForTrim(chunk, info)
+      };
     }
 
     getPreviousLiveBubble(bubble) {
@@ -796,7 +824,7 @@
 
       return {
         text: normalized,
-        startTime: bucketStart
+        startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart
       };
     }
 
@@ -1731,9 +1759,9 @@
         if (existingBubble) {
           if (!existingBubble.locked) {
             const previousBubble = this.getPreviousLiveBubble(existingBubble);
-            const nextText = previousBubble ? this.trimLeadingCaptionOverlap(previousBubble.text, text) : text;
-            if (nextText) {
-              this.appendBucketToLiveBubble(existingBubble, { ...chunk, text: nextText }, false);
+            const nextChunk = previousBubble ? this.trimLiveChunkAgainstPrevious(previousBubble.text, { ...chunk, text }) : { ...chunk, text };
+            if (nextChunk.text) {
+              this.appendBucketToLiveBubble(existingBubble, nextChunk, false);
             }
           }
           continue;
@@ -1747,7 +1775,7 @@
           continue;
         }
 
-        const nextChunk = { ...chunk, text: this.trimLeadingCaptionOverlap(activeBubble.text, text) };
+        const nextChunk = this.trimLiveChunkAgainstPrevious(activeBubble.text, { ...chunk, text });
         if (!nextChunk.text) {
           continue;
         }
@@ -1849,9 +1877,12 @@
       }
 
       const duration = end - start;
+      const totalWords = Math.max(1, text.split(/\s+/).filter(Boolean).length);
+      let wordsBefore = 0;
       for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
-        const partStart = start + (duration * partIndex) / parts.length;
-        const partEnd = start + (duration * (partIndex + 1)) / parts.length;
+        const partWords = Math.max(1, parts[partIndex].split(/\s+/).filter(Boolean).length);
+        const partStart = start + duration * (wordsBefore / totalWords);
+        const partEnd = start + duration * (Math.min(totalWords, wordsBefore + partWords) / totalWords);
         const alignedStart = partStart;
         records.push(this.createBubbleRecord({
           sourceId: sourceId,
@@ -1862,6 +1893,7 @@
           locked: true,
           text: parts[partIndex]
         }));
+        wordsBefore += partWords;
       }
       return records;
     }

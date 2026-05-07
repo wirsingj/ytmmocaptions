@@ -463,6 +463,8 @@
       document.documentElement.classList.toggle(ACTIVE_PAGE_CLASS, !panelClosed);
       if (this.launcherButton) {
         this.launcherButton.style.display = panelClosed ? "inline-flex" : "none";
+        this.launcherButton.hidden = !panelClosed;
+        this.launcherButton.setAttribute("aria-hidden", panelClosed ? "false" : "true");
       }
       if (panelClosed) {
         this.pointerInside = false;
@@ -586,7 +588,7 @@
         frame.bottom - height - DEFAULT_PANEL_MARGIN,
         width,
         height,
-        this.getPanelFrameRect(),
+        this.getDefaultPanelFrameRect(),
         DEFAULT_PANEL_MARGIN
       );
       return {
@@ -645,6 +647,10 @@
     }
 
     getPanelFrameRect() {
+      return this.getYouTubeFrameRect();
+    }
+
+    getDefaultPanelFrameRect() {
       const frame = this.getYouTubeFrameRect();
       return {
         ...frame,
