@@ -1342,7 +1342,7 @@
           text: bucket.text
         });
       }
-      return this.polishFixedWindowChunks(chunks);
+      return this.liveCaptureEnabled ? chunks : this.polishFixedWindowChunks(chunks);
     }
 
     rebuildChunks() {
