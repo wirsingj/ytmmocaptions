@@ -1,16 +1,8 @@
 (function initTranscript(scope) {
   const app = (scope.DialogueCaptions = scope.DialogueCaptions || {});
   const DEBUG_PREFIX = "[Dialogue Captions][Transcript]";
-  const DEBUG_STORAGE_KEY = "dialogueCaptions.debug";
 
   function isDebugEnabled() {
-    try {
-      if (scope.localStorage && scope.localStorage.getItem(DEBUG_STORAGE_KEY) === "1") {
-        return true;
-      }
-    } catch {
-      // Ignore storage access errors.
-    }
     try {
       const parsed = new URL(scope.location.href);
       return parsed.searchParams.get("dcdebug") === "1";

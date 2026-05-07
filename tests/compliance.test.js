@@ -64,6 +64,11 @@ exports.run = async function runComplianceTests(ctx) {
     const id = manifest.browser_specific_settings.gecko.id;
     assert.notEqual(id, "dialogue-captions@example.local");
     assert.ok(/@/.test(id), "Firefox extension ID should be stable");
+    assert.equal(
+      manifest.browser_specific_settings.gecko_android.strict_min_version,
+      "142.0",
+      "Firefox Android minimum must support data_collection_permissions if AMO lints Android metadata"
+    );
   });
 
   await runCase("package build script does not bump versions", () => {
@@ -102,6 +107,22 @@ exports.run = async function runComplianceTests(ctx) {
       }
       const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
       assert.deepEqual(manifest.permissions, ["storage"], dirName);
+    }
+  });
+
+  await runCase("release hygiene ignores signing keys and documents current downloads only", () => {
+    const gitignore = fs.readFileSync(path.join(ROOT_DIR, ".gitignore"), "utf8");
+    const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
+    assert.ok(gitignore.includes("*.pem"), "private signing keys must stay ignored");
+    assert.ok(gitignore.includes("downloads/*/"), "extracted local packages should stay ignored");
+    assert.ok(!readme.includes("dialogue-captions-friend-v0.25.61.zip"));
+  });
+
+  await runCase("runtime does not use page localStorage for settings or debug state", () => {
+    for (const fileName of ["settings-store.js", "transcript.js", "content-script.js"]) {
+      const source = fs.readFileSync(path.join(ROOT_DIR, "src", fileName), "utf8");
+      assert.ok(!source.includes("localStorage"), fileName + " should use extension storage only");
+      assert.ok(!source.includes("sessionStorage"), fileName + " should not use page session storage");
     }
   });
 };

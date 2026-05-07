@@ -7,7 +7,9 @@ Dialogue Captions is a Chrome/Firefox extension that turns YouTube subtitles int
 Latest packaged builds are checked into `downloads/`:
 - `downloads/ytmmocaptions-chrome-v<version>.zip`
 - `downloads/ytmmocaptions-firefox-v<version>.xpi`
-- `downloads/dialogue-captions-friend-v0.25.61.zip` is an older convenience bundle with helper `.bat` files for friend testing. Prefer the latest browser-specific files above for normal testing.
+
+Older local test packages are intentionally pruned so the repo points people at
+the current release candidate instead of stale builds.
 
 ## Core UX
 

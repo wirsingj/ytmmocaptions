@@ -17,7 +17,6 @@
     chunkSize: "medium",
     keyboardStepSeconds: 8,
     autoScroll: true,
-    collapsed: false,
     globalKeyboardEnabled: false
   });
 
@@ -119,7 +118,6 @@
       chunkSize: normalizeChunkSize(source.chunkSize),
       keyboardStepSeconds: normalizeKeyboardStepSeconds(source.keyboardStepSeconds),
       autoScroll: typeof source.autoScroll === "boolean" ? source.autoScroll : DEFAULTS.autoScroll,
-      collapsed: typeof source.collapsed === "boolean" ? source.collapsed : DEFAULTS.collapsed,
       globalKeyboardEnabled:
         typeof source.globalKeyboardEnabled === "boolean"
           ? source.globalKeyboardEnabled

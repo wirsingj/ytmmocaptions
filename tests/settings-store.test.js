@@ -54,7 +54,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(result.launcherPosition, { left: 13, top: 0 });
   });
 
-  await runCase("settings defaults to collapsed pill launch", () => {
+  await runCase("settings defaults to closed pill launch", () => {
     const { normalize } = makeStore();
     const result = normalize({});
     assert.equal(result.panelClosed, true);

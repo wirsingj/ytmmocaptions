@@ -493,7 +493,6 @@
       if (panelClosed) {
         this.pointerInside = false;
       }
-      this.root.classList.remove("is-collapsed");
       this.body.style.display = "flex";
 
       const isNarrowViewport = window.matchMedia("(max-width: 980px)").matches;
@@ -1318,7 +1317,7 @@
 
         const seekIcon = document.createElement("span");
         seekIcon.className = "dc-chunk-seek-icon";
-        seekIcon.textContent = "▶";
+        seekIcon.textContent = "\u25b6";
         seekIcon.setAttribute("aria-hidden", "true");
 
         const content = document.createElement("span");

@@ -7,9 +7,11 @@ dist/
 *.zip
 *.xpi
 *.crx
+*.pem
 !downloads/
 !downloads/*.zip
 !downloads/*.xpi
+downloads/*/
 
 # Local browser automation artifacts
 .playwright-user-data*/

@@ -26,7 +26,6 @@ The extension stores only local preference settings in extension storage:
 - chunk size (`short`, `medium`, `long`);
 - keyboard step length;
 - auto-scroll enabled/disabled;
-- panel collapsed/expanded state;
 - keyboard mode setting, currently release-gated so shortcuts are pointer-over-panel only by default.
 
 These settings remain on the user's browser profile unless removed by uninstalling the extension or clearing extension storage.
