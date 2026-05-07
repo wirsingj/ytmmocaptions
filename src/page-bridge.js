@@ -9,6 +9,12 @@
   const FETCH_RESPONSE_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_RESPONSE";
   const CAPTION_PROBE_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_CAPTION_PROBE_REQUEST";
   const TIMEDTEXT_CAPTURE_TYPE = "DIALOGUE_CAPTIONS_PAGE_TIMEDTEXT_CAPTURE";
+  const BRIDGE_TOKEN =
+    document.currentScript &&
+    document.currentScript.dataset &&
+    typeof document.currentScript.dataset.dcBridgeToken === "string"
+      ? document.currentScript.dataset.dcBridgeToken
+      : "";
   const timedtextProbe = {
     lastRichUrl: "",
     lastVideoId: "",
@@ -21,6 +27,22 @@
     } catch {
       return "";
     }
+  }
+
+  function isCurrentWatchPageWithVideo() {
+    try {
+      const location = scope.location;
+      if (!location || location.hostname !== "www.youtube.com" || location.pathname !== "/watch") {
+        return false;
+      }
+      return Boolean(new URLSearchParams(location.search || "").get("v"));
+    } catch {
+      return false;
+    }
+  }
+
+  function hasValidBridgeToken(data) {
+    return Boolean(BRIDGE_TOKEN && data && data.bridgeToken === BRIDGE_TOKEN);
   }
 
   function walkObjects(root, visit, seen) {
@@ -136,6 +158,9 @@
   }
 
   function postTimedtextCapture(url, status, contentType, body, source) {
+    if (!isCurrentWatchPageWithVideo()) {
+      return;
+    }
     const timedtextUrl = String(url || "");
     if (!isTimedtextUrl(timedtextUrl)) {
       return;
@@ -159,6 +184,7 @@
       scope.postMessage(
         {
           type: TIMEDTEXT_CAPTURE_TYPE,
+          bridgeToken: BRIDGE_TOKEN,
           payload: payload
         },
         scope.location.origin
@@ -296,10 +322,14 @@
   }
 
   function postPayload() {
+    if (!isCurrentWatchPageWithVideo()) {
+      return;
+    }
     try {
       scope.postMessage(
         {
           type: MESSAGE_TYPE,
+          bridgeToken: BRIDGE_TOKEN,
           payload: buildPayload()
         },
         scope.location.origin
@@ -343,10 +373,14 @@
   }
 
   function postFetchResponse(requestId, payload) {
+    if (!isCurrentWatchPageWithVideo()) {
+      return;
+    }
     try {
       scope.postMessage(
         {
           type: FETCH_RESPONSE_TYPE,
+          bridgeToken: BRIDGE_TOKEN,
           requestId: requestId,
           payload: payload
         },
@@ -378,6 +412,9 @@
   }
 
   function handleCaptionProbeRequest() {
+    if (!isCurrentWatchPageWithVideo()) {
+      return;
+    }
     const player = document.getElementById("movie_player");
     if (!player) {
       return;
@@ -429,6 +466,9 @@
   }
 
   async function handleFetchRequest(data) {
+    if (!isCurrentWatchPageWithVideo()) {
+      return;
+    }
     const requestId = typeof data.requestId === "number" ? data.requestId : NaN;
     const payload = data.payload;
     const url = payload && typeof payload.url === "string" ? payload.url : "";
@@ -508,10 +548,16 @@
       return;
     }
     if (data.type === CAPTION_PROBE_REQUEST_TYPE) {
+      if (!hasValidBridgeToken(data)) {
+        return;
+      }
       handleCaptionProbeRequest();
       return;
     }
     if (data.type !== FETCH_REQUEST_TYPE) {
+      return;
+    }
+    if (!hasValidBridgeToken(data)) {
       return;
     }
     handleFetchRequest(data);

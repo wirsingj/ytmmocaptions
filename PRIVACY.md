@@ -49,7 +49,9 @@ No additional host permissions are requested.
 
 ## Network Access
 
-The extension reads YouTube subtitle/caption data and limited YouTube page configuration required for on-page functionality. Subtitle/caption text and page configuration are processed locally in the browser and are not transmitted to the developer.
+The extension reads YouTube subtitle/caption data and limited YouTube page configuration required for on-page functionality. Subtitle/caption text and page configuration are processed locally in the browser for the current video and are not transmitted to the developer.
+
+Dialogue Captions is intended as a local accessibility/navigation aid. It does not bulk download, export, sell, analyze, or transmit YouTube captions to the developer or third parties.
 
 If subtitles or transcript data are unavailable, the extension fails gracefully and shows an in-panel status message. No fallback data is uploaded or collected.
 

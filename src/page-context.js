@@ -15,15 +15,33 @@
   const BRIDGE_SCRIPT_PATHS = ["scripts/page-bridge.js", "src/page-bridge.js"];
 
   let snapshot = null;
+  let currentCaptureVideoId = "";
   let requestCounter = 0;
   const pendingRequests = new Map();
   const timedtextCaptures = [];
+  const bridgeToken = createBridgeToken();
   let bridgeEnsureAttempts = 0;
   let bridgeEnsureTimer = 0;
   let bridgeScriptPathIndex = 0;
 
   function isObject(value) {
     return Boolean(value && typeof value === "object");
+  }
+
+  function createBridgeToken() {
+    try {
+      const bytes = new Uint32Array(4);
+      scope.crypto.getRandomValues(bytes);
+      return Array.from(bytes)
+        .map((value) => value.toString(16).padStart(8, "0"))
+        .join("");
+    } catch {
+      return String(Date.now()) + "-" + String(Math.random()).slice(2);
+    }
+  }
+
+  function hasValidBridgeToken(data) {
+    return Boolean(data && data.bridgeToken === bridgeToken);
   }
 
   function setSnapshot(nextSnapshot) {
@@ -62,6 +80,17 @@
     if (!normalized) {
       return;
     }
+    if (normalized.videoId) {
+      if (currentCaptureVideoId && currentCaptureVideoId !== normalized.videoId) {
+        timedtextCaptures.length = 0;
+      }
+      currentCaptureVideoId = normalized.videoId;
+      for (let index = timedtextCaptures.length - 1; index >= 0; index -= 1) {
+        if (timedtextCaptures[index].videoId && timedtextCaptures[index].videoId !== currentCaptureVideoId) {
+          timedtextCaptures.splice(index, 1);
+        }
+      }
+    }
     timedtextCaptures.push(normalized);
     while (timedtextCaptures.length > 20) {
       timedtextCaptures.shift();
@@ -90,6 +119,9 @@
     }
 
     if (data.type === BRIDGE_MESSAGE_TYPE) {
+      if (!hasValidBridgeToken(data)) {
+        return;
+      }
       if (!isObject(data.payload)) {
         return;
       }
@@ -98,11 +130,17 @@
     }
 
     if (data.type === BRIDGE_TIMEDTEXT_CAPTURE_TYPE) {
+      if (!hasValidBridgeToken(data)) {
+        return;
+      }
       pushTimedtextCapture(data.payload);
       return;
     }
 
     if (data.type !== BRIDGE_FETCH_RESPONSE_TYPE) {
+      return;
+    }
+    if (!hasValidBridgeToken(data)) {
       return;
     }
     const requestId = typeof data.requestId === "number" ? data.requestId : NaN;
@@ -137,6 +175,7 @@
       scope.postMessage(
         {
           type: BRIDGE_FETCH_REQUEST_TYPE,
+          bridgeToken: bridgeToken,
           requestId: requestId,
           payload: {
             url: safeUrl,
@@ -169,6 +208,7 @@
     bridgeEnsureAttempts += 1;
     const script = document.createElement("script");
     script.id = BRIDGE_SCRIPT_ID;
+    script.dataset.dcBridgeToken = bridgeToken;
     script.src = platform.runtimeGetURL(BRIDGE_SCRIPT_PATHS[bridgeScriptPathIndex]);
     script.async = false;
     script.onload = function () {
@@ -199,7 +239,8 @@
   function triggerCaptionProbe() {
     scope.postMessage(
       {
-        type: BRIDGE_CAPTION_PROBE_REQUEST_TYPE
+        type: BRIDGE_CAPTION_PROBE_REQUEST_TYPE,
+        bridgeToken: bridgeToken
       },
       scope.location.origin
     );
@@ -214,6 +255,7 @@
     BRIDGE_FETCH_RESPONSE_TYPE,
     BRIDGE_CAPTION_PROBE_REQUEST_TYPE,
     BRIDGE_TIMEDTEXT_CAPTURE_TYPE,
+    bridgeToken,
     ensureBridgeInjected,
     getSnapshot,
     getTimedtextCaptures,

@@ -69,6 +69,7 @@ exports.run = async function runComplianceTests(ctx) {
   await runCase("package build script does not bump versions", () => {
     const packageJson = readJson("package.json");
     assert.equal(packageJson.scripts.build, "node scripts/build.mjs");
+    assert.equal(packageJson.scripts["diagnostic:e2e"], "node tests/e2e-extension-debug.js");
     assert.ok(!packageJson.scripts["release:check"].includes("version:bump"));
     assert.ok(!packageJson.scripts["release:check"].includes("bump-version"));
   });
@@ -85,5 +86,22 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes('"XSRF_TOKEN"'));
     assert.ok(source.includes('host !== "www.youtube.com"'));
     assert.ok(source.includes('path.endsWith("/api/timedtext") || path === "/youtubei/v1/get_transcript"'));
+  });
+
+  await runCase("global keyboard requires feature gate and setting", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
+    assert.ok(source.includes("this.features.globalKeyboardMode && this.settings.globalKeyboardEnabled"));
+    assert.ok(source.includes("this.panel.isPointerInside()"));
+  });
+
+  await runCase("build output manifests keep storage permission when present", () => {
+    for (const dirName of ["build/chrome", "build/firefox"]) {
+      const manifestPath = path.join(ROOT_DIR, dirName, "manifest.json");
+      if (!fs.existsSync(manifestPath)) {
+        continue;
+      }
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      assert.deepEqual(manifest.permissions, ["storage"], dirName);
+    }
   });
 };

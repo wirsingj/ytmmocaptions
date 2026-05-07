@@ -102,6 +102,7 @@ async function main() {
     "chunker-regression.test.js",
     "bubble-state.test.js",
     "platform.test.js",
+    "page-context.test.js",
     "page-bridge.test.js",
     "transcript.test.js",
     "live-bubbles.test.js",

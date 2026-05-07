@@ -237,7 +237,10 @@
         if (isTypingContext(event.target)) {
           return false;
         }
-        return this.settings.globalKeyboardEnabled || this.panel.isPointerInside();
+        return (
+          (this.features.globalKeyboardMode && this.settings.globalKeyboardEnabled) ||
+          this.panel.isPointerInside()
+        );
       };
 
       const onKeyDown = (event) => {

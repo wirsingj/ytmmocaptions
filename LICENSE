@@ -1,27 +1,56 @@
-Dialogue Captions Proprietary License
+Dialogue Captions Source-Available Proprietary License
 Copyright (c) 2026 Dialogue Captions Project Owner. All rights reserved.
 
-1. Grant of Limited Permission
-You are granted a personal, non-commercial, non-transferable, revocable license to use this software in object code form for your own personal use only.
+This repository is public so people can inspect, test, and discuss the Dialogue
+Captions browser extension. It is not open source software. The project is
+owned by its sole proprietor, and no rights are granted for reuse beyond the
+limited personal review and testing permission below.
+
+1. Limited Personal Review and Testing Permission
+
+You may, for personal and non-commercial purposes only:
+- clone, download, and read the source code;
+- build local Chrome or Firefox extension packages from the source;
+- load the extension unpacked or temporarily in your own browser for testing;
+- make local-only changes for personal evaluation.
 
 2. Restrictions
+
 You may not, and may not permit others to:
-- copy, modify, adapt, translate, or create derivative works of this software;
-- redistribute, publish, sell, rent, lease, sublicense, assign, or otherwise transfer this software;
+- reuse this source code, design, extension logic, UI, or compiled packages in
+  another project, extension, product, service, or public distribution;
+- redistribute, publish, mirror, sell, rent, lease, sublicense, assign, or
+  otherwise transfer the source code, modified source code, builds, or packages;
 - use this software or any part of it in commercial products or services;
-- reverse engineer, decompile, disassemble, or attempt to extract source logic except where prohibited by law.
+- offer hosted, paid, bundled, marketplace, or managed versions of this software;
+- remove copyright, license, or attribution notices;
+- use the project name, branding, icons, or marks to imply endorsement.
 
-3. Ownership
-This software is licensed, not sold. All rights, title, and interest, including all intellectual property rights, remain with the copyright owner.
+3. Contributions and Feedback
 
-4. No Trademark Rights
-No rights are granted to use the licensor's names, logos, or trademarks.
+Unless a separate written agreement says otherwise, any issue comments, ideas,
+suggestions, pull requests, patches, or other contributions you submit may be
+used by the project owner without obligation.
+
+4. Ownership
+
+This software is licensed, not sold. All rights, title, and interest, including
+all intellectual property rights, remain with the copyright owner.
 
 5. Termination
-This license terminates automatically if you fail to comply with any term. Upon termination, you must stop using and delete all copies.
+
+This license terminates automatically if you fail to comply with any term. Upon
+termination, you must stop using and delete all copies in your possession or
+control.
 
 6. Disclaimer of Warranty
-THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+NON-INFRINGEMENT.
 
 7. Limitation of Liability
-TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT OWNER SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY DAMAGES, OR ANY LOSS OF PROFITS, DATA, OR BUSINESS INTERRUPTION.
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT OWNER SHALL NOT BE LIABLE
+FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY DAMAGES, OR
+ANY LOSS OF PROFITS, DATA, OR BUSINESS INTERRUPTION.

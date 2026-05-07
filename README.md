@@ -90,6 +90,18 @@ To run full pre-submission scan + package for both stores:
 npm run release:check
 ```
 
+## Optional Diagnostics
+
+The one-shot browser diagnostic is intentionally not part of `release:check`.
+It is useful while debugging YouTube behavior, but it requires Playwright to be
+installed locally and may be affected by network/player changes.
+
+```powershell
+npm install --save-dev playwright
+npx playwright install
+npm run diagnostic:e2e
+```
+
 ## Load Unpacked
 
 ### Chrome
@@ -120,11 +132,20 @@ For AMO signing/upload, use:
 
 - Host permissions are kept to YouTube only. Browser host-permission paths may be ignored by Chrome/Firefox, so runtime activation is also route-gated to `/watch?v=...`.
 - Content scripts are loaded on `https://www.youtube.com/*` only for YouTube SPA route detection; page-bridge caption hooks are injected only after the user opens the panel/caption work starts on a valid watch page.
+- Page-bridge work is additionally guarded inside the injected page script so snapshots, caption probes, timedtext captures, and bridge fetches stop after YouTube SPA navigation leaves a valid `/watch?v=...` route.
 - No personal data collection.
 - Only local settings are stored via extension storage.
 - Keyboard shortcuts are not global in the release UI; they activate when the pointer is over the panel and are ignored while typing.
 - If transcript/subtitles are unavailable, the extension shows a clear in-panel message and exits safely.
+- Subtitle/caption data is processed locally for the current video only. The extension is a local accessibility/navigation aid and does not bulk download, export, or transmit captions to the developer or third parties.
 - Privacy details are in `PRIVACY.md`.
 - License terms are in `LICENSE`.
 - Firefox manifest includes `browser_specific_settings.gecko.data_collection_permissions.required=["none"]`.
 - Firefox minimum version is 140+ because that manifest declaration is only supported in newer Firefox releases.
+
+## License
+
+Dialogue Captions is source-available proprietary software. The public repo may
+be cloned, reviewed, built, and loaded locally for personal non-commercial
+testing only. Reuse, redistribution, sublicensing, commercial cloning, and
+publishing modified builds are not allowed. See `LICENSE`.

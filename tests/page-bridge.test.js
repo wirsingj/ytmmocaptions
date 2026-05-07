@@ -7,14 +7,39 @@ const ROOT_DIR = path.resolve(__dirname, "..");
 function loadPageBridge(url) {
   const listeners = {};
   const posted = [];
+  let intervalCallback = null;
   let fetchCalls = 0;
+  let href = url;
+  const bridgeToken = "test-bridge-token";
+  function makeLocation(nextUrl) {
+    const parsed = new URL(nextUrl);
+    return {
+      get href() {
+        return href;
+      },
+      get origin() {
+        return parsed.origin;
+      },
+      get hostname() {
+        return new URL(href).hostname;
+      },
+      get pathname() {
+        return new URL(href).pathname;
+      },
+      get search() {
+        return new URL(href).search;
+      }
+    };
+  }
   const sandbox = {
     window: null,
-    location: new URL(url),
+    location: makeLocation(url),
     Date,
     URL,
+    URLSearchParams,
     setTimeout() {},
-    setInterval() {
+    setInterval(callback) {
+      intervalCallback = callback;
       return 1;
     },
     clearInterval() {},
@@ -40,6 +65,11 @@ function loadPageBridge(url) {
     },
     XMLHttpRequest: function XMLHttpRequest() {},
     document: {
+      currentScript: {
+        dataset: {
+          dcBridgeToken: bridgeToken
+        }
+      },
       addEventListener() {},
       getElementById() {
         return null;
@@ -62,6 +92,7 @@ function loadPageBridge(url) {
       origin: sandbox.location.origin,
       data: {
         type: "DIALOGUE_CAPTIONS_PAGE_FETCH_REQUEST",
+        bridgeToken,
         requestId: 7,
         payload: {
           url: urlToFetch,
@@ -75,8 +106,60 @@ function loadPageBridge(url) {
     return posted.find((message) => message.type === "DIALOGUE_CAPTIONS_PAGE_FETCH_RESPONSE");
   }
 
+  async function requestWithoutToken(urlToFetch, init) {
+    posted.length = 0;
+    listeners.message({
+      source: null,
+      origin: sandbox.location.origin,
+      data: {
+        type: "DIALOGUE_CAPTIONS_PAGE_FETCH_REQUEST",
+        requestId: 8,
+        payload: {
+          url: urlToFetch,
+          init: init || {}
+        }
+      }
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    return posted.find((message) => message.type === "DIALOGUE_CAPTIONS_PAGE_FETCH_RESPONSE");
+  }
+
   return {
+    bridgeToken,
+    posted,
     request,
+    requestWithoutToken,
+    setUrl(nextUrl) {
+      href = nextUrl;
+    },
+    runRecurringPost() {
+      posted.length = 0;
+      if (typeof intervalCallback === "function") {
+        intervalCallback();
+      }
+      return posted.slice();
+    },
+    async fetchTimedtext() {
+      posted.length = 0;
+      await sandbox.fetch("https://www.youtube.com/api/timedtext?v=abc123");
+      await Promise.resolve();
+      await Promise.resolve();
+      return posted.slice();
+    },
+    captionProbe(data) {
+      posted.length = 0;
+      listeners.message({
+        source: null,
+        origin: sandbox.location.origin,
+        data: data || {
+          type: "DIALOGUE_CAPTIONS_PAGE_CAPTION_PROBE_REQUEST",
+          bridgeToken
+        }
+      });
+      return posted.slice();
+    },
     get fetchCalls() {
       return fetchCalls;
     }
@@ -110,5 +193,39 @@ exports.run = async function runPageBridgeTests(ctx) {
     assert.equal(timedtext.payload.ok, true);
     assert.equal(transcript.payload.ok, true);
     assert.equal(bridge.fetchCalls, 2);
+  });
+
+  await runCase("page bridge ignores missing-token requests", async () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
+    const response = await bridge.requestWithoutToken("https://www.youtube.com/api/timedtext?v=abc123", { method: "GET" });
+    assert.equal(response, undefined);
+    assert.equal(bridge.fetchCalls, 0);
+
+    bridge.posted.length = 0;
+    bridge.captionProbe({
+      type: "DIALOGUE_CAPTIONS_PAGE_CAPTION_PROBE_REQUEST"
+    });
+    assert.equal(bridge.posted.length, 0);
+  });
+
+  await runCase("page bridge does not post recurring snapshots off watch pages", () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
+    bridge.setUrl("https://www.youtube.com/results?search_query=cats");
+    const posts = bridge.runRecurringPost();
+    assert.equal(posts.length, 0);
+  });
+
+  await runCase("page bridge does not post timedtext captures after route leaves watch", async () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
+    bridge.setUrl("https://www.youtube.com/feed/subscriptions");
+    const posts = await bridge.fetchTimedtext();
+    assert.equal(posts.length, 0);
+  });
+
+  await runCase("page bridge ignores caption probes off watch pages", () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
+    bridge.setUrl("https://www.youtube.com/results?search_query=cats");
+    const posts = bridge.captionProbe();
+    assert.equal(posts.length, 0);
   });
 };
