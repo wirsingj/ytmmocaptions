@@ -1054,6 +1054,24 @@
       this.scheduleWindowRender(!hasChanged);
     }
 
+    flashChunk(index) {
+      if (!this.windowContainer || index < this.currentWindowStart || index > this.currentWindowEnd) {
+        return;
+      }
+      const item = this.windowContainer.querySelector("[data-index='" + index + "']");
+      if (!item) {
+        return;
+      }
+      item.classList.remove("is-start-flash");
+      void item.offsetWidth;
+      item.classList.add("is-start-flash");
+      window.setTimeout(() => {
+        if (item.isConnected) {
+          item.classList.remove("is-start-flash");
+        }
+      }, 720);
+    }
+
     ensureIndexVisible(index) {
       if (!this.listViewport) {
         return;

@@ -1379,6 +1379,12 @@
         this.ensureChunkVisible(pending.index);
         this.activeIndex = Math.max(0, Math.min(pending.index, this.chunks.length - 1));
         this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
+        if (!pending.didFlash && Number.isFinite(pending.flashAt) && currentTime >= pending.flashAt) {
+          pending.didFlash = true;
+          if (typeof this.panel.flashChunk === "function") {
+            this.panel.flashChunk(this.activeIndex);
+          }
+        }
         return;
       }
       this.pendingSeekFocus = null;
@@ -2238,6 +2244,8 @@
         index: index,
         minTime: Math.max(0, Math.min(targetTime, Number(chunk.start || 0) - seekLeadSeconds - 0.1)),
         maxTime: Math.max(Number(chunk.end || 0), Number(chunk.start || 0) + this.getKeyboardStepSeconds()),
+        flashAt: seekStart,
+        didFlash: false,
         expiresAt: Date.now() + 2600
       };
       const autoplay = opts.autoplay !== false;

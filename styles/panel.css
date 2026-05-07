@@ -393,6 +393,27 @@
     var(--dc-card-current);
 }
 
+.dc-chunk.is-start-flash {
+  animation: dc-start-flash 620ms ease-out;
+}
+
+@keyframes dc-start-flash {
+  0% {
+    box-shadow: 0 0 0 1px rgba(222, 214, 195, 0.2);
+    filter: brightness(1);
+  }
+  22% {
+    box-shadow:
+      0 0 0 1px rgba(222, 214, 195, 0.28),
+      inset 0 0 18px rgba(222, 214, 195, 0.08);
+    filter: brightness(1.08);
+  }
+  100% {
+    box-shadow: 0 0 0 1px rgba(222, 214, 195, 0.2);
+    filter: brightness(1);
+  }
+}
+
 .dc-launcher {
   position: fixed;
   left: 14px;
