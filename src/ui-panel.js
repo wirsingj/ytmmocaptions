@@ -4,8 +4,7 @@
   const platform = app.platform;
 
   const PANEL_ID = "dc-panel";
-  const ESTIMATED_ROW_HEIGHT = 88;
-  const WINDOW_BUFFER_ROWS = 8;
+  const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
 
@@ -404,7 +403,7 @@
         }
         if (this.isNearBottom(2.6)) {
           this.stickToBottom = true;
-        } else if (this.getBottomDistance() > ESTIMATED_ROW_HEIGHT * 3.5) {
+        } else if (this.getBottomDistance() > BOTTOM_PROXIMITY_PX * 2) {
           this.stickToBottom = false;
         }
         this.updateJumpBottomVisibility();
@@ -502,6 +501,9 @@
       this.root.style.setProperty("--dc-text-scale", String(normalizedTextScale / 100));
       if (this.textScaleInput && this.textScaleInput.value !== String(normalizedTextScale)) {
         this.textScaleInput.value = String(normalizedTextScale);
+      }
+      if (this.settings.autoScroll && this.stickToBottom) {
+        this.scrollToBottom();
       }
 
       if (this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
@@ -909,8 +911,14 @@
         return;
       }
       const viewportHeight = this.listViewport.clientHeight || 1;
-      const rowTop = index * ESTIMATED_ROW_HEIGHT;
-      const rowBottom = rowTop + ESTIMATED_ROW_HEIGHT;
+      const item = this.windowContainer
+        ? this.windowContainer.querySelector("[data-index='" + index + "']")
+        : null;
+      if (!item) {
+        return;
+      }
+      const rowTop = item.offsetTop;
+      const rowBottom = rowTop + item.offsetHeight;
       const viewTop = this.listViewport.scrollTop;
       const viewBottom = viewTop + viewportHeight;
       if (rowTop < viewTop || rowBottom > viewBottom) {
@@ -932,7 +940,7 @@
       }
       const distance = this.getBottomDistance();
       const factor = Number.isFinite(multiplier) ? Number(multiplier) : 1.2;
-      return distance <= ESTIMATED_ROW_HEIGHT * factor;
+      return distance <= BOTTOM_PROXIMITY_PX * factor;
     }
 
     scrollToBottom() {
@@ -1012,40 +1020,13 @@
         return;
       }
 
-      const viewportHeight = Math.max(1, this.listViewport.clientHeight || 1);
-      const estimatedTotalHeight = Math.max(ESTIMATED_ROW_HEIGHT, chunkCount * ESTIMATED_ROW_HEIGHT);
-      const maxEstimatedScrollTop = Math.max(0, estimatedTotalHeight - viewportHeight);
-      const rawScrollTop = this.listViewport.scrollTop;
-      const scrollTop = Math.max(0, Math.min(maxEstimatedScrollTop, rawScrollTop));
-      if (Math.abs(scrollTop - rawScrollTop) >= 1) {
-        this.listViewport.scrollTop = scrollTop;
-      }
-
-      const firstVisibleRaw = Math.floor(scrollTop / ESTIMATED_ROW_HEIGHT);
-      const firstVisible = Math.max(0, Math.min(chunkCount - 1, firstVisibleRaw));
-      const visibleRows = Math.ceil(viewportHeight / ESTIMATED_ROW_HEIGHT);
-
-      let start = Math.max(0, firstVisible - WINDOW_BUFFER_ROWS);
-      let end = Math.min(chunkCount - 1, firstVisible + visibleRows + WINDOW_BUFFER_ROWS);
-
-      if (this.activeIndex >= 0) {
-        start = Math.min(start, Math.max(0, this.activeIndex - WINDOW_BUFFER_ROWS));
-        end = Math.max(end, Math.min(chunkCount - 1, this.activeIndex + WINDOW_BUFFER_ROWS));
-      }
-
-      if (start > end) {
-        const fallbackIndex =
-          this.activeIndex >= 0 ? Math.min(chunkCount - 1, this.activeIndex) : Math.max(0, chunkCount - 1);
-        start = fallbackIndex;
-        end = fallbackIndex;
-      }
-
+      const start = 0;
+      const end = chunkCount - 1;
       const shouldRebuild = start !== this.currentWindowStart || end !== this.currentWindowEnd;
       this.currentWindowStart = start;
       this.currentWindowEnd = end;
-
-      this.topSpacer.style.height = start * ESTIMATED_ROW_HEIGHT + "px";
-      this.bottomSpacer.style.height = Math.max(0, chunkCount - end - 1) * ESTIMATED_ROW_HEIGHT + "px";
+      this.topSpacer.style.height = "0px";
+      this.bottomSpacer.style.height = "0px";
 
       if (!shouldRebuild) {
         this.updateActiveClass();

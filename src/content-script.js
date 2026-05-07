@@ -675,7 +675,7 @@
           if (!Number.isFinite(start) || !Number.isFinite(end)) {
             continue;
           }
-          if (end <= bucketStart || start >= bucketEnd) {
+          if (start < bucketStart || start >= bucketEnd) {
             continue;
           }
           const text = this.normalizeLiveCaptionText(cue && cue.text ? cue.text : "");
@@ -1346,7 +1346,7 @@
           text: bucket.text
         });
       }
-      return chunks;
+      return this.polishFixedWindowChunks(chunks);
     }
 
     rebuildChunks() {
@@ -1407,6 +1407,122 @@
 
     getKeyboardStepSeconds() {
       return 8;
+    }
+
+    textEndsNaturally(text) {
+      return /[.!?]["')\]]?$/.test(String(text || "").trim());
+    }
+
+    splitTextByNaturalBreaks(text, maxChars) {
+      const normalized = this.normalizeLiveCaptionText(text);
+      if (!normalized) {
+        return [];
+      }
+      const limit = Number.isFinite(maxChars) ? Math.max(120, Number(maxChars)) : 330;
+      if (normalized.length <= limit) {
+        return [normalized];
+      }
+
+      const sentences = normalized.match(/[^.!?]+[.!?]["')\]]*|[^.!?]+$/g) || [normalized];
+      const pieces = [];
+      let buffer = "";
+
+      const flush = () => {
+        const value = this.normalizeLiveCaptionText(buffer);
+        if (value) {
+          pieces.push(value);
+        }
+        buffer = "";
+      };
+
+      for (let index = 0; index < sentences.length; index += 1) {
+        const sentence = this.normalizeLiveCaptionText(sentences[index]);
+        if (!sentence) {
+          continue;
+        }
+        const candidate = buffer ? buffer + " " + sentence : sentence;
+        if (buffer && candidate.length > limit) {
+          flush();
+        }
+        if (sentence.length <= limit) {
+          buffer = buffer ? buffer + " " + sentence : sentence;
+          continue;
+        }
+
+        const words = sentence.split(/\s+/).filter(Boolean);
+        for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+          const word = words[wordIndex];
+          const next = buffer ? buffer + " " + word : word;
+          if (buffer && next.length > limit) {
+            flush();
+          }
+          buffer = buffer ? buffer + " " + word : word;
+        }
+      }
+      flush();
+      return pieces;
+    }
+
+    polishFixedWindowChunks(chunks) {
+      const source = Array.isArray(chunks) ? chunks : [];
+      const merged = [];
+      const minComfortableChars = 72;
+      const maxComfortableChars = 330;
+
+      for (let index = 0; index < source.length; index += 1) {
+        const chunk = source[index];
+        const text = this.normalizeLiveCaptionText(chunk && chunk.text ? chunk.text : "");
+        if (!chunk || !text) {
+          continue;
+        }
+
+        const previous = merged[merged.length - 1];
+        const canMergeWithPrevious =
+          previous &&
+          text.length < minComfortableChars &&
+          !this.textEndsNaturally(previous.text) &&
+          this.normalizeLiveCaptionText(previous.text + " " + text).length <= maxComfortableChars;
+
+        if (canMergeWithPrevious) {
+          previous.text = this.mergeLiveCaptionText(previous.text, text);
+          previous.end = Math.max(Number(previous.end || 0), Number(chunk.end || previous.end || 0));
+          continue;
+        }
+
+        merged.push({
+          ...chunk,
+          text: text
+        });
+      }
+
+      const polished = [];
+      for (let index = 0; index < merged.length; index += 1) {
+        const chunk = merged[index];
+        const parts = this.splitTextByNaturalBreaks(chunk.text, maxComfortableChars);
+        if (parts.length <= 1) {
+          polished.push(chunk);
+          continue;
+        }
+
+        const start = Number(chunk.start || 0);
+        const duration = Math.max(0.25, Number(chunk.end || start + 0.25) - start);
+        for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+          const partStart = start + (duration * partIndex) / parts.length;
+          const partEnd = start + (duration * (partIndex + 1)) / parts.length;
+          polished.push({
+            ...chunk,
+            start: partStart,
+            end: Math.max(partStart + 0.25, partEnd),
+            seekStart: partIndex === 0 ? chunk.seekStart : partStart,
+            text: parts[partIndex]
+          });
+        }
+      }
+
+      for (let index = 0; index < polished.length; index += 1) {
+        polished[index].id = index;
+      }
+      return polished;
     }
 
     getChunkSeekStart(chunk) {
