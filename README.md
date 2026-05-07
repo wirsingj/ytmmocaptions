@@ -17,6 +17,8 @@ Latest packaged builds are checked into `downloads/`:
 - `Shift+Space` goes to previous chunk.
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
+- Panel preferences persist across YouTube videos: open/closed state, panel size/position, pill position, opacity, and text size.
+- Transcript/chat contents, active bubble, and playback position are intentionally not saved.
 
 ## Project Structure
 

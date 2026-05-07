@@ -16,6 +16,7 @@ The extension does not:
 ## Local Data Stored
 
 The extension stores only local preference settings in extension storage:
+- preference schema version for safe future migrations;
 - plan/feature gate state (`free`/`premium` and local feature override booleans);
 - panel opacity;
 - text size;
@@ -29,6 +30,8 @@ The extension stores only local preference settings in extension storage:
 - keyboard mode setting, currently release-gated so shortcuts are pointer-over-panel only by default.
 
 These settings remain on the user's browser profile unless removed by uninstalling the extension or clearing extension storage.
+
+The extension does not store transcript text, chat bubble history, the active bubble, playback position, or per-video viewing history.
 
 ## Permissions Used
 

@@ -1,11 +1,13 @@
 exports.run = async function runSettingsStoreTests(ctx) {
   const { assert, loadModule, runCase } = ctx;
 
-  function makeStore(overrides) {
+  function makeStore(overrides, storedSettings) {
     const saved = {};
     const platform = {
       async storageGet() {
-        return {};
+        return storedSettings
+          ? { "dialogueCaptions.settings.v1": storedSettings }
+          : {};
       },
       async storageSet(values) {
         Object.assign(saved, values);
@@ -57,6 +59,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const result = normalize({});
     assert.equal(result.panelClosed, true);
     assert.equal(result.textScale, 120);
+    assert.equal(result.schemaVersion, 1);
   });
 
   await runCase("settings save writes normalized values", async () => {
@@ -69,6 +72,32 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.plan, "premium");
     assert.equal(persisted.panelOpacity, 35);
     assert.equal(persisted.textScale, 200);
+    assert.equal(persisted.schemaVersion, 1);
     assert.ok(saved["dialogueCaptions.settings.v1"]);
+  });
+
+  await runCase("settings load migrates legacy preferences and drops transient video state", async () => {
+    const { store } = makeStore(null, {
+      panelClosed: false,
+      panelOpacity: 77,
+      textScale: 145,
+      panelPosition: { left: 45, top: 80 },
+      panelSize: { width: 640, height: 420 },
+      launcherPosition: { left: 15, top: 300 },
+      activeVideoId: "should-not-persist",
+      activeBubbleIndex: 4,
+      transcriptText: "should not be stored"
+    });
+    const loaded = await store.load();
+    assert.equal(loaded.schemaVersion, 1);
+    assert.equal(loaded.panelClosed, false);
+    assert.equal(loaded.panelOpacity, 77);
+    assert.equal(loaded.textScale, 145);
+    assert.deepEqual(loaded.panelPosition, { left: 45, top: 80 });
+    assert.deepEqual(loaded.panelSize, { width: 640, height: 420 });
+    assert.deepEqual(loaded.launcherPosition, { left: 15, top: 300 });
+    assert.equal(Object.prototype.hasOwnProperty.call(loaded, "activeVideoId"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(loaded, "activeBubbleIndex"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(loaded, "transcriptText"), false);
   });
 };

@@ -3,7 +3,9 @@
   const platform = app.platform;
 
   const STORAGE_KEY = "dialogueCaptions.settings.v1";
+  const SCHEMA_VERSION = 1;
   const DEFAULTS = Object.freeze({
+    schemaVersion: SCHEMA_VERSION,
     plan: "free",
     featureOverrides: {},
     panelOpacity: 88,
@@ -105,6 +107,7 @@
     }
 
     return {
+      schemaVersion: SCHEMA_VERSION,
       plan: source.plan === "premium" ? "premium" : DEFAULTS.plan,
       featureOverrides: featureOverrides,
       panelOpacity: normalizePanelOpacity(source.panelOpacity),
