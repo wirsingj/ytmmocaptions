@@ -10,13 +10,13 @@
 }
 
 #dc-panel {
-  --dc-text-scale: 1;
+  --dc-text-scale: 1.1;
   position: fixed;
   left: 14px;
   bottom: 14px;
-  width: min(30vw, 430px);
-  min-width: 300px;
-  height: min(48vh, 560px);
+  width: min(46vw, 780px);
+  min-width: 380px;
+  height: min(34vh, 390px);
   z-index: 2147483000;
   color: var(--dc-text);
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;

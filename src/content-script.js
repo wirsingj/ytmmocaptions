@@ -347,9 +347,28 @@
 
     sanitizeOverlayCandidateText(input) {
       return String(input || "")
-        .replace(/\benglish\s*\(auto-generated\)\b/gi, " ")
+        .replace(/\b[a-z][a-z -]{1,24}\s*\((?:auto-generated|automatic captions)\)/gi, " ")
         .replace(/\bclick for settings\b/gi, " ")
+        .replace(/\bsubtitles\/closed captions\b/gi, " ")
         .replace(/\[\s*[_-]+\s*\]/g, " ");
+    }
+
+    cleanCaptionCandidateText(input) {
+      const sanitized = this.sanitizeOverlayCandidateText(input);
+      const normalized = this.normalizeLiveCaptionText(sanitized);
+      if (!normalized) {
+        return "";
+      }
+      const lower = normalized.toLowerCase();
+      if (
+        lower === "cc" ||
+        lower === "subtitles" ||
+        lower === "closed captions" ||
+        lower === "auto-generated"
+      ) {
+        return "";
+      }
+      return this.collapseOverlaySpamIfNeeded(normalized);
     }
 
     collapseOverlaySpamIfNeeded(input) {
@@ -420,7 +439,7 @@
       const source = Array.isArray(candidates) ? candidates : [];
       const selected = [];
       for (let index = 0; index < source.length; index += 1) {
-        const candidate = this.collapseOverlaySpamIfNeeded(this.sanitizeOverlayCandidateText(source[index]));
+        const candidate = this.cleanCaptionCandidateText(source[index]);
         if (!candidate) {
           continue;
         }
@@ -581,34 +600,24 @@
       }
 
       const lineCandidates = [];
-      const windowNodes = container.querySelectorAll(".ytp-caption-window");
-      windowNodes.forEach((node) => {
-        if (!this.isNodeVisible(node)) {
-          return;
-        }
-        const text = this.collapseOverlaySpamIfNeeded(this.sanitizeOverlayCandidateText(node.textContent || ""));
-        if (text) {
-          lineCandidates.push(text);
-        }
-      });
+      const selectors = [
+        ".ytp-caption-segment",
+        ".caption-visual-line",
+        ".captions-text span",
+        ".ytp-caption-window"
+      ];
 
-      if (!lineCandidates.length) {
-        const segmentNodes = container.querySelectorAll(
-          [".ytp-caption-segment", ".caption-visual-line", ".captions-text span"].join(", ")
-        );
-        segmentNodes.forEach((node) => {
+      for (let selectorIndex = 0; selectorIndex < selectors.length && !lineCandidates.length; selectorIndex += 1) {
+        const nodes = container.querySelectorAll(selectors[selectorIndex]);
+        nodes.forEach((node) => {
           if (!this.isNodeVisible(node)) {
             return;
           }
-          const text = this.collapseOverlaySpamIfNeeded(this.sanitizeOverlayCandidateText(node.textContent || ""));
+          const text = this.cleanCaptionCandidateText(node.textContent || "");
           if (text) {
             lineCandidates.push(text);
           }
         });
-      }
-
-      if (!lineCandidates.length) {
-        return this.collapseOverlaySpamIfNeeded(this.sanitizeOverlayCandidateText(container.textContent || ""));
       }
 
       const selected = this.dedupeCaptionCandidates(lineCandidates);
@@ -653,7 +662,7 @@
           if (now < start || now > end) {
             continue;
           }
-          const text = this.normalizeLiveCaptionText(cue && cue.text ? cue.text : "");
+          const text = this.cleanCaptionCandidateText(cue && cue.text ? cue.text : "");
           if (text) {
             fragments.push(text);
             earliestStart = Math.min(earliestStart, start);
@@ -710,7 +719,7 @@
           if (start < bucketStart || start >= bucketEnd) {
             continue;
           }
-          const text = this.normalizeLiveCaptionText(cue && cue.text ? cue.text : "");
+          const text = this.cleanCaptionCandidateText(cue && cue.text ? cue.text : "");
           if (!text) {
             continue;
           }
@@ -812,7 +821,7 @@
     upsertLiveBucketCue(text, sampleTime, options) {
       const opts = options && typeof options === "object" ? options : {};
       const force = Boolean(opts.force);
-      const normalized = this.normalizeLiveCaptionText(text);
+      const normalized = this.cleanCaptionCandidateText(text);
       const canonical = this.toCaptionCanonical(normalized);
       if (!normalized || !canonical) {
         return false;
@@ -1310,7 +1319,9 @@
           this.transcriptMode = "live overlay fallback mode";
         }
         if (this.panel) {
-          this.panel.setChunks([]);
+          if (!this.cues.length) {
+            this.panel.setChunks([]);
+          }
           this.panel.setStatus(
             shouldEnableLiveCapture
               ? "Live overlay fallback mode active. Turn YouTube CC on and play; lines will stream into this log."
@@ -1354,7 +1365,7 @@
       const buckets = new Map();
       for (let cueIndex = 0; cueIndex < source.length; cueIndex += 1) {
         const cue = source[cueIndex];
-        const text = this.normalizeLiveCaptionText(cue && cue.text ? cue.text : "");
+        const text = this.cleanCaptionCandidateText(cue && cue.text ? cue.text : "");
         if (!text) {
           continue;
         }
