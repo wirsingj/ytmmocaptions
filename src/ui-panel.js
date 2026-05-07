@@ -107,7 +107,7 @@
       this.closeButton = document.createElement("button");
       this.closeButton.type = "button";
       this.closeButton.className = "dc-btn dc-btn-close";
-      this.closeButton.textContent = "v";
+      this.closeButton.textContent = "Close";
       this.closeButton.title = "Collapse to pill";
 
       this.resetButton = document.createElement("button");

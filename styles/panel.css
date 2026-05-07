@@ -182,9 +182,8 @@
 }
 
 .dc-btn-close {
-  min-width: 25px;
+  min-width: 46px;
   padding: 0 8px 1px;
-  text-transform: uppercase;
   letter-spacing: 0.02em;
   line-height: 1;
 }
