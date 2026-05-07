@@ -1562,14 +1562,14 @@
       const combined = this.normalizeLiveCaptionText(previousChunk.text + " " + nextChunk.text);
 
       if (!this.textEndsNaturally(previousChunk.text)) {
-        return bucketCount >= 5 || previousLength >= 520 || combined.length >= 640;
+        return bucketCount >= 3 || previousLength >= 340 || combined.length >= 430;
       }
 
-      if (bucketCount >= 3 || previousLength >= 300 || combined.length >= 440) {
+      if (bucketCount >= 2 || previousLength >= 220 || combined.length >= 320) {
         return true;
       }
 
-      return previousLength >= 180 || combined.length >= 340;
+      return previousLength >= 150 || combined.length >= 260;
     }
 
     getLiveChunkBucketIndex(chunk) {
@@ -1779,7 +1779,7 @@
 
     createLockedDisplayBubbles(bubble) {
       const records = [];
-      const maxLiveBubbleChars = 420;
+      const maxLiveBubbleChars = 280;
       const sourceId = bubble && bubble.uid ? bubble.uid : "";
       const text = this.cleanCaptionCandidateText(bubble && bubble.text ? bubble.text : "");
       if (!bubble || !text) {
@@ -2015,7 +2015,7 @@
       const source = Array.isArray(chunks) ? chunks : [];
       const merged = [];
       const minComfortableChars = 72;
-      const maxComfortableChars = 330;
+      const maxComfortableChars = 260;
 
       for (let index = 0; index < source.length; index += 1) {
         const chunk = source[index];
