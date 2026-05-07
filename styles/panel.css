@@ -16,7 +16,7 @@
   bottom: 14px;
   width: min(31vw, 572px);
   min-width: 350px;
-  height: min(40vh, 363px);
+  height: min(45vh, 408px);
   z-index: 2147483000;
   color: var(--dc-text);
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
