@@ -63,6 +63,7 @@
       this.captionsEnsured = false;
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
+      this.pendingSeekFocus = null;
     }
 
     async init() {
@@ -493,6 +494,39 @@
       }
 
       return this.normalizeLiveCaptionText(previous + " " + next);
+    }
+
+    trimLeadingCaptionOverlap(previousText, nextText) {
+      const previous = this.normalizeLiveCaptionText(previousText);
+      const next = this.normalizeLiveCaptionText(nextText);
+      if (!previous || !next) {
+        return next;
+      }
+
+      const previousTokens = previous.split(/\s+/).filter(Boolean);
+      const nextTokens = next.split(/\s+/).filter(Boolean);
+      const maxOverlap = Math.min(18, previousTokens.length, nextTokens.length);
+      for (let size = maxOverlap; size >= 3; size -= 1) {
+        let matches = true;
+        for (let index = 0; index < size; index += 1) {
+          const left = String(previousTokens[previousTokens.length - size + index] || "")
+            .toLowerCase()
+            .replace(/[^\w]/g, "");
+          const right = String(nextTokens[index] || "")
+            .toLowerCase()
+            .replace(/[^\w]/g, "");
+          if (!left || left !== right) {
+            matches = false;
+            break;
+          }
+        }
+        if (!matches) {
+          continue;
+        }
+        const trimmed = this.normalizeLiveCaptionText(nextTokens.slice(size).join(" "));
+        return trimmed || next;
+      }
+      return next;
     }
 
     isHighOverlapText(leftText, rightText) {
@@ -1190,6 +1224,21 @@
         return;
       }
       const currentTime = this.video.currentTime || 0;
+      const pending = this.pendingSeekFocus;
+      if (
+        pending &&
+        Date.now() <= pending.expiresAt &&
+        pending.index >= 0 &&
+        pending.index < sourceChunks.length &&
+        currentTime >= pending.minTime &&
+        currentTime <= pending.maxTime
+      ) {
+        this.ensureChunkVisible(pending.index);
+        this.activeIndex = Math.max(0, Math.min(pending.index, this.chunks.length - 1));
+        this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
+        return;
+      }
+      this.pendingSeekFocus = null;
       const nextIndex = chunker.findChunkIndexAtTime(sourceChunks, currentTime);
       if (nextIndex < 0) {
         return;
@@ -1334,12 +1383,19 @@
         if (!bucket || !bucket.text) {
           continue;
         }
+        const previousChunk = chunks[chunks.length - 1];
+        const text = this.liveCaptureEnabled && previousChunk
+          ? this.trimLeadingCaptionOverlap(previousChunk.text, bucket.text)
+          : bucket.text;
+        if (!text) {
+          continue;
+        }
         chunks.push({
           id: chunks.length,
           start: bucket.start,
           end: bucket.end,
           seekStart: Number.isFinite(bucket.seekStart) ? bucket.seekStart : bucket.start,
-          text: bucket.text
+          text: text
         });
       }
       return this.liveCaptureEnabled ? chunks : this.polishFixedWindowChunks(chunks);
@@ -1644,6 +1700,12 @@
       }
       const wasPaused = video.paused;
       video.currentTime = targetTime;
+      this.pendingSeekFocus = {
+        index: index,
+        minTime: Math.max(0, Math.min(targetTime, Number(chunk.start || 0) - seekLeadSeconds - 0.1)),
+        maxTime: Math.max(Number(chunk.end || 0), Number(chunk.start || 0) + this.getKeyboardStepSeconds()),
+        expiresAt: Date.now() + 2600
+      };
       const autoplay = opts.autoplay !== false;
       if (autoplay) {
         const playResult = video.play();
