@@ -60,6 +60,7 @@
       this.programmaticScrollUntil = 0;
 
       this.cleanupFns = [];
+      this.layoutRefreshTimers = [];
       this.rafRenderId = 0;
       this.statusTimer = 0;
     }
@@ -244,6 +245,7 @@
 
       this.bindEvents();
       this.applySettings();
+      this.scheduleSettledLayoutRefresh();
     }
 
     destroy() {
@@ -255,6 +257,10 @@
         window.clearTimeout(this.statusTimer);
         this.statusTimer = 0;
       }
+      for (let index = 0; index < this.layoutRefreshTimers.length; index += 1) {
+        window.clearTimeout(this.layoutRefreshTimers[index]);
+      }
+      this.layoutRefreshTimers = [];
       for (let index = 0; index < this.cleanupFns.length; index += 1) {
         this.cleanupFns[index]();
       }
@@ -432,6 +438,18 @@
       this.applySettings();
       if (typeof this.options.onSettingsChange === "function") {
         this.options.onSettingsChange(this.settings, patch);
+      }
+    }
+
+    scheduleSettledLayoutRefresh() {
+      const delays = [350, 1200];
+      for (let index = 0; index < delays.length; index += 1) {
+        const timerId = window.setTimeout(() => {
+          if (this.root) {
+            this.applySettings();
+          }
+        }, delays[index]);
+        this.layoutRefreshTimers.push(timerId);
       }
     }
 
