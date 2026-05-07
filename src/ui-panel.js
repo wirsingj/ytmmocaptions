@@ -598,19 +598,20 @@
       if (!this.root) {
         return;
       }
-      const alpha = Math.max(0.35, Math.min(1, Number(opacityPercent) / 100));
+      const normalizedPercent = Math.max(35, Math.min(100, Number(opacityPercent)));
+      const blend = (normalizedPercent - 35) / 65;
       const setAlpha = (name, value) => {
         this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
       };
-      setAlpha("--dc-panel-alpha-inner", 0.006 + alpha * 0.17);
-      setAlpha("--dc-panel-alpha-mid", 0.035 + alpha * 0.27);
-      setAlpha("--dc-panel-alpha-outer", 0.24 + alpha * 0.66);
-      setAlpha("--dc-panel-alpha-base", 0.026 + alpha * 0.25);
-      setAlpha("--dc-panel-fade-light", 0.006 + alpha * 0.014);
-      setAlpha("--dc-panel-fade-shadow", 0.08 + alpha * 0.18);
-      setAlpha("--dc-panel-fade-shadow-soft", (0.08 + alpha * 0.18) * 0.62);
-      setAlpha("--dc-card-alpha", 0.38 + alpha * 0.18);
-      setAlpha("--dc-card-current-alpha", 0.44 + alpha * 0.2);
+      setAlpha("--dc-panel-alpha-inner", 0.002 + blend * 0.18);
+      setAlpha("--dc-panel-alpha-mid", 0.012 + blend * 0.32);
+      setAlpha("--dc-panel-alpha-outer", 0.12 + blend * 0.74);
+      setAlpha("--dc-panel-alpha-base", 0.01 + blend * 0.3);
+      setAlpha("--dc-panel-fade-light", 0.002 + blend * 0.018);
+      setAlpha("--dc-panel-fade-shadow", 0.035 + blend * 0.23);
+      setAlpha("--dc-panel-fade-shadow-soft", (0.035 + blend * 0.23) * 0.62);
+      setAlpha("--dc-card-alpha", 0.2 + blend * 0.38);
+      setAlpha("--dc-card-current-alpha", 0.27 + blend * 0.45);
       this.root.style.opacity = "1";
     }
 
