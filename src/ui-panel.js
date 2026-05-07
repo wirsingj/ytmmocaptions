@@ -572,9 +572,27 @@
         this.root.style.bottom = "";
       }
 
+      this.updatePanelFade();
       this.applyLauncherPosition();
       this.normalizeSavedPanelPosition();
       this.updateJumpBottomVisibility();
+    }
+
+    updatePanelFade() {
+      if (!this.root || this.root.style.display === "none") {
+        return;
+      }
+      const rect = this.root.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return;
+      }
+      const frame = this.getYouTubeFrameRect();
+      const centerX = frame.left + (frame.right - frame.left) / 2;
+      const centerY = frame.top + (frame.bottom - frame.top) / 2;
+      const fadeX = Math.max(0, Math.min(100, ((centerX - rect.left) / rect.width) * 100));
+      const fadeY = Math.max(0, Math.min(100, ((centerY - rect.top) / rect.height) * 100));
+      this.root.style.setProperty("--dc-fade-x", fadeX.toFixed(1) + "%");
+      this.root.style.setProperty("--dc-fade-y", fadeY.toFixed(1) + "%");
     }
 
     getDefaultPanelRect() {
@@ -833,6 +851,7 @@
       const nextTop = next.top;
       this.root.style.left = Math.round(nextLeft) + "px";
       this.root.style.top = Math.round(nextTop) + "px";
+      this.updatePanelFade();
     }
 
     finishDrag() {
@@ -919,6 +938,7 @@
       this.root.style.top = Math.round(nextTop) + "px";
       this.root.style.width = Math.round(nextWidth) + "px";
       this.root.style.height = Math.round(nextHeight) + "px";
+      this.updatePanelFade();
       this.scheduleWindowRender();
     }
 
