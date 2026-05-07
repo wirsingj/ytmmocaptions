@@ -9,6 +9,8 @@
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
   const LAUNCHER_MARGIN = 14;
+  const LAUNCHER_WIDTH = 96;
+  const LAUNCHER_HEIGHT = 32;
 
   class DialoguePanel {
     constructor(options) {
@@ -418,6 +420,13 @@
         this.applySettings();
       };
       this.addListener(window, "resize", onResize);
+
+      const onWindowScroll = () => {
+        if (this.launcherButton && this.launcherButton.style.display !== "none") {
+          this.applyLauncherPosition();
+        }
+      };
+      this.addListener(window, "scroll", onWindowScroll, { passive: true });
     }
 
     updateSettings(patch) {
@@ -522,26 +531,87 @@
         this.root.style.bottom = "";
       }
 
-      if (this.launcherButton) {
-        if (
-          this.settings.launcherPosition &&
-          Number.isFinite(this.settings.launcherPosition.left) &&
-          Number.isFinite(this.settings.launcherPosition.top)
-        ) {
-          this.launcherButton.style.left = this.settings.launcherPosition.left + "px";
-          this.launcherButton.style.top = this.settings.launcherPosition.top + "px";
-          this.launcherButton.style.right = "auto";
-          this.launcherButton.style.bottom = "auto";
-        } else {
-          this.launcherButton.style.left = "";
-          this.launcherButton.style.top = "";
-          this.launcherButton.style.right = "";
-          this.launcherButton.style.bottom = "";
+      this.applyLauncherPosition();
+      this.normalizeSavedPanelPosition();
+      this.updateJumpBottomVisibility();
+    }
+
+    getYouTubeFrameRect() {
+      const selectors = ["#movie_player", ".html5-video-player", "ytd-player"];
+      for (let index = 0; index < selectors.length; index += 1) {
+        const element = document.querySelector(selectors[index]);
+        if (!(element instanceof Element)) {
+          continue;
+        }
+        const rect = element.getBoundingClientRect();
+        if (rect.width >= 160 && rect.height >= 90) {
+          return {
+            left: Math.max(0, rect.left),
+            top: Math.max(0, rect.top),
+            right: Math.min(window.innerWidth, rect.right),
+            bottom: Math.min(window.innerHeight, rect.bottom)
+          };
         }
       }
-      this.normalizeSavedPanelPosition();
-      this.normalizeSavedLauncherPosition();
-      this.updateJumpBottomVisibility();
+      return {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight
+      };
+    }
+
+    clampPositionToRect(left, top, width, height, bounds, margin) {
+      const safeWidth = Math.max(1, Number(width) || 1);
+      const safeHeight = Math.max(1, Number(height) || 1);
+      const safeMargin = Math.max(0, Number(margin) || 0);
+      const minLeft = Math.round(bounds.left + safeMargin);
+      const minTop = Math.round(bounds.top + safeMargin);
+      const maxLeft = Math.round(Math.max(minLeft, bounds.right - safeWidth - safeMargin));
+      const maxTop = Math.round(Math.max(minTop, bounds.bottom - safeHeight - safeMargin));
+      return {
+        left: Math.max(minLeft, Math.min(maxLeft, Math.round(Number(left) || minLeft))),
+        top: Math.max(minTop, Math.min(maxTop, Math.round(Number(top) || minTop)))
+      };
+    }
+
+    clampLauncherPosition(left, top, width, height) {
+      return this.clampPositionToRect(left, top, width, height, this.getYouTubeFrameRect(), LAUNCHER_MARGIN);
+    }
+
+    applyLauncherPosition() {
+      if (!this.launcherButton) {
+        return;
+      }
+      if (this.launcherButton.style.display === "none") {
+        return;
+      }
+      const width = this.launcherButton.offsetWidth || LAUNCHER_WIDTH;
+      const height = this.launcherButton.offsetHeight || LAUNCHER_HEIGHT;
+      const frame = this.getYouTubeFrameRect();
+      const source = this.settings.launcherPosition || {
+        left: frame.left + LAUNCHER_MARGIN,
+        top: frame.bottom - height - LAUNCHER_MARGIN
+      };
+      const clamped = this.clampLauncherPosition(source.left, source.top, width, height);
+      this.launcherButton.style.left = clamped.left + "px";
+      this.launcherButton.style.top = clamped.top + "px";
+      this.launcherButton.style.right = "auto";
+      this.launcherButton.style.bottom = "auto";
+
+      if (
+        this.settings.launcherPosition &&
+        (clamped.left !== Number(this.settings.launcherPosition.left) ||
+          clamped.top !== Number(this.settings.launcherPosition.top))
+      ) {
+        this.settings = {
+          ...this.settings,
+          launcherPosition: { left: clamped.left, top: clamped.top }
+        };
+        if (typeof this.options.onSettingsChange === "function") {
+          this.options.onSettingsChange(this.settings, { launcherPosition: this.settings.launcherPosition });
+        }
+      }
     }
 
     closeToNearestCorner() {
@@ -553,11 +623,12 @@
       const rect = this.root.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
+      const frame = this.getYouTubeFrameRect();
       const corners = [
-        { x: 0, y: 0, name: "top-left" },
-        { x: window.innerWidth, y: 0, name: "top-right" },
-        { x: 0, y: window.innerHeight, name: "bottom-left" },
-        { x: window.innerWidth, y: window.innerHeight, name: "bottom-right" }
+        { x: frame.left, y: frame.top, name: "top-left" },
+        { x: frame.right, y: frame.top, name: "top-right" },
+        { x: frame.left, y: frame.bottom, name: "bottom-left" },
+        { x: frame.right, y: frame.bottom, name: "bottom-right" }
       ];
       let nearest = corners[0];
       let nearestDistance = Number.POSITIVE_INFINITY;
@@ -570,18 +641,16 @@
         }
       }
 
-      const launcherWidth = 96;
-      const launcherHeight = 32;
       const left = nearest.name.indexOf("right") >= 0
-        ? window.innerWidth - launcherWidth - LAUNCHER_MARGIN
-        : LAUNCHER_MARGIN;
+        ? frame.right - LAUNCHER_WIDTH - LAUNCHER_MARGIN
+        : frame.left + LAUNCHER_MARGIN;
       const top = nearest.name.indexOf("bottom") >= 0
-        ? window.innerHeight - launcherHeight - LAUNCHER_MARGIN
-        : LAUNCHER_MARGIN;
+        ? frame.bottom - LAUNCHER_HEIGHT - LAUNCHER_MARGIN
+        : frame.top + LAUNCHER_MARGIN;
 
       this.updateSettings({
         panelClosed: true,
-        launcherPosition: this.clampPositionToViewport(left, top, launcherWidth, launcherHeight)
+        launcherPosition: this.clampLauncherPosition(left, top, LAUNCHER_WIDTH, LAUNCHER_HEIGHT)
       });
     }
 
@@ -625,39 +694,6 @@
         };
         if (typeof this.options.onSettingsChange === "function") {
           this.options.onSettingsChange(this.settings, { panelPosition: this.settings.panelPosition });
-        }
-      }
-    }
-
-    normalizeSavedLauncherPosition() {
-      if (!this.launcherButton || this.launcherButton.style.display === "none") {
-        return;
-      }
-      if (!this.settings.launcherPosition) {
-        return;
-      }
-      const rect = this.launcherButton.getBoundingClientRect();
-      const clamped = this.clampPositionToViewport(
-        this.settings.launcherPosition.left,
-        this.settings.launcherPosition.top,
-        rect.width,
-        rect.height
-      );
-      this.launcherButton.style.left = clamped.left + "px";
-      this.launcherButton.style.top = clamped.top + "px";
-      this.launcherButton.style.right = "auto";
-      this.launcherButton.style.bottom = "auto";
-
-      const changed =
-        clamped.left !== Number(this.settings.launcherPosition.left) ||
-        clamped.top !== Number(this.settings.launcherPosition.top);
-      if (changed) {
-        this.settings = {
-          ...this.settings,
-          launcherPosition: { left: clamped.left, top: clamped.top }
-        };
-        if (typeof this.options.onSettingsChange === "function") {
-          this.options.onSettingsChange(this.settings, { launcherPosition: this.settings.launcherPosition });
         }
       }
     }
@@ -863,10 +899,9 @@
       if (!state.moved) {
         return;
       }
-      const nextLeft = Math.max(0, Math.min(window.innerWidth - state.width, state.startLeft + deltaX));
-      const nextTop = Math.max(0, Math.min(window.innerHeight - state.height, state.startTop + deltaY));
-      this.launcherButton.style.left = Math.round(nextLeft) + "px";
-      this.launcherButton.style.top = Math.round(nextTop) + "px";
+      const next = this.clampLauncherPosition(state.startLeft + deltaX, state.startTop + deltaY, state.width, state.height);
+      this.launcherButton.style.left = next.left + "px";
+      this.launcherButton.style.top = next.top + "px";
     }
 
     finishLauncherDrag() {
