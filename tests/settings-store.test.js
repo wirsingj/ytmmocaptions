@@ -56,6 +56,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const { normalize } = makeStore();
     const result = normalize({});
     assert.equal(result.panelClosed, true);
+    assert.equal(result.textScale, 120);
   });
 
   await runCase("settings save writes normalized values", async () => {
@@ -67,7 +68,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     });
     assert.equal(persisted.plan, "premium");
     assert.equal(persisted.panelOpacity, 35);
-    assert.equal(persisted.textScale, 160);
+    assert.equal(persisted.textScale, 200);
     assert.ok(saved["dialogueCaptions.settings.v1"]);
   });
 };

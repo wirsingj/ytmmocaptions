@@ -3,6 +3,7 @@
   const chunker = app.chunker;
   const platform = app.platform;
   const bubbleState = app.bubbleState;
+  const settingsStore = app.settingsStore;
 
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
@@ -10,8 +11,8 @@
   const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
-  const DEFAULT_PANEL_MAX_WIDTH = 572;
-  const DEFAULT_PANEL_MAX_HEIGHT = 408;
+  const DEFAULT_PANEL_MAX_WIDTH = 680;
+  const DEFAULT_PANEL_MAX_HEIGHT = 500;
   const DEFAULT_PANEL_MARGIN = 12;
   const PANEL_CONTROL_BAR_GAP = 64;
   const LAUNCHER_MARGIN = 14;
@@ -44,6 +45,7 @@
       this.textScaleWrap = null;
       this.textScaleInput = null;
       this.header = null;
+      this.resetButton = null;
       this.closeButton = null;
       this.launcherButton = null;
       this.jumpBottomButton = null;
@@ -107,6 +109,12 @@
       this.closeButton.className = "dc-btn dc-btn-close";
       this.closeButton.textContent = "v";
       this.closeButton.title = "Collapse to pill";
+
+      this.resetButton = document.createElement("button");
+      this.resetButton.type = "button";
+      this.resetButton.className = "dc-btn dc-btn-reset";
+      this.resetButton.textContent = "Reset";
+      this.resetButton.title = "Reset panel size, position, transparency, and text size";
 
       this.autoScrollButton = document.createElement("button");
       this.autoScrollButton.type = "button";
@@ -185,7 +193,7 @@
       this.textScaleInput.type = "range";
       this.textScaleInput.className = "dc-text-scale-input";
       this.textScaleInput.min = "100";
-      this.textScaleInput.max = "160";
+      this.textScaleInput.max = "200";
       this.textScaleInput.step = "5";
       this.textScaleInput.value = String(this.settings.textScale || 100);
       this.textScaleInput.title = "Text size";
@@ -194,6 +202,7 @@
       controls.append(
         opacityWrap,
         textScaleWrap,
+        this.resetButton,
         this.closeButton
       );
       header.append(titleWrap, controls);
@@ -328,6 +337,7 @@
       }
 
       const onClose = () => this.closeToNearestCorner();
+      const onReset = () => this.resetPanelDefaults();
       const onAuto = () => {
         if (!this.features.autoScrollControl) {
           return;
@@ -342,6 +352,7 @@
       };
 
       this.addListener(this.closeButton, "click", onClose);
+      this.addListener(this.resetButton, "click", onReset);
       this.addListener(this.autoScrollButton, "click", onAuto);
       this.addListener(this.keyboardButton, "click", onKeyboard);
 
@@ -550,7 +561,7 @@
         this.opacityInput.value = String(normalizedOpacity);
       }
       const textScale = Number(this.settings.textScale || 100);
-      const normalizedTextScale = Math.max(100, Math.min(160, textScale));
+      const normalizedTextScale = Math.max(100, Math.min(200, textScale));
       this.root.style.setProperty("--dc-text-scale", String(normalizedTextScale / 100));
       if (this.textScaleInput && this.textScaleInput.value !== String(normalizedTextScale)) {
         this.textScaleInput.value = String(normalizedTextScale);
@@ -609,11 +620,11 @@
       }
       const width = Math.max(
         MIN_PANEL_WIDTH,
-        Math.min(DEFAULT_PANEL_MAX_WIDTH, Math.round(frameWidth * 0.374))
+        Math.min(DEFAULT_PANEL_MAX_WIDTH, Math.round(frameWidth * 0.42))
       );
       const height = Math.max(
         MIN_PANEL_HEIGHT,
-        Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.round(frameHeight * 0.48))
+        Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.round(frameHeight * 0.56))
       );
       const clamped = this.clampPositionToRect(
         frame.left + DEFAULT_PANEL_MARGIN,
@@ -629,6 +640,18 @@
         width: width,
         height: height
       };
+    }
+
+    resetPanelDefaults() {
+      const defaults = settingsStore && settingsStore.DEFAULTS ? settingsStore.DEFAULTS : {};
+      this.updateSettings({
+        panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 88,
+        textScale: Number.isFinite(defaults.textScale) ? defaults.textScale : 120,
+        panelPosition: null,
+        panelSize: null,
+        launcherPosition: null,
+        panelClosed: false
+      });
     }
 
     getYouTubeFrameRect() {

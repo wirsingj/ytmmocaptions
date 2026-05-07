@@ -7,7 +7,7 @@
     plan: "free",
     featureOverrides: {},
     panelOpacity: 88,
-    textScale: 110,
+    textScale: 120,
     panelPosition: null,
     panelSize: null,
     launcherPosition: null,
@@ -47,7 +47,7 @@
     if (!Number.isFinite(number)) {
       return DEFAULTS.textScale;
     }
-    return Math.max(100, Math.min(160, Math.round(number)));
+    return Math.max(100, Math.min(200, Math.round(number)));
   }
 
   function normalizePanelPosition(value) {

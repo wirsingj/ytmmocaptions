@@ -10,15 +10,15 @@
 }
 
 #dc-panel {
-  --dc-text-scale: 1.1;
+  --dc-text-scale: 1.2;
   --dc-fade-x: 100%;
   --dc-fade-y: 0%;
   position: fixed;
   left: 14px;
   bottom: 14px;
-  width: min(31vw, 572px);
+  width: min(36vw, 680px);
   min-width: 350px;
-  height: min(45vh, 408px);
+  height: min(52vh, 500px);
   z-index: 2147483000;
   color: var(--dc-text);
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
@@ -175,6 +175,11 @@
   text-transform: uppercase;
   letter-spacing: 0.02em;
   line-height: 1;
+}
+
+.dc-btn-reset {
+  min-width: 40px;
+  padding: 0 8px;
 }
 
 .dc-btn:hover:not(:disabled) {
