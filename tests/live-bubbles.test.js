@@ -55,4 +55,19 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("bubbleState.consumeFlashOnStart"));
     assert.ok(source.includes("handleDiscontinuousTimeMove"));
   });
+
+  await runCase("clicking or rewinding suppresses stale overlay capture during seek settle", () => {
+    assert.ok(source.includes("liveCaptureSuppressedUntil"));
+    assert.ok(source.includes("suppressLiveCaptureForSeek(this.timelineAction.targetTime)"));
+    assert.ok(source.includes("Date.now() < Number(this.liveCaptureSuppressedUntil || 0)"));
+  });
+
+  await runCase("timeline sync is event-driven and coordinates seek focus without becoming a master loop", () => {
+    assert.ok(source.includes("beginTimelineAction(action)"));
+    assert.ok(source.includes("applyTimelineActionFocus(action)"));
+    assert.ok(source.includes("requestTimelineSync(forceScroll)"));
+    assert.ok(source.includes("commitTimelineSync(forceScroll)"));
+    assert.ok(source.includes("this.requestTimelineSync(false)"));
+    assert.ok(!source.includes("syncTimelineTick"));
+  });
 };

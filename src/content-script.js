@@ -49,6 +49,9 @@
       this.loadAbortController = null;
       this.destroyed = false;
       this.suppressSpaceKeyUp = false;
+      this.timelineActionId = 0;
+      this.timelineAction = null;
+      this.timelineSyncForceScroll = false;
       this.liveCaptureEnabled = false;
       this.liveCapturePollId = 0;
       this.liveLastObservedTime = Number.NaN;
@@ -65,6 +68,7 @@
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
       this.pendingSeekFocus = null;
+      this.liveCaptureSuppressedUntil = 0;
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
@@ -831,6 +835,60 @@
       this.liveOverlayUtterance = null;
     }
 
+    suppressLiveCaptureForSeek(targetTime) {
+      if (!this.liveCaptureEnabled) {
+        return;
+      }
+      this.liveCaptureSuppressedUntil = Date.now() + 850;
+      this.liveLastObservedTime = Number.isFinite(targetTime) ? Number(targetTime) : Number.NaN;
+      this.liveOverlayUtterance = null;
+    }
+
+    beginTimelineAction(action) {
+      const source = action && action.source ? String(action.source) : "timeline";
+      const targetTime = Number(action && action.targetTime);
+      const index = Number.isInteger(action && action.index) ? action.index : -1;
+      const seekStart = Number(action && action.seekStart);
+      const now = Date.now();
+      this.timelineAction = {
+        id: this.timelineActionId + 1,
+        source: source,
+        targetTime: Number.isFinite(targetTime) ? Math.max(0, targetTime) : 0,
+        index: index,
+        seekStart: Number.isFinite(seekStart) ? Math.max(0, seekStart) : Number.NaN,
+        forceGlowReset: action && action.forceGlowReset !== false,
+        forceScroll: Boolean(action && action.forceScroll),
+        startedAt: now,
+        settleUntil: now + 850
+      };
+      this.timelineActionId = this.timelineAction.id;
+      this.suppressLiveCaptureForSeek(this.timelineAction.targetTime);
+      return this.timelineAction;
+    }
+
+    applyTimelineActionFocus(action) {
+      if (!action || !this.panel || action.index < 0 || !Array.isArray(this.allChunks) || action.index >= this.allChunks.length) {
+        return;
+      }
+      const chunk = this.allChunks[action.index];
+      const seekStart = Number.isFinite(action.seekStart) ? action.seekStart : this.getChunkSeekStart(chunk);
+      this.ensureChunkVisible(action.index);
+      this.pendingSeekFocus = {
+        index: action.index,
+        minTime: Math.max(0, Math.min(action.targetTime, Number(chunk.start || 0) - 0.55)),
+        maxTime: Math.max(Number(chunk.end || 0), Number(chunk.start || 0) + this.getKeyboardStepSeconds()),
+        expiresAt: Date.now() + 2600
+      };
+      this.activeIndex = action.index;
+      this.panel.setActiveIndex(action.index, { ensureVisible: action.forceScroll });
+      if (typeof this.panel.setPlaybackTime === "function") {
+        this.panel.setPlaybackTime(action.targetTime, { forceGlowReset: action.forceGlowReset });
+      }
+      if (Number.isFinite(seekStart)) {
+        this.markBubbleFlashOnStart(action.index, seekStart, action.source);
+      }
+    }
+
     isDiscontinuousLiveTimeMove(currentTime) {
       const last = Number(this.liveLastObservedTime);
       if (!Number.isFinite(last)) {
@@ -953,6 +1011,10 @@
 
     captureLiveCaptionLine() {
       if (!this.liveCaptureEnabled || !this.video) {
+        return;
+      }
+
+      if (Date.now() < Number(this.liveCaptureSuppressedUntil || 0)) {
         return;
       }
 
@@ -1278,6 +1340,7 @@
       this.liveCaptureEnabled = true;
       this.cues = [];
       this.revealedChunkCount = 0;
+      this.liveCaptureSuppressedUntil = 0;
       this.liveLastObservedTime = Number.NaN;
       this.liveMaxBucketIndexSeen = -1;
       this.liveLockCutoffIndex = -1;
@@ -1301,6 +1364,7 @@
     disableLiveCaptureMode() {
       this.liveCaptureEnabled = false;
       this.liveLastObservedTime = Number.NaN;
+      this.liveCaptureSuppressedUntil = 0;
       this.liveMaxBucketIndexSeen = -1;
       this.liveLockCutoffIndex = -1;
       this.liveOverlayAnchorOffsetSeconds = 2.5;
@@ -1314,14 +1378,27 @@
       }
     }
 
-    scheduleSync() {
+    requestTimelineSync(forceScroll) {
+      if (forceScroll) {
+        this.timelineSyncForceScroll = true;
+      }
       if (this.syncRafId) {
         return;
       }
       this.syncRafId = platform.requestFrame(() => {
         this.syncRafId = 0;
-        this.syncActiveChunk(false);
+        const shouldForceScroll = Boolean(this.timelineSyncForceScroll);
+        this.timelineSyncForceScroll = false;
+        this.commitTimelineSync(shouldForceScroll);
       });
+    }
+
+    scheduleSync() {
+      this.requestTimelineSync(false);
+    }
+
+    commitTimelineSync(forceScroll) {
+      this.syncActiveChunk(Boolean(forceScroll));
     }
 
     ensureChunkVisible(indexInclusive) {
@@ -2207,13 +2284,29 @@
 
       target = Math.max(0, Math.min(upperBound, target));
       if (flashIndex >= 0) {
-        this.markBubbleFlashOnStart(flashIndex, flashAt, "rewind");
+        const action = this.beginTimelineAction({
+          source: "rewind",
+          targetTime: target,
+          index: flashIndex,
+          seekStart: flashAt,
+          forceGlowReset: true,
+          forceScroll: true
+        });
+        this.applyTimelineActionFocus(action);
+      } else {
+        this.beginTimelineAction({
+          source: isBackward ? "rewind" : "forward",
+          targetTime: target,
+          index: -1,
+          forceGlowReset: true,
+          forceScroll: true
+        });
       }
       const wasPaused = video.paused;
       video.currentTime = target;
-      this.syncActiveChunk(true);
-      this.scheduleSync();
-      window.setTimeout(() => this.syncActiveChunk(true), 80);
+      this.commitTimelineSync(true);
+      this.requestTimelineSync(true);
+      window.setTimeout(() => this.commitTimelineSync(true), 80);
       window.setTimeout(() => this.enforcePlaybackState(wasPaused), 0);
       window.setTimeout(() => this.enforcePlaybackState(wasPaused), 80);
     }
@@ -2261,14 +2354,16 @@
         targetTime = Math.max(targetTime, Number(opts.minTargetTime));
       }
       const wasPaused = video.paused;
-      video.currentTime = targetTime;
-      this.pendingSeekFocus = {
+      const action = this.beginTimelineAction({
+        source: "click",
+        targetTime: targetTime,
         index: index,
-        minTime: Math.max(0, Math.min(targetTime, Number(chunk.start || 0) - seekLeadSeconds - 0.1)),
-        maxTime: Math.max(Number(chunk.end || 0), Number(chunk.start || 0) + this.getKeyboardStepSeconds()),
-        expiresAt: Date.now() + 2600
-      };
-      this.markBubbleFlashOnStart(index, seekStart, "click");
+        seekStart: seekStart,
+        forceGlowReset: true,
+        forceScroll: opts.ensureVisible !== false
+      });
+      this.applyTimelineActionFocus(action);
+      video.currentTime = targetTime;
       const autoplay = opts.autoplay !== false;
       if (autoplay) {
         const playResult = video.play();
@@ -2279,11 +2374,8 @@
         window.setTimeout(() => this.enforcePlaybackState(wasPaused), 0);
         window.setTimeout(() => this.enforcePlaybackState(wasPaused), 80);
       }
-      this.activeIndex = index;
-      this.panel.setActiveIndex(index, { ensureVisible: opts.ensureVisible !== false });
-      if (typeof this.panel.setPlaybackTime === "function") {
-        this.panel.setPlaybackTime(targetTime, { forceGlowReset: true });
-      }
+      this.commitTimelineSync(opts.ensureVisible !== false);
+      this.requestTimelineSync(opts.ensureVisible !== false);
     }
   }
 
