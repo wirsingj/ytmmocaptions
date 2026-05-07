@@ -383,12 +383,7 @@
       if (!collapsed) {
         return "";
       }
-      const beforeWords = normalized.split(/\s+/).filter(Boolean).length;
-      const afterWords = collapsed.split(/\s+/).filter(Boolean).length;
-      if (afterWords < beforeWords) {
-        return collapsed;
-      }
-      return normalized;
+      return this.collapseRepeatedCaptionSentences(collapsed);
     }
 
     toCaptionCanonical(text) {
@@ -436,6 +431,31 @@
       }
 
       return this.normalizeLiveCaptionText(compact.join(" "));
+    }
+
+    collapseRepeatedCaptionSentences(text) {
+      const input = this.normalizeLiveCaptionText(text);
+      if (!input) {
+        return "";
+      }
+      const parts = input.match(/[^.!?]+[.!?]["')\]]*|[^.!?]+$/g) || [input];
+      const seen = new Set();
+      const kept = [];
+      for (let index = 0; index < parts.length; index += 1) {
+        const part = this.normalizeLiveCaptionText(parts[index]);
+        const canonical = this.toCaptionCanonical(part);
+        if (!part || !canonical) {
+          continue;
+        }
+        if (canonical.length >= 24 && seen.has(canonical)) {
+          continue;
+        }
+        if (canonical.length >= 24) {
+          seen.add(canonical);
+        }
+        kept.push(part);
+      }
+      return this.normalizeLiveCaptionText(kept.join(" "));
     }
 
     dedupeCaptionCandidates(candidates) {
@@ -1457,7 +1477,10 @@
       const bucketCount = Array.isArray(previousChunk.bucketIndexes) ? previousChunk.bucketIndexes.length : 1;
       const previousLength = this.normalizeLiveCaptionText(previousChunk.text).length;
       const combined = this.normalizeLiveCaptionText(previousChunk.text + " " + nextChunk.text);
-      if (bucketCount >= 3 || previousLength >= 420 || combined.length >= 560) {
+      if (bucketCount >= 3 || previousLength >= 320 || combined.length >= 460) {
+        return true;
+      }
+      if (bucketCount >= 2 && previousLength >= 230) {
         return true;
       }
 
@@ -1587,7 +1610,46 @@
       for (let index = 0; index < this.liveBubbles.length; index += 1) {
         this.liveBubbles[index].id = index;
       }
-      return this.liveBubbles;
+      return this.polishLiveBubbles(this.liveBubbles);
+    }
+
+    polishLiveBubbles(bubbles) {
+      const source = Array.isArray(bubbles) ? bubbles : [];
+      const polished = [];
+      const maxLiveBubbleChars = 260;
+
+      for (let index = 0; index < source.length; index += 1) {
+        const bubble = source[index];
+        const text = this.cleanCaptionCandidateText(bubble && bubble.text ? bubble.text : "");
+        if (!bubble || !text) {
+          continue;
+        }
+        const parts = this.splitTextByNaturalBreaks(text, maxLiveBubbleChars, false);
+        if (parts.length <= 1) {
+          polished.push({ ...bubble, text: text });
+          continue;
+        }
+
+        const start = Number(bubble.start || 0);
+        const end = Math.max(start + 0.25, Number(bubble.end || start + 0.25));
+        const duration = end - start;
+        for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+          const partStart = start + (duration * partIndex) / parts.length;
+          const partEnd = start + (duration * (partIndex + 1)) / parts.length;
+          polished.push({
+            ...bubble,
+            start: partStart,
+            end: Math.max(partStart + 0.25, partEnd),
+            seekStart: partIndex === 0 ? bubble.seekStart : partStart,
+            text: parts[partIndex]
+          });
+        }
+      }
+
+      for (let index = 0; index < polished.length; index += 1) {
+        polished[index].id = index;
+      }
+      return polished;
     }
 
     rebuildChunks() {
@@ -1657,12 +1719,53 @@
       return /[.!?]["')\]]?$/.test(String(text || "").trim());
     }
 
-    splitTextByNaturalBreaks(text, maxChars) {
+    splitLongCaptionThought(text, maxChars) {
+      const normalized = this.normalizeLiveCaptionText(text);
+      const limit = Number.isFinite(maxChars) ? Math.max(120, Number(maxChars)) : 330;
+      if (!normalized || normalized.length <= limit) {
+        return normalized ? [normalized] : [];
+      }
+
+      const pieces = [];
+      let remaining = normalized;
+      while (remaining.length > limit) {
+        const search = remaining.slice(0, limit + 1);
+        let cutAt = Math.max(search.lastIndexOf(", "), search.lastIndexOf("; "), search.lastIndexOf(": "));
+        if (cutAt < 120) {
+          cutAt = -1;
+          const softBreaks = /\s+(?:and|but|so|because|which|then|if|when|where|while|uh|um)\s+/gi;
+          let match = softBreaks.exec(search);
+          while (match) {
+            if (match.index >= 120) {
+              cutAt = match.index;
+            }
+            match = softBreaks.exec(search);
+          }
+        }
+        if (cutAt < 120) {
+          break;
+        }
+
+        const piece = this.normalizeLiveCaptionText(remaining.slice(0, cutAt + 1));
+        if (piece) {
+          pieces.push(piece);
+        }
+        remaining = this.normalizeLiveCaptionText(remaining.slice(cutAt + 1));
+      }
+
+      if (remaining) {
+        pieces.push(remaining);
+      }
+      return pieces.length ? pieces : [normalized];
+    }
+
+    splitTextByNaturalBreaks(text, maxChars, allowWordSplit) {
       const normalized = this.normalizeLiveCaptionText(text);
       if (!normalized) {
         return [];
       }
       const limit = Number.isFinite(maxChars) ? Math.max(120, Number(maxChars)) : 330;
+      const canSplitWords = allowWordSplit !== false;
       if (normalized.length <= limit) {
         return [normalized];
       }
@@ -1690,6 +1793,19 @@
         }
         if (sentence.length <= limit) {
           buffer = buffer ? buffer + " " + sentence : sentence;
+          continue;
+        }
+
+        if (!canSplitWords) {
+          const softParts = this.splitLongCaptionThought(sentence, limit);
+          for (let softIndex = 0; softIndex < softParts.length; softIndex += 1) {
+            const softPart = softParts[softIndex];
+            const softCandidate = buffer ? buffer + " " + softPart : softPart;
+            if (buffer && softCandidate.length > limit) {
+              flush();
+            }
+            buffer = buffer ? buffer + " " + softPart : softPart;
+          }
           continue;
         }
 
