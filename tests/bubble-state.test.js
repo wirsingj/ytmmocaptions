@@ -117,4 +117,44 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.equal(records[1].id, 1);
     assert.equal(records[1].text, "second");
   });
+
+  await runCase("reading glow range advances deterministically through phrase windows", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 10,
+      end: 18,
+      seekStart: 10,
+      text: "one two three four five six seven eight"
+    };
+
+    const early = bubbleState.getReadingGlowRange(bubble, 10.1);
+    const middle = bubbleState.getReadingGlowRange(bubble, 14);
+    const late = bubbleState.getReadingGlowRange(bubble, 17.9);
+
+    assert.equal(early.firstWord, 0);
+    assert.ok(middle.firstWord > early.firstWord);
+    assert.ok(late.firstWord >= middle.firstWord);
+    assert.ok(late.lastWord <= 7);
+  });
+
+  await runCase("reading glow uses a small rolling phrase window for rapid text", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 3,
+      text: "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen"
+    };
+    const range = bubbleState.getReadingGlowRange(bubble, 1.5);
+    assert.ok(range.lastWord - range.firstWord + 1 <= 5);
+    assert.ok(range.lastWord - range.firstWord + 1 >= 2);
+  });
+
+  await runCase("reading glow split preserves text without layout-side mutations", () => {
+    const bubbleState = loadBubbleState();
+    const text = "alpha beta gamma delta";
+    const range = bubbleState.getReadingGlowRange({ start: 0, end: 4, text }, 2);
+    const parts = bubbleState.splitTextByRange(text, range);
+    assert.equal(parts.map((part) => part.text).join(""), text);
+    assert.equal(parts.filter((part) => part.active).length, 1);
+  });
 };

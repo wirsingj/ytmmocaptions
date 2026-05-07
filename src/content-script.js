@@ -1343,6 +1343,9 @@
         return;
       }
       const currentTime = this.video.currentTime || 0;
+      if (typeof this.panel.setPlaybackTime === "function") {
+        this.panel.setPlaybackTime(currentTime);
+      }
       const pending = this.pendingSeekFocus;
       if (
         pending &&

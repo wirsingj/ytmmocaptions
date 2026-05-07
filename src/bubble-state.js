@@ -14,6 +14,14 @@
     return String(text || "").split(/\s+/).filter(Boolean).length;
   }
 
+  function clamp(value, min, max) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return min;
+    }
+    return Math.max(min, Math.min(max, number));
+  }
+
   function createBubbleRecord(data, cleanText) {
     const source = data && typeof data === "object" ? data : {};
     const start = Math.max(0, asNumber(source.start, 0));
@@ -146,11 +154,83 @@
     return true;
   }
 
+  function getWordRanges(text) {
+    const source = String(text || "");
+    const ranges = [];
+    const pattern = /\S+/g;
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length
+      });
+    }
+    return ranges;
+  }
+
+  function getReadingGlowRange(chunk, currentTime, options) {
+    const source = chunk && typeof chunk === "object" ? chunk : {};
+    const text = String(source.text || "");
+    const words = getWordRanges(text);
+    if (!text || !words.length) {
+      return null;
+    }
+
+    const start = asNumber(source.seekStart, asNumber(source.start, 0));
+    const end = Math.max(start + 0.25, asNumber(source.end, start + 0.25));
+    const now = Number(currentTime);
+    if (!Number.isFinite(now)) {
+      return null;
+    }
+
+    const opts = options && typeof options === "object" ? options : {};
+    const duration = Math.max(0.25, end - start);
+    const progress = clamp((now - start) / duration, 0, 0.999);
+    const wordCount = words.length;
+    const wordsPerSecond = wordCount / duration;
+    const baseWindow =
+      Number.isFinite(opts.windowWords) && opts.windowWords > 0
+        ? Math.round(opts.windowWords)
+        : wordsPerSecond >= 4.8
+          ? 5
+          : wordsPerSecond >= 3.2
+            ? 4
+            : 3;
+    const windowWords = Math.max(2, Math.min(5, baseWindow));
+    const center = Math.floor(progress * wordCount);
+    const firstWord = Math.max(0, Math.min(wordCount - 1, center));
+    const lastWord = Math.min(wordCount - 1, firstWord + windowWords - 1);
+
+    return {
+      start: words[firstWord].start,
+      end: words[lastWord].end,
+      firstWord,
+      lastWord,
+      progress
+    };
+  }
+
+  function splitTextByRange(text, range) {
+    const source = String(text || "");
+    if (!range || !Number.isFinite(range.start) || !Number.isFinite(range.end) || range.end <= range.start) {
+      return [{ text: source, active: false }];
+    }
+    const start = Math.max(0, Math.min(source.length, Math.floor(range.start)));
+    const end = Math.max(start, Math.min(source.length, Math.ceil(range.end)));
+    return [
+      { text: source.slice(0, start), active: false },
+      { text: source.slice(start, end), active: true },
+      { text: source.slice(end), active: false }
+    ].filter((part) => part.text);
+  }
+
   app.bubbleState = {
     adjustSeekStartForTrim,
     consumeFlashOnStart,
     createBubbleRecord,
+    getReadingGlowRange,
     markFlashOnStart,
+    splitTextByRange,
     tokenCount,
     trimChunkAgainstPrevious,
     trimLeadingOverlap,

@@ -2,6 +2,7 @@
   const app = (scope.DialogueCaptions = scope.DialogueCaptions || {});
   const chunker = app.chunker;
   const platform = app.platform;
+  const bubbleState = app.bubbleState;
 
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
@@ -49,6 +50,9 @@
 
       this.chunks = [];
       this.activeIndex = -1;
+      this.playbackTime = Number.NaN;
+      this.lastGlowIndex = -1;
+      this.lastGlowWordStart = -1;
       this.currentWindowStart = -1;
       this.currentWindowEnd = -1;
       this.dragState = null;
@@ -1090,6 +1094,15 @@
       this.scheduleWindowRender(!hasChanged);
     }
 
+    setPlaybackTime(currentTime) {
+      const time = Number(currentTime);
+      if (!Number.isFinite(time)) {
+        return;
+      }
+      this.playbackTime = time;
+      this.updateActiveReadingGlow();
+    }
+
     flashChunk(index) {
       if (!this.windowContainer || index < this.currentWindowStart || index > this.currentWindowEnd) {
         return;
@@ -1237,6 +1250,7 @@
 
       if (!shouldRebuild) {
         this.updateActiveClass();
+        this.updateActiveReadingGlow();
         return;
       }
 
@@ -1262,17 +1276,47 @@
 
         const text = document.createElement("span");
         text.className = "dc-chunk-text";
-        text.textContent = chunk.text;
 
         content.append(time, text);
         item.append(seekIcon, content);
         if (index === this.activeIndex) {
           item.classList.add("is-current");
         }
+        this.renderChunkText(text, chunk, index === this.activeIndex);
         fragment.append(item);
       }
 
       this.windowContainer.replaceChildren(fragment);
+    }
+
+    renderChunkText(textElement, chunk, isActive) {
+      if (!textElement) {
+        return;
+      }
+      const text = chunk && typeof chunk.text === "string" ? chunk.text : "";
+      if (!isActive || !bubbleState || typeof bubbleState.getReadingGlowRange !== "function") {
+        textElement.textContent = text;
+        return;
+      }
+
+      const range = bubbleState.getReadingGlowRange(chunk, this.playbackTime);
+      if (!range || typeof bubbleState.splitTextByRange !== "function") {
+        textElement.textContent = text;
+        return;
+      }
+
+      const parts = bubbleState.splitTextByRange(text, range);
+      const fragment = document.createDocumentFragment();
+      for (let index = 0; index < parts.length; index += 1) {
+        const part = parts[index];
+        const span = document.createElement("span");
+        span.textContent = part.text;
+        if (part.active) {
+          span.className = "dc-reading-glow";
+        }
+        fragment.append(span);
+      }
+      textElement.replaceChildren(fragment);
     }
 
     updateActiveClass() {
@@ -1289,6 +1333,36 @@
       const next = this.windowContainer.querySelector("[data-index='" + this.activeIndex + "']");
       if (next) {
         next.classList.add("is-current");
+      }
+    }
+
+    updateActiveReadingGlow() {
+      if (!this.windowContainer || this.activeIndex < this.currentWindowStart || this.activeIndex > this.currentWindowEnd) {
+        return;
+      }
+      const chunk = this.chunks[this.activeIndex];
+      if (!chunk || !bubbleState || typeof bubbleState.getReadingGlowRange !== "function") {
+        return;
+      }
+      const range = bubbleState.getReadingGlowRange(chunk, this.playbackTime);
+      const nextGlowWordStart = range ? range.firstWord : -1;
+      if (this.lastGlowIndex === this.activeIndex && this.lastGlowWordStart === nextGlowWordStart) {
+        return;
+      }
+
+      if (this.lastGlowIndex >= 0 && this.lastGlowIndex !== this.activeIndex) {
+        const previousText = this.windowContainer.querySelector("[data-index='" + this.lastGlowIndex + "'] .dc-chunk-text");
+        const previousChunk = this.chunks[this.lastGlowIndex];
+        if (previousText && previousChunk) {
+          this.renderChunkText(previousText, previousChunk, false);
+        }
+      }
+
+      const textElement = this.windowContainer.querySelector("[data-index='" + this.activeIndex + "'] .dc-chunk-text");
+      if (textElement) {
+        this.renderChunkText(textElement, chunk, true);
+        this.lastGlowIndex = this.activeIndex;
+        this.lastGlowWordStart = nextGlowWordStart;
       }
     }
   }
