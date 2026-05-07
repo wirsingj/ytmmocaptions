@@ -520,6 +520,12 @@
       return this.normalizeLiveCaptionText(previous + " " + next);
     }
 
+    normalizeCaptionToken(token) {
+      return String(token || "")
+        .toLowerCase()
+        .replace(/[^\w]/g, "");
+    }
+
     trimLeadingCaptionOverlap(previousText, nextText) {
       const previous = this.normalizeLiveCaptionText(previousText);
       const next = this.normalizeLiveCaptionText(nextText);
@@ -533,12 +539,8 @@
       for (let size = maxOverlap; size >= 3; size -= 1) {
         let matches = true;
         for (let index = 0; index < size; index += 1) {
-          const left = String(previousTokens[previousTokens.length - size + index] || "")
-            .toLowerCase()
-            .replace(/[^\w]/g, "");
-          const right = String(nextTokens[index] || "")
-            .toLowerCase()
-            .replace(/[^\w]/g, "");
+          const left = this.normalizeCaptionToken(previousTokens[previousTokens.length - size + index]);
+          const right = this.normalizeCaptionToken(nextTokens[index]);
           if (!left || left !== right) {
             matches = false;
             break;
@@ -551,6 +553,17 @@
         return trimmed || next;
       }
       return next;
+    }
+
+    getPreviousLiveBubble(bubble) {
+      if (!bubble || !Array.isArray(this.liveBubbles)) {
+        return null;
+      }
+      const index = this.liveBubbles.indexOf(bubble);
+      if (index <= 0) {
+        return null;
+      }
+      return this.liveBubbles[index - 1] || null;
     }
 
     isHighOverlapText(leftText, rightText) {
@@ -1538,7 +1551,11 @@
         const existingBubble = this.liveBucketToBubble.get(bucketIndex);
         if (existingBubble) {
           if (!existingBubble.locked) {
-            this.appendBucketToLiveBubble(existingBubble, { ...chunk, text: text }, false);
+            const previousBubble = this.getPreviousLiveBubble(existingBubble);
+            const nextText = previousBubble ? this.trimLeadingCaptionOverlap(previousBubble.text, text) : text;
+            if (nextText) {
+              this.appendBucketToLiveBubble(existingBubble, { ...chunk, text: nextText }, false);
+            }
           }
           continue;
         }
