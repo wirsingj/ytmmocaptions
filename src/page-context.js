@@ -12,6 +12,7 @@
   const BRIDGE_TIMEDTEXT_CAPTURE_TYPE = "DIALOGUE_CAPTIONS_PAGE_TIMEDTEXT_CAPTURE";
   const BRIDGE_SCRIPT_ID = "dc-page-context-bridge";
   const BRIDGE_BOOT_MAX_ATTEMPTS = 4;
+  const BRIDGE_SCRIPT_PATHS = ["scripts/page-bridge.js", "src/page-bridge.js"];
 
   let snapshot = null;
   let requestCounter = 0;
@@ -19,6 +20,7 @@
   const timedtextCaptures = [];
   let bridgeEnsureAttempts = 0;
   let bridgeEnsureTimer = 0;
+  let bridgeScriptPathIndex = 0;
 
   function isObject(value) {
     return Boolean(value && typeof value === "object");
@@ -159,7 +161,7 @@
     bridgeEnsureAttempts += 1;
     const script = document.createElement("script");
     script.id = BRIDGE_SCRIPT_ID;
-    script.src = platform.runtimeGetURL("scripts/page-bridge.js");
+    script.src = platform.runtimeGetURL(BRIDGE_SCRIPT_PATHS[bridgeScriptPathIndex]);
     script.async = false;
     script.onload = function () {
       script.remove();
@@ -170,6 +172,9 @@
     };
     script.onerror = function () {
       script.remove();
+      if (bridgeScriptPathIndex < BRIDGE_SCRIPT_PATHS.length - 1) {
+        bridgeScriptPathIndex += 1;
+      }
       if (bridgeEnsureAttempts < BRIDGE_BOOT_MAX_ATTEMPTS) {
         if (bridgeEnsureTimer) {
           scope.clearTimeout(bridgeEnsureTimer);

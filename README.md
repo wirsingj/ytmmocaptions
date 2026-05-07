@@ -96,10 +96,12 @@ For Chrome Web Store upload, use:
 ### Firefox
 
 1. Run `npm run build:firefox:xpi`.
-2. Use Firefox version 121 or newer.
+2. Use Firefox version 140 or newer.
 3. Open `about:debugging#/runtime/this-firefox`.
 4. Click Load Temporary Add-on.
 5. Select `build/firefox/manifest.json`.
+
+In `about:debugging`, the temporary extension location should end with `build/firefox/`. If it points at the project root, remove it and load `build/firefox/manifest.json` again.
 
 For AMO signing/upload, use:
 - `build/firefox/ytmmocaptions-firefox-v<version>.xpi`
@@ -115,3 +117,4 @@ For AMO signing/upload, use:
 - Privacy details are in `PRIVACY.md`.
 - License terms are in `LICENSE`.
 - Firefox manifest includes `browser_specific_settings.gecko.data_collection_permissions.required=["none"]`.
+- Firefox minimum version is 140+ because that manifest declaration is only supported in newer Firefox releases.

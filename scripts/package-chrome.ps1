@@ -32,9 +32,8 @@ foreach ($contentScript in $manifest.content_scripts) {
   }
 }
 
-if (Test-Path -LiteralPath $zipPath) {
-  Remove-Item -LiteralPath $zipPath -Force
-}
+Get-ChildItem -LiteralPath $chromeBuild -File -Filter "ytmmocaptions-chrome-v*.zip" |
+  Remove-Item -Force
 
 $files = Get-ChildItem -LiteralPath $chromeBuild -Recurse -File | Where-Object {
   $_.FullName -ne $zipPath -and $_.Extension -notin @(".zip", ".xpi")

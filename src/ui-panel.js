@@ -411,6 +411,11 @@
         this.scheduleWindowRender();
       };
       this.addListener(this.listViewport, "scroll", onScroll, { passive: true });
+
+      const onResize = () => {
+        this.applySettings();
+      };
+      this.addListener(window, "resize", onResize);
     }
 
     updateSettings(patch) {
@@ -528,7 +533,86 @@
           this.launcherButton.style.bottom = "";
         }
       }
+      this.normalizeSavedPanelPosition();
+      this.normalizeSavedLauncherPosition();
       this.updateJumpBottomVisibility();
+    }
+
+    clampPositionToViewport(left, top, width, height) {
+      const safeWidth = Math.max(1, Number(width) || 1);
+      const safeHeight = Math.max(1, Number(height) || 1);
+      const maxLeft = Math.max(0, window.innerWidth - safeWidth);
+      const maxTop = Math.max(0, window.innerHeight - safeHeight);
+      return {
+        left: Math.max(0, Math.min(maxLeft, Math.round(Number(left) || 0))),
+        top: Math.max(0, Math.min(maxTop, Math.round(Number(top) || 0)))
+      };
+    }
+
+    normalizeSavedPanelPosition() {
+      if (!this.root || this.root.style.display === "none") {
+        return;
+      }
+      if (!this.settings.panelPosition) {
+        return;
+      }
+      const rect = this.root.getBoundingClientRect();
+      const clamped = this.clampPositionToViewport(
+        this.settings.panelPosition.left,
+        this.settings.panelPosition.top,
+        rect.width,
+        rect.height
+      );
+      this.root.style.left = clamped.left + "px";
+      this.root.style.top = clamped.top + "px";
+      this.root.style.right = "auto";
+      this.root.style.bottom = "auto";
+
+      const changed =
+        clamped.left !== Number(this.settings.panelPosition.left) ||
+        clamped.top !== Number(this.settings.panelPosition.top);
+      if (changed) {
+        this.settings = {
+          ...this.settings,
+          panelPosition: { left: clamped.left, top: clamped.top }
+        };
+        if (typeof this.options.onSettingsChange === "function") {
+          this.options.onSettingsChange(this.settings, { panelPosition: this.settings.panelPosition });
+        }
+      }
+    }
+
+    normalizeSavedLauncherPosition() {
+      if (!this.launcherButton || this.launcherButton.style.display === "none") {
+        return;
+      }
+      if (!this.settings.launcherPosition) {
+        return;
+      }
+      const rect = this.launcherButton.getBoundingClientRect();
+      const clamped = this.clampPositionToViewport(
+        this.settings.launcherPosition.left,
+        this.settings.launcherPosition.top,
+        rect.width,
+        rect.height
+      );
+      this.launcherButton.style.left = clamped.left + "px";
+      this.launcherButton.style.top = clamped.top + "px";
+      this.launcherButton.style.right = "auto";
+      this.launcherButton.style.bottom = "auto";
+
+      const changed =
+        clamped.left !== Number(this.settings.launcherPosition.left) ||
+        clamped.top !== Number(this.settings.launcherPosition.top);
+      if (changed) {
+        this.settings = {
+          ...this.settings,
+          launcherPosition: { left: clamped.left, top: clamped.top }
+        };
+        if (typeof this.options.onSettingsChange === "function") {
+          this.options.onSettingsChange(this.settings, { launcherPosition: this.settings.launcherPosition });
+        }
+      }
     }
 
     handleHeaderPointerDown(event) {

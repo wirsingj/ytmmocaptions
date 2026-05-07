@@ -41,9 +41,8 @@ foreach ($contentScript in $manifest.content_scripts) {
   }
 }
 
-if (Test-Path -LiteralPath $xpiPath) {
-  Remove-Item -LiteralPath $xpiPath -Force
-}
+Get-ChildItem -LiteralPath $firefoxBuild -File -Filter "ytmmocaptions-firefox-v*.xpi" |
+  Remove-Item -Force
 
 $fileStream = [System.IO.File]::Open($xpiPath, [System.IO.FileMode]::CreateNew)
 $files = Get-ChildItem -LiteralPath $firefoxBuild -Recurse -File | Where-Object {
