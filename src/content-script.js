@@ -1407,12 +1407,7 @@
         this.ensureChunkVisible(pending.index);
         this.activeIndex = Math.max(0, Math.min(pending.index, this.chunks.length - 1));
         this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
-        if (!pending.didFlash && Number.isFinite(pending.flashAt) && currentTime >= pending.flashAt) {
-          pending.didFlash = true;
-          if (typeof this.panel.flashChunk === "function") {
-            this.panel.flashChunk(this.activeIndex);
-          }
-        }
+        this.triggerBubbleStartFlashIfReady(sourceChunks[pending.index], this.activeIndex, currentTime);
         return;
       }
       this.pendingSeekFocus = null;
@@ -1423,6 +1418,22 @@
       this.ensureChunkVisible(nextIndex);
       this.activeIndex = Math.max(0, Math.min(nextIndex, this.chunks.length - 1));
       this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
+      this.triggerBubbleStartFlashIfReady(sourceChunks[nextIndex], this.activeIndex, currentTime);
+    }
+
+    triggerBubbleStartFlashIfReady(chunk, visibleIndex, currentTime) {
+      if (!chunk || !chunk.flashOnStart || chunk.flashOnStart.done || !this.panel) {
+        return;
+      }
+      const flashAt = Number(chunk.flashOnStart.at);
+      const now = Number(currentTime);
+      if (!Number.isFinite(flashAt) || !Number.isFinite(now) || now < flashAt) {
+        return;
+      }
+      chunk.flashOnStart.done = true;
+      if (typeof this.panel.flashChunk === "function") {
+        this.panel.flashChunk(visibleIndex);
+      }
     }
 
     abortTranscriptLoad() {
@@ -2214,6 +2225,8 @@
         ? Math.max(0, now - stepSeconds)
         : now + stepSeconds;
       let target = rawTarget;
+      let flashIndex = -1;
+      let flashAt = Number.NaN;
 
       if (isBackward && canUseChunkNavigation) {
         const rewindIndex = chunker.findChunkIndexAtTime(sourceChunks, rawTarget);
@@ -2221,11 +2234,16 @@
           const anchoredStart = this.getChunkSeekStart(sourceChunks[rewindIndex]);
           if (Number.isFinite(anchoredStart) && anchoredStart <= now - 0.2) {
             target = anchoredStart;
+            flashIndex = rewindIndex;
+            flashAt = anchoredStart;
           }
         }
       }
 
       target = Math.max(0, Math.min(upperBound, target));
+      if (flashIndex >= 0) {
+        this.markBubbleFlashOnStart(flashIndex, flashAt, "rewind");
+      }
       const wasPaused = video.paused;
       video.currentTime = target;
       this.syncActiveChunk(true);
@@ -2233,6 +2251,21 @@
       window.setTimeout(() => this.syncActiveChunk(true), 80);
       window.setTimeout(() => this.enforcePlaybackState(wasPaused), 0);
       window.setTimeout(() => this.enforcePlaybackState(wasPaused), 80);
+    }
+
+    markBubbleFlashOnStart(index, seekStart, source) {
+      if (!Array.isArray(this.allChunks) || index < 0 || index >= this.allChunks.length) {
+        return;
+      }
+      const flashAt = Number(seekStart);
+      if (!Number.isFinite(flashAt)) {
+        return;
+      }
+      this.allChunks[index].flashOnStart = {
+        at: flashAt,
+        source: source || "seek",
+        done: false
+      };
     }
 
     enforcePlaybackState(wasPaused) {
@@ -2276,10 +2309,9 @@
         index: index,
         minTime: Math.max(0, Math.min(targetTime, Number(chunk.start || 0) - seekLeadSeconds - 0.1)),
         maxTime: Math.max(Number(chunk.end || 0), Number(chunk.start || 0) + this.getKeyboardStepSeconds()),
-        flashAt: seekStart,
-        didFlash: false,
         expiresAt: Date.now() + 2600
       };
+      this.markBubbleFlashOnStart(index, seekStart, "click");
       const autoplay = opts.autoplay !== false;
       if (autoplay) {
         const playResult = video.play();
