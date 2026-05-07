@@ -1569,18 +1569,16 @@
       const bucketCount = Array.isArray(previousChunk.bucketIndexes) ? previousChunk.bucketIndexes.length : 1;
       const previousLength = this.normalizeLiveCaptionText(previousChunk.text).length;
       const combined = this.normalizeLiveCaptionText(previousChunk.text + " " + nextChunk.text);
-      if (bucketCount >= 3 || previousLength >= 320 || combined.length >= 460) {
-        return true;
-      }
-      if (bucketCount >= 2 && previousLength >= 230) {
-        return true;
-      }
 
       if (!this.textEndsNaturally(previousChunk.text)) {
-        return false;
+        return bucketCount >= 5 || previousLength >= 520 || combined.length >= 640;
       }
 
-      return previousLength >= 190 || combined.length >= 330;
+      if (bucketCount >= 3 || previousLength >= 300 || combined.length >= 440) {
+        return true;
+      }
+
+      return previousLength >= 180 || combined.length >= 340;
     }
 
     getLiveChunkBucketIndex(chunk) {
@@ -1820,7 +1818,7 @@
 
     createLockedDisplayBubbles(bubble) {
       const records = [];
-      const maxLiveBubbleChars = 260;
+      const maxLiveBubbleChars = 420;
       const sourceId = bubble && bubble.uid ? bubble.uid : "";
       const text = this.cleanCaptionCandidateText(bubble && bubble.text ? bubble.text : "");
       if (!bubble || !text) {
@@ -1947,24 +1945,27 @@
       if (!normalized || normalized.length <= limit) {
         return normalized ? [normalized] : [];
       }
+      if (normalized.length < limit * 1.45) {
+        return [normalized];
+      }
 
       const pieces = [];
       let remaining = normalized;
       while (remaining.length > limit) {
         const search = remaining.slice(0, limit + 1);
         let cutAt = Math.max(search.lastIndexOf(", "), search.lastIndexOf("; "), search.lastIndexOf(": "));
-        if (cutAt < 120) {
+        if (cutAt < 180) {
           cutAt = -1;
           const softBreaks = /\s+(?:and|but|so|because|which|then|if|when|where|while|uh|um)\s+/gi;
           let match = softBreaks.exec(search);
           while (match) {
-            if (match.index >= 120) {
+            if (match.index >= 180) {
               cutAt = match.index;
             }
             match = softBreaks.exec(search);
           }
         }
-        if (cutAt < 120) {
+        if (cutAt < 180) {
           break;
         }
 
