@@ -66,6 +66,8 @@
       this.pendingSeekFocus = null;
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
+      this.liveDisplayBubbleCache = new Map();
+      this.liveNextBubbleUid = 1;
     }
 
     async init() {
@@ -1213,6 +1215,8 @@
       this.liveLockCutoffIndex = -1;
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
+      this.liveDisplayBubbleCache = new Map();
+      this.liveNextBubbleUid = 1;
       this.lastCaptionProbeAt = 0;
       this.rebuildChunks();
       this.probeCaptionsNow();
@@ -1235,6 +1239,7 @@
       this.liveOverlayUtterance = null;
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
+      this.liveDisplayBubbleCache = new Map();
       if (this.liveCapturePollId) {
         window.clearInterval(this.liveCapturePollId);
         this.liveCapturePollId = 0;
@@ -1495,9 +1500,16 @@
       return this.getLiveWindowIndex(Number(chunk && chunk.start ? chunk.start : 0));
     }
 
+    getNextLiveBubbleUid() {
+      const uid = "live-" + String(this.liveNextBubbleUid || 1);
+      this.liveNextBubbleUid = (Number(this.liveNextBubbleUid) || 1) + 1;
+      return uid;
+    }
+
     createLiveBubbleFromChunk(chunk) {
       const bucketIndex = this.getLiveChunkBucketIndex(chunk);
       return {
+        uid: this.getNextLiveBubbleUid(),
         id: this.liveBubbles.length,
         start: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0),
         end: Number(chunk.end || 0),
@@ -1512,6 +1524,42 @@
           [bucketIndex]: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0)
         }
       };
+    }
+
+    createBubbleRecord(data) {
+      const start = Math.max(0, Number(data && data.start ? data.start : 0));
+      const end = Math.max(start + 0.25, Number(data && data.end ? data.end : start + 0.25));
+      const seekStart = Number.isFinite(data && data.seekStart) ? Math.max(0, Number(data.seekStart)) : start;
+      const locked = Boolean(data && data.locked);
+      return {
+        id: "",
+        sourceId: data && data.sourceId ? String(data.sourceId) : "",
+        partIndex: Number.isInteger(data && data.partIndex) ? data.partIndex : 0,
+        start: start,
+        end: end,
+        seekStart: seekStart,
+        ts_start: start,
+        ts_stop: end,
+        text: this.cleanCaptionCandidateText(data && data.text ? data.text : ""),
+        locked: locked,
+        immutable: locked
+      };
+    }
+
+    withDisplayIds(records) {
+      const source = Array.isArray(records) ? records : [];
+      const output = [];
+      for (let index = 0; index < source.length; index += 1) {
+        const record = source[index];
+        if (!record || !record.text) {
+          continue;
+        }
+        output.push({
+          ...record,
+          id: output.length
+        });
+      }
+      return output;
     }
 
     rebuildLiveBubbleText(bubble) {
@@ -1538,6 +1586,9 @@
     }
 
     appendBucketToLiveBubble(bubble, chunk, trimLeading) {
+      if (!bubble || bubble.locked) {
+        return;
+      }
       const bucketIndex = this.getLiveChunkBucketIndex(chunk);
       if (!bubble.bucketIndexes.includes(bucketIndex)) {
         bubble.bucketIndexes.push(bucketIndex);
@@ -1552,6 +1603,20 @@
         : Number(chunk.start || 0);
       this.liveBucketToBubble.set(bucketIndex, bubble);
       this.rebuildLiveBubbleText(bubble);
+    }
+
+    lockLiveBubble(bubble) {
+      if (!bubble) {
+        return null;
+      }
+      bubble.locked = true;
+      if (!this.liveDisplayBubbleCache || !(this.liveDisplayBubbleCache instanceof Map)) {
+        this.liveDisplayBubbleCache = new Map();
+      }
+      if (bubble.uid && !this.liveDisplayBubbleCache.has(bubble.uid)) {
+        this.liveDisplayBubbleCache.set(bubble.uid, this.createLockedDisplayBubbles(bubble));
+      }
+      return bubble;
     }
 
     syncLiveBubblesFromBuckets(chunks) {
@@ -1597,7 +1662,7 @@
         }
 
         if (this.shouldStartNewLiveBubble(activeBubble, nextChunk)) {
-          activeBubble.locked = true;
+          this.lockLiveBubble(activeBubble);
           const nextBubble = this.createLiveBubbleFromChunk(nextChunk);
           this.liveBubbles.push(nextBubble);
           this.liveBucketToBubble.set(bucketIndex, nextBubble);
@@ -1615,8 +1680,7 @@
 
     polishLiveBubbles(bubbles) {
       const source = Array.isArray(bubbles) ? bubbles : [];
-      const polished = [];
-      const maxLiveBubbleChars = 260;
+      const records = [];
       let minNextStart = 0;
 
       for (let index = 0; index < source.length; index += 1) {
@@ -1629,57 +1693,89 @@
           const matchedStart = this.findTextTrackStartForText(text, Number(bubble.start || bubble.seekStart || 0));
           const alignedStart = Math.max(minNextStart, Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0));
           const end = Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25));
-          polished.push({
-            ...bubble,
+          records.push(this.createBubbleRecord({
+            sourceId: bubble.uid,
             start: alignedStart,
             end: end,
             seekStart: alignedStart,
+            locked: false,
             text: text
-          });
+          }));
           minNextStart = alignedStart + 0.05;
           continue;
         }
 
-        const parts = this.splitTextByNaturalBreaks(text, maxLiveBubbleChars, false);
-        if (parts.length <= 1) {
-          const matchedStart = this.findTextTrackStartForText(text, Number(bubble.start || bubble.seekStart || 0));
-          const alignedStart = Math.max(minNextStart, Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0));
-          const end = Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25));
-          polished.push({
-            ...bubble,
-            start: alignedStart,
+        if (!this.liveDisplayBubbleCache || !(this.liveDisplayBubbleCache instanceof Map)) {
+          this.liveDisplayBubbleCache = new Map();
+        }
+        if (bubble.uid && !this.liveDisplayBubbleCache.has(bubble.uid)) {
+          this.liveDisplayBubbleCache.set(bubble.uid, this.createLockedDisplayBubbles(bubble));
+        }
+        const lockedParts = bubble.uid ? this.liveDisplayBubbleCache.get(bubble.uid) : null;
+        const sourceParts = Array.isArray(lockedParts) ? lockedParts : this.createLockedDisplayBubbles(bubble);
+        for (let partIndex = 0; partIndex < sourceParts.length; partIndex += 1) {
+          const part = sourceParts[partIndex];
+          const start = Math.max(minNextStart, Number(part.start || 0));
+          const end = Math.max(start + 0.25, Number(part.end || start + 0.25));
+          records.push({
+            ...part,
+            start: start,
             end: end,
-            seekStart: alignedStart,
-            text: text
+            seekStart: start,
+            ts_start: start,
+            ts_stop: end
           });
-          minNextStart = alignedStart + 0.05;
-          continue;
-        }
-
-        const start = Number(bubble.start || 0);
-        const end = Math.max(start + 0.25, Number(bubble.end || start + 0.25));
-        const duration = end - start;
-        for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
-          const partStart = start + (duration * partIndex) / parts.length;
-          const partEnd = start + (duration * (partIndex + 1)) / parts.length;
-          const matchedStart = this.findTextTrackStartForText(parts[partIndex], partStart);
-          const alignedStart = Math.max(minNextStart, Number.isFinite(matchedStart) ? matchedStart : partStart);
-          const endTime = Math.max(alignedStart + 0.25, partEnd);
-          polished.push({
-            ...bubble,
-            start: alignedStart,
-            end: endTime,
-            seekStart: alignedStart,
-            text: parts[partIndex]
-          });
-          minNextStart = alignedStart + 0.05;
+          minNextStart = start + 0.05;
         }
       }
 
-      for (let index = 0; index < polished.length; index += 1) {
-        polished[index].id = index;
+      return this.withDisplayIds(records);
+    }
+
+    createLockedDisplayBubbles(bubble) {
+      const records = [];
+      const maxLiveBubbleChars = 260;
+      const sourceId = bubble && bubble.uid ? bubble.uid : "";
+      const text = this.cleanCaptionCandidateText(bubble && bubble.text ? bubble.text : "");
+      if (!bubble || !text) {
+        return records;
       }
-      return polished;
+
+      const start = Number(bubble.start || 0);
+      const end = Math.max(start + 0.25, Number(bubble.end || start + 0.25));
+      const parts = this.splitTextByNaturalBreaks(text, maxLiveBubbleChars, false);
+      if (parts.length <= 1) {
+        const matchedStart = this.findTextTrackStartForText(text, Number(bubble.start || bubble.seekStart || 0));
+        const alignedStart = Number.isFinite(matchedStart) ? matchedStart : Number(bubble.start || 0);
+        records.push(this.createBubbleRecord({
+          sourceId: sourceId,
+          partIndex: 0,
+          start: alignedStart,
+          end: Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25)),
+          seekStart: alignedStart,
+          locked: true,
+          text: text
+        }));
+        return records;
+      }
+
+      const duration = end - start;
+      for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+        const partStart = start + (duration * partIndex) / parts.length;
+        const partEnd = start + (duration * (partIndex + 1)) / parts.length;
+        const matchedStart = this.findTextTrackStartForText(parts[partIndex], partStart);
+        const alignedStart = Number.isFinite(matchedStart) ? matchedStart : partStart;
+        records.push(this.createBubbleRecord({
+          sourceId: sourceId,
+          partIndex: partIndex,
+          start: alignedStart,
+          end: Math.max(alignedStart + 0.25, partEnd),
+          seekStart: alignedStart,
+          locked: true,
+          text: parts[partIndex]
+        }));
+      }
+      return records;
     }
 
     rebuildChunks() {
