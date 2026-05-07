@@ -71,9 +71,10 @@
   z-index: 1;
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  padding: 10px 12px;
+  min-height: 28px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--dc-border-soft);
   cursor: move;
 }
@@ -118,15 +119,21 @@
   cursor: nwse-resize;
 }
 
+.dc-title-wrap {
+  min-width: 0;
+}
+
 .dc-title {
   margin: 0;
-  font-size: 14px;
-  letter-spacing: 0.04em;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--dc-accent);
 }
 
 .dc-subtitle {
+  display: none;
   margin-top: 2px;
   font-size: 11px;
   color: var(--dc-muted);
@@ -135,7 +142,8 @@
 .dc-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .dc-controls * {
@@ -148,8 +156,8 @@
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.03);
   color: var(--dc-text);
-  font-size: 12px;
-  height: 26px;
+  font-size: 11px;
+  height: 23px;
 }
 
 .dc-btn {
@@ -159,10 +167,11 @@
 }
 
 .dc-btn-close {
-  min-width: 62px;
-  padding: 0 12px;
+  min-width: 25px;
+  padding: 0 8px 1px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 .dc-btn:hover:not(:disabled) {
@@ -199,14 +208,16 @@
 .dc-text-scale-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
+  gap: 4px;
+  font-size: 10px;
+  line-height: 1;
   color: var(--dc-muted);
+  white-space: nowrap;
 }
 
 .dc-opacity-input,
 .dc-text-scale-input {
-  width: 74px;
+  width: 68px;
 }
 
 .dc-size-select {

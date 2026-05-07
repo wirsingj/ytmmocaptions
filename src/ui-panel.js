@@ -92,11 +92,8 @@
       titleWrap.className = "dc-title-wrap";
       const title = document.createElement("h2");
       title.className = "dc-title";
-      title.textContent = "Dialogue Captions";
-      const subtitle = document.createElement("div");
-      subtitle.className = "dc-subtitle";
-      subtitle.textContent = "MMO subtitle log";
-      titleWrap.append(title, subtitle);
+      title.textContent = "MMOCC";
+      titleWrap.append(title);
 
       const controls = document.createElement("div");
       controls.className = "dc-controls";
@@ -104,8 +101,8 @@
       this.closeButton = document.createElement("button");
       this.closeButton.type = "button";
       this.closeButton.className = "dc-btn dc-btn-close";
-      this.closeButton.textContent = "Close";
-      this.closeButton.title = "Close panel";
+      this.closeButton.textContent = "v";
+      this.closeButton.title = "Collapse to pill";
 
       this.autoScrollButton = document.createElement("button");
       this.autoScrollButton.type = "button";
@@ -191,13 +188,9 @@
       textScaleWrap.append(this.textScaleInput);
 
       controls.append(
-        this.closeButton,
-        this.autoScrollButton,
-        this.keyboardButton,
-        stepWrap,
-        sizeWrap,
         opacityWrap,
-        textScaleWrap
+        textScaleWrap,
+        this.closeButton
       );
       header.append(titleWrap, controls);
 
