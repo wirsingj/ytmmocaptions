@@ -1480,8 +1480,10 @@
         return;
       }
       this.pendingSeekFocus = null;
-      const nextIndex = chunker.findChunkIndexAtTime(sourceChunks, currentTime);
+      const nextIndex = chunker.findActiveChunkIndexAtTime(sourceChunks, currentTime, 0.9);
       if (nextIndex < 0) {
+        this.activeIndex = -1;
+        this.panel.setActiveIndex(-1);
         return;
       }
       this.ensureChunkVisible(nextIndex);

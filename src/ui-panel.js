@@ -1123,6 +1123,16 @@
         this.activeIndex = -1;
         return;
       }
+      if (!Number.isInteger(index) || index < 0) {
+        const hadActive = this.activeIndex !== -1;
+        this.activeIndex = -1;
+        this.clearReadingGlowExcept(-1);
+        this.lastGlowIndex = -1;
+        this.lastGlowWordStart = -1;
+        this.updateJumpBottomVisibility();
+        this.scheduleWindowRender(!hadActive);
+        return;
+      }
       const bounded = Math.max(0, Math.min(this.chunks.length - 1, index));
       const hasChanged = bounded !== this.activeIndex;
       this.activeIndex = bounded;

@@ -41,6 +41,24 @@ exports.run = async function runChunkerRegressionTests(ctx) {
     assert.equal(chunker.findChunkIndexAtTime(chunks, 999), 2);
   });
 
+  await runCase("findActiveChunkIndexAtTime does not keep stale tail chunks active", () => {
+    const chunks = [
+      { start: 32, end: 36, text: "pre verse" },
+      { start: 40, end: 48, text: "next line" }
+    ];
+    assert.equal(chunker.findActiveChunkIndexAtTime(chunks, 33, 0.5), 0);
+    assert.equal(chunker.findActiveChunkIndexAtTime(chunks, 38, 0.5), -1);
+    assert.equal(chunker.findActiveChunkIndexAtTime(chunks, 45, 0.5), 1);
+    assert.equal(chunker.findActiveChunkIndexAtTime(chunks, 70, 0.5), -1);
+  });
+
+  await runCase("findActiveChunkIndexAtTime keeps a small boundary grace window", () => {
+    const chunks = [{ start: 10, end: 18, text: "line" }];
+    assert.equal(chunker.findActiveChunkIndexAtTime(chunks, 9.7, 0.5), 0);
+    assert.equal(chunker.findActiveChunkIndexAtTime(chunks, 18.4, 0.5), 0);
+    assert.equal(chunker.findActiveChunkIndexAtTime(chunks, 18.7, 0.5), -1);
+  });
+
   await runCase("formatTimestamp stays stable for minute and hour ranges", () => {
     assert.equal(chunker.formatTimestamp(5), "0:05");
     assert.equal(chunker.formatTimestamp(65), "1:05");

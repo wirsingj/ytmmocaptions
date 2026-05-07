@@ -93,6 +93,34 @@
     return result;
   }
 
+  function findActiveChunkIndexAtTime(chunks, time, toleranceSeconds) {
+    const now = Number(time);
+    if (!Number.isFinite(now)) {
+      return -1;
+    }
+    const tolerance = Math.max(0, Number.isFinite(Number(toleranceSeconds)) ? Number(toleranceSeconds) : 0.75);
+
+    function isActiveAt(index) {
+      if (index < 0 || index >= chunks.length) {
+        return false;
+      }
+      const chunk = chunks[index];
+      const start = Math.max(0, Number(chunk && chunk.start ? chunk.start : 0));
+      const end = Math.max(start + 0.25, Number(chunk && chunk.end ? chunk.end : start + 0.25));
+      return now >= start - tolerance && now <= end + tolerance;
+    }
+
+    const index = findChunkIndexAtTime(chunks, time);
+    if (isActiveAt(index)) {
+      return index;
+    }
+    const nextIndex = index < 0 ? 0 : index + 1;
+    if (isActiveAt(nextIndex)) {
+      return nextIndex;
+    }
+    return -1;
+  }
+
   function moveIndex(currentIndex, offset, totalCount) {
     if (!Number.isInteger(totalCount) || totalCount <= 0) {
       return -1;
@@ -116,6 +144,7 @@
   app.chunker = {
     CHUNK_LIMITS,
     chunkCues,
+    findActiveChunkIndexAtTime,
     findChunkIndexAtTime,
     moveIndex,
     formatTimestamp
