@@ -162,10 +162,40 @@
     while ((match = pattern.exec(source)) !== null) {
       ranges.push({
         start: match.index,
-        end: match.index + match[0].length
+        end: match.index + match[0].length,
+        text: match[0]
       });
     }
     return ranges;
+  }
+
+  function getWordWeight(word) {
+    const source = String(word || "");
+    const coreLength = source.replace(/[^\w]/g, "").length;
+    const lengthWeight = Math.min(0.7, Math.max(0, coreLength - 4) * 0.08);
+    const pauseWeight = /[.!?]["')\]]*$/.test(source)
+      ? 0.75
+      : /[,;:]["')\]]*$/.test(source)
+        ? 0.34
+        : 0;
+    return 1 + lengthWeight + pauseWeight;
+  }
+
+  function getWeightedWordIndex(words, progress) {
+    if (!Array.isArray(words) || !words.length) {
+      return 0;
+    }
+    const weights = words.map((word) => getWordWeight(word.text));
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+    const target = clamp(progress, 0, 0.999) * totalWeight;
+    let running = 0;
+    for (let index = 0; index < weights.length; index += 1) {
+      running += weights[index];
+      if (target < running) {
+        return index;
+      }
+    }
+    return words.length - 1;
   }
 
   function getReadingGlowRange(chunk, currentTime, options) {
@@ -184,15 +214,21 @@
     }
 
     const opts = options && typeof options === "object" ? options : {};
-    const duration = Math.max(0.25, end - start);
+    const rawDuration = Math.max(0.25, end - start);
     const wordCount = words.length;
+    const maxStableWordsPerSecond =
+      Number.isFinite(opts.maxWordsPerSecond) && opts.maxWordsPerSecond > 0
+        ? Number(opts.maxWordsPerSecond)
+        : 4.25;
+    const estimatedMinimumDuration = wordCount / maxStableWordsPerSecond;
+    const duration = Math.max(rawDuration, estimatedMinimumDuration);
     const wordsPerSecond = wordCount / duration;
     const leadSeconds =
       Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
         ? Number(opts.leadSeconds)
         : wordsPerSecond >= 4.8
-          ? 0.22
-          : 0.34;
+          ? 0.12
+          : 0.2;
     const progress = clamp((now + leadSeconds - start) / duration, 0, 0.999);
     const baseWindow =
       Number.isFinite(opts.windowWords) && opts.windowWords > 0
@@ -203,7 +239,7 @@
             ? 4
             : 4;
     const windowWords = Math.max(3, Math.min(6, baseWindow));
-    const center = Math.floor(progress * wordCount);
+    const center = getWeightedWordIndex(words, progress);
     const firstWord = Math.max(0, Math.min(wordCount - 1, center));
     const lastWord = Math.min(wordCount - 1, firstWord + windowWords - 1);
 

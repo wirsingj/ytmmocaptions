@@ -180,4 +180,32 @@ exports.run = async function runBubbleStateTests(ctx) {
     const withLead = bubbleState.getReadingGlowRange(bubble, 3, { leadSeconds: 1 });
     assert.ok(withLead.firstWord > noLead.firstWord);
   });
+
+  await runCase("reading glow caps suspicious speech rates instead of sprinting to the end", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 4,
+      text: "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty"
+    };
+    const range = bubbleState.getReadingGlowRange(bubble, 3.5, { leadSeconds: 0 });
+    assert.ok(range.firstWord < 18);
+  });
+
+  await runCase("reading glow gives sentence endings a little timeline weight", () => {
+    const bubbleState = loadBubbleState();
+    const plain = {
+      start: 0,
+      end: 8,
+      text: "one two three four five six seven eight"
+    };
+    const punctuated = {
+      start: 0,
+      end: 8,
+      text: "one two three. four five six seven eight"
+    };
+    const plainRange = bubbleState.getReadingGlowRange(plain, 4, { leadSeconds: 0 });
+    const punctuatedRange = bubbleState.getReadingGlowRange(punctuated, 4, { leadSeconds: 0 });
+    assert.ok(punctuatedRange.firstWord <= plainRange.firstWord);
+  });
 };
