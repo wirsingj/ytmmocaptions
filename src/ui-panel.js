@@ -11,6 +11,7 @@
   const LAUNCHER_MARGIN = 14;
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
+  const LAUNCHER_CONTROL_BAR_GAP = 54;
 
   class DialoguePanel {
     constructor(options) {
@@ -575,8 +576,16 @@
       };
     }
 
+    getLauncherFrameRect() {
+      const frame = this.getYouTubeFrameRect();
+      return {
+        ...frame,
+        bottom: Math.max(frame.top + LAUNCHER_HEIGHT + LAUNCHER_MARGIN * 2, frame.bottom - LAUNCHER_CONTROL_BAR_GAP)
+      };
+    }
+
     clampLauncherPosition(left, top, width, height) {
-      return this.clampPositionToRect(left, top, width, height, this.getYouTubeFrameRect(), LAUNCHER_MARGIN);
+      return this.clampPositionToRect(left, top, width, height, this.getLauncherFrameRect(), LAUNCHER_MARGIN);
     }
 
     applyLauncherPosition() {
@@ -588,7 +597,7 @@
       }
       const width = this.launcherButton.offsetWidth || LAUNCHER_WIDTH;
       const height = this.launcherButton.offsetHeight || LAUNCHER_HEIGHT;
-      const frame = this.getYouTubeFrameRect();
+      const frame = this.getLauncherFrameRect();
       const source = this.settings.launcherPosition || {
         left: frame.left + LAUNCHER_MARGIN,
         top: frame.bottom - height - LAUNCHER_MARGIN
@@ -623,7 +632,7 @@
       const rect = this.root.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
-      const frame = this.getYouTubeFrameRect();
+      const frame = this.getLauncherFrameRect();
       const corners = [
         { x: frame.left, y: frame.top, name: "top-left" },
         { x: frame.right, y: frame.top, name: "top-right" },
