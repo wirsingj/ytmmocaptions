@@ -11,6 +11,7 @@
   const DEFAULT_PANEL_MAX_WIDTH = 572;
   const DEFAULT_PANEL_MAX_HEIGHT = 408;
   const DEFAULT_PANEL_MARGIN = 12;
+  const PANEL_CONTROL_BAR_GAP = 64;
   const LAUNCHER_MARGIN = 14;
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
@@ -461,13 +462,18 @@
         Number.isFinite(this.settings.panelSize.width) &&
         Number.isFinite(this.settings.panelSize.height)
       ) {
+        const panelFrame = this.getPanelFrameRect();
+        const maxPanelHeight = Math.max(
+          MIN_PANEL_HEIGHT,
+          panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2
+        );
         const boundedWidth = Math.max(
           MIN_PANEL_WIDTH,
           Math.min(window.innerWidth - 8, Number(this.settings.panelSize.width))
         );
         const boundedHeight = Math.max(
           MIN_PANEL_HEIGHT,
-          Math.min(window.innerHeight - 8, Number(this.settings.panelSize.height))
+          Math.min(maxPanelHeight, window.innerHeight - 8, Number(this.settings.panelSize.height))
         );
         this.root.style.width = Math.round(boundedWidth) + "px";
         this.root.style.height = Math.round(boundedHeight) + "px";
@@ -562,7 +568,7 @@
         frame.bottom - height - DEFAULT_PANEL_MARGIN,
         width,
         height,
-        frame,
+        this.getPanelFrameRect(),
         DEFAULT_PANEL_MARGIN
       );
       return {
@@ -618,6 +624,18 @@
         ...frame,
         bottom: Math.max(frame.top + LAUNCHER_HEIGHT + LAUNCHER_MARGIN * 2, frame.bottom - LAUNCHER_CONTROL_BAR_GAP)
       };
+    }
+
+    getPanelFrameRect() {
+      const frame = this.getYouTubeFrameRect();
+      return {
+        ...frame,
+        bottom: Math.max(frame.top + MIN_PANEL_HEIGHT + DEFAULT_PANEL_MARGIN * 2, frame.bottom - PANEL_CONTROL_BAR_GAP)
+      };
+    }
+
+    clampPanelPosition(left, top, width, height) {
+      return this.clampPositionToRect(left, top, width, height, this.getPanelFrameRect(), DEFAULT_PANEL_MARGIN);
     }
 
     clampLauncherPosition(left, top, width, height) {
@@ -699,17 +717,6 @@
       });
     }
 
-    clampPositionToViewport(left, top, width, height) {
-      const safeWidth = Math.max(1, Number(width) || 1);
-      const safeHeight = Math.max(1, Number(height) || 1);
-      const maxLeft = Math.max(0, window.innerWidth - safeWidth);
-      const maxTop = Math.max(0, window.innerHeight - safeHeight);
-      return {
-        left: Math.max(0, Math.min(maxLeft, Math.round(Number(left) || 0))),
-        top: Math.max(0, Math.min(maxTop, Math.round(Number(top) || 0)))
-      };
-    }
-
     normalizeSavedPanelPosition() {
       if (!this.root || this.root.style.display === "none") {
         return;
@@ -718,7 +725,7 @@
         return;
       }
       const rect = this.root.getBoundingClientRect();
-      const clamped = this.clampPositionToViewport(
+      const clamped = this.clampPanelPosition(
         this.settings.panelPosition.left,
         this.settings.panelPosition.top,
         rect.width,
@@ -788,8 +795,9 @@
       const width = this.root.offsetWidth || 360;
       const height = this.root.offsetHeight || 320;
 
-      const nextLeft = Math.max(0, Math.min(window.innerWidth - width, this.dragState.startLeft + deltaX));
-      const nextTop = Math.max(0, Math.min(window.innerHeight - height, this.dragState.startTop + deltaY));
+      const next = this.clampPanelPosition(this.dragState.startLeft + deltaX, this.dragState.startTop + deltaY, width, height);
+      const nextLeft = next.left;
+      const nextTop = next.top;
       this.root.style.left = Math.round(nextLeft) + "px";
       this.root.style.top = Math.round(nextTop) + "px";
     }
@@ -862,15 +870,17 @@
       let nextWidth = resizesLeft ? state.startWidth - deltaX : state.startWidth + deltaX;
       let nextHeight = resizesTop ? state.startHeight - deltaY : state.startHeight + deltaY;
 
-      const maxWidth = Math.max(MIN_PANEL_WIDTH, window.innerWidth - 4);
-      const maxHeight = Math.max(MIN_PANEL_HEIGHT, window.innerHeight - 4);
+      const panelFrame = this.getPanelFrameRect();
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2);
+      const maxHeight = Math.max(MIN_PANEL_HEIGHT, panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2);
       nextWidth = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, nextWidth));
       nextHeight = Math.max(MIN_PANEL_HEIGHT, Math.min(maxHeight, nextHeight));
 
       let nextLeft = resizesLeft ? rightEdge - nextWidth : state.startLeft;
       let nextTop = resizesTop ? bottomEdge - nextHeight : state.startTop;
-      nextLeft = Math.max(0, Math.min(window.innerWidth - nextWidth, nextLeft));
-      nextTop = Math.max(0, Math.min(window.innerHeight - nextHeight, nextTop));
+      const clamped = this.clampPanelPosition(nextLeft, nextTop, nextWidth, nextHeight);
+      nextLeft = clamped.left;
+      nextTop = clamped.top;
 
       this.root.style.left = Math.round(nextLeft) + "px";
       this.root.style.top = Math.round(nextTop) + "px";
