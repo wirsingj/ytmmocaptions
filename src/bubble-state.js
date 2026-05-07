@@ -219,7 +219,7 @@
     const maxStableWordsPerSecond =
       Number.isFinite(opts.maxWordsPerSecond) && opts.maxWordsPerSecond > 0
         ? Number(opts.maxWordsPerSecond)
-        : 4.25;
+        : 5.15;
     const estimatedMinimumDuration = wordCount / maxStableWordsPerSecond;
     const duration = Math.max(rawDuration, estimatedMinimumDuration);
     const wordsPerSecond = wordCount / duration;
@@ -227,8 +227,8 @@
       Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
         ? Number(opts.leadSeconds)
         : wordsPerSecond >= 4.8
-          ? 0.12
-          : 0.2;
+          ? 0.18
+          : 0.28;
     const progress = clamp((now + leadSeconds - start) / duration, 0, 0.999);
     const baseWindow =
       Number.isFinite(opts.windowWords) && opts.windowWords > 0

@@ -602,13 +602,13 @@
       const setAlpha = (name, value) => {
         this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
       };
-      setAlpha("--dc-panel-alpha-inner", 0.08 + alpha * 0.58);
-      setAlpha("--dc-panel-alpha-mid", 0.18 + alpha * 0.68);
-      setAlpha("--dc-panel-alpha-outer", 0.28 + alpha * 0.66);
-      setAlpha("--dc-panel-alpha-base", 0.08 + alpha * 0.52);
-      setAlpha("--dc-panel-fade-light", 0.03 + alpha * 0.055);
-      setAlpha("--dc-panel-fade-shadow", 0.09 + alpha * 0.2);
-      setAlpha("--dc-panel-fade-shadow-soft", (0.09 + alpha * 0.2) * 0.7);
+      setAlpha("--dc-panel-alpha-inner", 0.03 + alpha * 0.42);
+      setAlpha("--dc-panel-alpha-mid", 0.11 + alpha * 0.6);
+      setAlpha("--dc-panel-alpha-outer", 0.24 + alpha * 0.66);
+      setAlpha("--dc-panel-alpha-base", 0.05 + alpha * 0.42);
+      setAlpha("--dc-panel-fade-light", 0.015 + alpha * 0.035);
+      setAlpha("--dc-panel-fade-shadow", 0.08 + alpha * 0.18);
+      setAlpha("--dc-panel-fade-shadow-soft", (0.08 + alpha * 0.18) * 0.62);
       this.root.style.opacity = "1";
     }
 
@@ -1135,10 +1135,14 @@
       this.scheduleWindowRender(!hasChanged);
     }
 
-    setPlaybackTime(currentTime) {
+    setPlaybackTime(currentTime, options) {
       const time = Number(currentTime);
       if (!Number.isFinite(time)) {
         return;
+      }
+      if (options && options.forceGlowReset) {
+        this.lastGlowIndex = -1;
+        this.lastGlowWordStart = -1;
       }
       this.playbackTime = time;
       this.updateActiveReadingGlow();

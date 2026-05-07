@@ -1343,9 +1343,6 @@
         return;
       }
       const currentTime = this.video.currentTime || 0;
-      if (typeof this.panel.setPlaybackTime === "function") {
-        this.panel.setPlaybackTime(currentTime);
-      }
       const pending = this.pendingSeekFocus;
       if (
         pending &&
@@ -1358,6 +1355,9 @@
         this.ensureChunkVisible(pending.index);
         this.activeIndex = Math.max(0, Math.min(pending.index, this.chunks.length - 1));
         this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
+        if (typeof this.panel.setPlaybackTime === "function") {
+          this.panel.setPlaybackTime(currentTime);
+        }
         this.triggerBubbleStartFlashIfReady(sourceChunks[pending.index], this.activeIndex, currentTime);
         return;
       }
@@ -1369,6 +1369,9 @@
       this.ensureChunkVisible(nextIndex);
       this.activeIndex = Math.max(0, Math.min(nextIndex, this.chunks.length - 1));
       this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
+      if (typeof this.panel.setPlaybackTime === "function") {
+        this.panel.setPlaybackTime(currentTime);
+      }
       this.triggerBubbleStartFlashIfReady(sourceChunks[nextIndex], this.activeIndex, currentTime);
     }
 
@@ -2231,6 +2234,9 @@
       }
       this.activeIndex = index;
       this.panel.setActiveIndex(index, { ensureVisible: opts.ensureVisible !== false });
+      if (typeof this.panel.setPlaybackTime === "function") {
+        this.panel.setPlaybackTime(targetTime, { forceGlowReset: true });
+      }
     }
   }
 
