@@ -64,6 +64,8 @@
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
       this.pendingSeekFocus = null;
+      this.liveBubbles = [];
+      this.liveBucketToBubble = new Map();
     }
 
     async init() {
@@ -1164,6 +1166,8 @@
       this.liveLastObservedTime = Number.NaN;
       this.liveMaxBucketIndexSeen = -1;
       this.liveLockCutoffIndex = -1;
+      this.liveBubbles = [];
+      this.liveBucketToBubble = new Map();
       this.lastCaptionProbeAt = 0;
       this.rebuildChunks();
       this.probeCaptionsNow();
@@ -1184,6 +1188,8 @@
       this.liveLockCutoffIndex = -1;
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
+      this.liveBubbles = [];
+      this.liveBucketToBubble = new Map();
       if (this.liveCapturePollId) {
         window.clearInterval(this.liveCapturePollId);
         this.liveCapturePollId = 0;
@@ -1395,7 +1401,7 @@
           text: text
         });
       }
-      return this.liveCaptureEnabled ? this.groupLiveChunksBySentence(chunks) : this.polishFixedWindowChunks(chunks);
+      return chunks;
     }
 
     isCaptionStageDirection(text) {
@@ -1430,9 +1436,77 @@
       return previousLength >= 190 || combined.length >= 330;
     }
 
-    groupLiveChunksBySentence(chunks) {
+    getLiveChunkBucketIndex(chunk) {
+      return this.getLiveWindowIndex(Number(chunk && chunk.start ? chunk.start : 0));
+    }
+
+    createLiveBubbleFromChunk(chunk) {
+      const bucketIndex = this.getLiveChunkBucketIndex(chunk);
+      return {
+        id: this.liveBubbles.length,
+        start: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0),
+        end: Number(chunk.end || 0),
+        seekStart: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0),
+        text: this.normalizeLiveCaptionText(chunk.text),
+        locked: false,
+        bucketIndexes: [bucketIndex],
+        bucketTexts: { [bucketIndex]: this.normalizeLiveCaptionText(chunk.text) },
+        bucketStarts: { [bucketIndex]: Number(chunk.start || 0) },
+        bucketEnds: { [bucketIndex]: Number(chunk.end || 0) },
+        bucketSeekStarts: {
+          [bucketIndex]: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0)
+        }
+      };
+    }
+
+    rebuildLiveBubbleText(bubble) {
+      if (!bubble || !Array.isArray(bubble.bucketIndexes)) {
+        return;
+      }
+      const ordered = bubble.bucketIndexes.slice().sort((left, right) => left - right);
+      let text = "";
+      let start = Number.POSITIVE_INFINITY;
+      let end = 0;
+      let seekStart = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < ordered.length; index += 1) {
+        const bucketIndex = ordered[index];
+        const bucketText = bubble.bucketTexts ? bubble.bucketTexts[bucketIndex] : "";
+        text = this.mergeLiveCaptionText(text, bucketText);
+        start = Math.min(start, Number(bubble.bucketStarts && bubble.bucketStarts[bucketIndex]));
+        end = Math.max(end, Number(bubble.bucketEnds && bubble.bucketEnds[bucketIndex]));
+        seekStart = Math.min(seekStart, Number(bubble.bucketSeekStarts && bubble.bucketSeekStarts[bucketIndex]));
+      }
+      bubble.text = this.normalizeLiveCaptionText(text);
+      bubble.start = Number.isFinite(seekStart) ? seekStart : Number.isFinite(start) ? start : 0;
+      bubble.seekStart = bubble.start;
+      bubble.end = Math.max(bubble.start + 0.25, Number.isFinite(end) ? end : bubble.start + 0.25);
+    }
+
+    appendBucketToLiveBubble(bubble, chunk, trimLeading) {
+      const bucketIndex = this.getLiveChunkBucketIndex(chunk);
+      if (!bubble.bucketIndexes.includes(bucketIndex)) {
+        bubble.bucketIndexes.push(bucketIndex);
+      }
+      bubble.bucketTexts[bucketIndex] = trimLeading
+        ? this.trimLeadingCaptionOverlap(bubble.text, chunk.text)
+        : this.normalizeLiveCaptionText(chunk.text);
+      bubble.bucketStarts[bucketIndex] = Number(chunk.start || 0);
+      bubble.bucketEnds[bucketIndex] = Number(chunk.end || 0);
+      bubble.bucketSeekStarts[bucketIndex] = Number.isFinite(chunk.seekStart)
+        ? Number(chunk.seekStart)
+        : Number(chunk.start || 0);
+      this.liveBucketToBubble.set(bucketIndex, bubble);
+      this.rebuildLiveBubbleText(bubble);
+    }
+
+    syncLiveBubblesFromBuckets(chunks) {
       const source = Array.isArray(chunks) ? chunks : [];
-      const grouped = [];
+      if (!this.liveBucketToBubble || !(this.liveBucketToBubble instanceof Map)) {
+        this.liveBucketToBubble = new Map();
+      }
+      if (!Array.isArray(this.liveBubbles)) {
+        this.liveBubbles = [];
+      }
 
       for (let index = 0; index < source.length; index += 1) {
         const chunk = source[index];
@@ -1441,32 +1515,50 @@
           continue;
         }
 
-        const previous = grouped[grouped.length - 1];
-        const nextChunk = {
-          ...chunk,
-          text: previous ? this.trimLeadingCaptionOverlap(previous.text, text) : text
-        };
+        const bucketIndex = this.getLiveChunkBucketIndex(chunk);
+        const existingBubble = this.liveBucketToBubble.get(bucketIndex);
+        if (existingBubble) {
+          if (!existingBubble.locked) {
+            this.appendBucketToLiveBubble(existingBubble, { ...chunk, text: text }, false);
+          }
+          continue;
+        }
+
+        const activeBubble = this.liveBubbles[this.liveBubbles.length - 1];
+        if (!activeBubble) {
+          const firstBubble = this.createLiveBubbleFromChunk({ ...chunk, text: text });
+          this.liveBubbles.push(firstBubble);
+          this.liveBucketToBubble.set(bucketIndex, firstBubble);
+          continue;
+        }
+
+        const nextChunk = { ...chunk, text: this.trimLeadingCaptionOverlap(activeBubble.text, text) };
         if (!nextChunk.text) {
           continue;
         }
 
-        if (this.shouldStartNewLiveBubble(previous, nextChunk)) {
-          grouped.push(nextChunk);
+        if (this.shouldStartNewLiveBubble(activeBubble, nextChunk)) {
+          activeBubble.locked = true;
+          const nextBubble = this.createLiveBubbleFromChunk(nextChunk);
+          this.liveBubbles.push(nextBubble);
+          this.liveBucketToBubble.set(bucketIndex, nextBubble);
           continue;
         }
 
-        previous.text = this.mergeLiveCaptionText(previous.text, nextChunk.text);
-        previous.end = Math.max(Number(previous.end || 0), Number(nextChunk.end || 0));
+        this.appendBucketToLiveBubble(activeBubble, nextChunk, true);
       }
 
-      for (let index = 0; index < grouped.length; index += 1) {
-        grouped[index].id = index;
+      for (let index = 0; index < this.liveBubbles.length; index += 1) {
+        this.liveBubbles[index].id = index;
       }
-      return grouped;
+      return this.liveBubbles;
     }
 
     rebuildChunks() {
-      this.allChunks = this.buildFixedWindowChunksFromCues(this.cues);
+      const rawChunks = this.buildFixedWindowChunksFromCues(this.cues);
+      this.allChunks = this.liveCaptureEnabled
+        ? this.syncLiveBubblesFromBuckets(rawChunks)
+        : this.polishFixedWindowChunks(rawChunks);
       const previousRevealed = Math.max(0, Number(this.revealedChunkCount || 0));
       const initialVisible = Math.min(this.allChunks.length, previousRevealed);
       this.revealedChunkCount = initialVisible;
@@ -1757,7 +1849,7 @@
       const opts = options && typeof options === "object" ? options : {};
       this.ensureChunkVisible(index);
       const chunk = this.allChunks[index];
-      const seekLeadSeconds = Number.isFinite(opts.seekLeadSeconds) ? Math.max(0, Number(opts.seekLeadSeconds)) : 1;
+      const seekLeadSeconds = Number.isFinite(opts.seekLeadSeconds) ? Math.max(0, Number(opts.seekLeadSeconds)) : 0.45;
       let targetTime = Math.max(0, this.getChunkSeekStart(chunk) - seekLeadSeconds);
       if (Number.isFinite(opts.minTargetTime)) {
         targetTime = Math.max(targetTime, Number(opts.minTargetTime));
