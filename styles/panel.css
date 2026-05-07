@@ -13,11 +13,11 @@
   --dc-text-scale: 1.2;
   --dc-fade-x: 100%;
   --dc-fade-y: 0%;
-  --dc-panel-alpha-inner: 0.4;
-  --dc-panel-alpha-mid: 0.64;
+  --dc-panel-alpha-inner: 0.24;
+  --dc-panel-alpha-mid: 0.42;
   --dc-panel-alpha-outer: 0.82;
-  --dc-panel-alpha-base: 0.42;
-  --dc-panel-fade-light: 0.05;
+  --dc-panel-alpha-base: 0.3;
+  --dc-panel-fade-light: 0.025;
   --dc-panel-fade-shadow: 0.24;
   --dc-panel-fade-shadow-soft: 0.15;
   position: fixed;
