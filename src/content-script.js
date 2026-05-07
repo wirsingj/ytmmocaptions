@@ -889,6 +889,27 @@
       }
     }
 
+    getTimelineDisplayTime(currentTime, chunk, index) {
+      const now = Number(currentTime);
+      if (!Number.isFinite(now)) {
+        return now;
+      }
+      const action = this.timelineAction;
+      if (
+        !action ||
+        action.index !== index ||
+        Date.now() > Number(action.settleUntil || 0) ||
+        !Number.isFinite(action.targetTime)
+      ) {
+        return now;
+      }
+
+      const elapsedSeconds = Math.max(0, (Date.now() - Number(action.startedAt || Date.now())) / 1000);
+      const chunkEnd = chunk && Number.isFinite(Number(chunk.end)) ? Number(chunk.end) : Number.POSITIVE_INFINITY;
+      const maxSettledTime = Math.min(chunkEnd, action.targetTime + elapsedSeconds + 0.22);
+      return Math.min(now, maxSettledTime);
+    }
+
     isDiscontinuousLiveTimeMove(currentTime) {
       const last = Number(this.liveLastObservedTime);
       if (!Number.isFinite(last)) {
@@ -1438,7 +1459,7 @@
         this.activeIndex = Math.max(0, Math.min(pending.index, this.chunks.length - 1));
         this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
         if (typeof this.panel.setPlaybackTime === "function") {
-          this.panel.setPlaybackTime(currentTime);
+          this.panel.setPlaybackTime(this.getTimelineDisplayTime(currentTime, sourceChunks[pending.index], pending.index));
         }
         this.triggerBubbleStartFlashIfReady(sourceChunks[pending.index], this.activeIndex, currentTime);
         return;
@@ -1452,7 +1473,7 @@
       this.activeIndex = Math.max(0, Math.min(nextIndex, this.chunks.length - 1));
       this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
       if (typeof this.panel.setPlaybackTime === "function") {
-        this.panel.setPlaybackTime(currentTime);
+        this.panel.setPlaybackTime(this.getTimelineDisplayTime(currentTime, sourceChunks[nextIndex], nextIndex));
       }
       this.triggerBubbleStartFlashIfReady(sourceChunks[nextIndex], this.activeIndex, currentTime);
     }

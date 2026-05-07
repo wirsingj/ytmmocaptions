@@ -65,6 +65,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
   await runCase("timeline sync is event-driven and coordinates seek focus without becoming a master loop", () => {
     assert.ok(source.includes("beginTimelineAction(action)"));
     assert.ok(source.includes("applyTimelineActionFocus(action)"));
+    assert.ok(source.includes("getTimelineDisplayTime(currentTime, chunk, index)"));
+    assert.ok(source.includes("maxSettledTime"));
     assert.ok(source.includes("requestTimelineSync(forceScroll)"));
     assert.ok(source.includes("commitTimelineSync(forceScroll)"));
     assert.ok(source.includes("this.requestTimelineSync(false)"));

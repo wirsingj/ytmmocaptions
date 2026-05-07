@@ -603,15 +603,15 @@
       const setAlpha = (name, value) => {
         this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
       };
-      setAlpha("--dc-panel-alpha-inner", 0.002 + blend * 0.18);
-      setAlpha("--dc-panel-alpha-mid", 0.012 + blend * 0.32);
-      setAlpha("--dc-panel-alpha-outer", 0.12 + blend * 0.74);
-      setAlpha("--dc-panel-alpha-base", 0.01 + blend * 0.3);
+      setAlpha("--dc-panel-alpha-inner", 0.002 + blend * 0.17);
+      setAlpha("--dc-panel-alpha-mid", 0.018 + blend * 0.34);
+      setAlpha("--dc-panel-alpha-outer", 0.34 + blend * 0.54);
+      setAlpha("--dc-panel-alpha-base", 0.02 + blend * 0.32);
       setAlpha("--dc-panel-fade-light", 0.002 + blend * 0.018);
       setAlpha("--dc-panel-fade-shadow", 0.035 + blend * 0.23);
       setAlpha("--dc-panel-fade-shadow-soft", (0.035 + blend * 0.23) * 0.62);
-      setAlpha("--dc-card-alpha", 0.2 + blend * 0.38);
-      setAlpha("--dc-card-current-alpha", 0.27 + blend * 0.45);
+      setAlpha("--dc-card-alpha", 0.34 + blend * 0.3);
+      setAlpha("--dc-card-current-alpha", 0.42 + blend * 0.32);
       this.root.style.opacity = "1";
     }
 
