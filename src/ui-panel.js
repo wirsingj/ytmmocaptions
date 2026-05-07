@@ -1041,6 +1041,14 @@
         item.className = "dc-chunk";
         item.setAttribute("data-index", String(index));
 
+        const seekIcon = document.createElement("span");
+        seekIcon.className = "dc-chunk-seek-icon";
+        seekIcon.textContent = "▶";
+        seekIcon.setAttribute("aria-hidden", "true");
+
+        const content = document.createElement("span");
+        content.className = "dc-chunk-content";
+
         const time = document.createElement("span");
         time.className = "dc-chunk-time";
         time.textContent = chunker.formatTimestamp(chunk.start);
@@ -1049,7 +1057,8 @@
         text.className = "dc-chunk-text";
         text.textContent = chunk.text;
 
-        item.append(time, text);
+        content.append(time, text);
+        item.append(seekIcon, content);
         if (index === this.activeIndex) {
           item.classList.add("is-current");
         }

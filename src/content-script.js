@@ -1641,7 +1641,7 @@
       const opts = options && typeof options === "object" ? options : {};
       this.ensureChunkVisible(index);
       const chunk = this.allChunks[index];
-      const seekLeadSeconds = Number.isFinite(opts.seekLeadSeconds) ? Math.max(0, Number(opts.seekLeadSeconds)) : 0;
+      const seekLeadSeconds = Number.isFinite(opts.seekLeadSeconds) ? Math.max(0, Number(opts.seekLeadSeconds)) : 1;
       let targetTime = Math.max(0, this.getChunkSeekStart(chunk) - seekLeadSeconds);
       if (Number.isFinite(opts.minTargetTime)) {
         targetTime = Math.max(targetTime, Number(opts.minTargetTime));
