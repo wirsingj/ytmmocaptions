@@ -227,8 +227,8 @@
       Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
         ? Number(opts.leadSeconds)
         : wordsPerSecond >= 4.8
-          ? 0.04
-          : 0.06;
+          ? 0.07
+          : 0.1;
     const progress = clamp((now + leadSeconds - start) / duration, 0, 0.999);
     const baseWindow =
       Number.isFinite(opts.windowWords) && opts.windowWords > 0

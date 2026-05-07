@@ -62,6 +62,16 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("Date.now() < Number(this.liveCaptureSuppressedUntil || 0)"));
   });
 
+  await runCase("live capture avoids repeated expensive caption reads during steady playback", () => {
+    assert.ok(source.includes("liveLastBackfillBucketIndex"));
+    assert.ok(source.includes("nowMs - Number(this.liveLastBackfillAt || 0) < 900"));
+    const captureStart = source.indexOf("    captureLiveCaptionLine()");
+    const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
+    assert.ok(captureBody.includes("const overlayText = this.readVisibleCaptionText();"));
+    assert.ok(captureBody.includes("text = this.readVisibleCaptionText();"));
+    assert.ok(!captureBody.includes("const overlayText = this.readVisibleCaptionText();\n      let text = \"\";"));
+  });
+
   await runCase("timeline sync is event-driven and coordinates seek focus without becoming a master loop", () => {
     assert.ok(source.includes("beginTimelineAction(action)"));
     assert.ok(source.includes("applyTimelineActionFocus(action)"));

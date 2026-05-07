@@ -57,6 +57,8 @@
       this.liveLastObservedTime = Number.NaN;
       this.liveMaxBucketIndexSeen = -1;
       this.liveLockCutoffIndex = -1;
+      this.liveLastBackfillAt = 0;
+      this.liveLastBackfillBucketIndex = -1;
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.lastCaptionProbeAt = 0;
@@ -906,7 +908,7 @@
 
       const elapsedSeconds = Math.max(0, (Date.now() - Number(action.startedAt || Date.now())) / 1000);
       const chunkEnd = chunk && Number.isFinite(Number(chunk.end)) ? Number(chunk.end) : Number.POSITIVE_INFINITY;
-      const maxSettledTime = Math.min(chunkEnd, action.targetTime + elapsedSeconds + 0.22);
+      const maxSettledTime = Math.min(chunkEnd, action.targetTime + elapsedSeconds + 0.32);
       return Math.min(now, maxSettledTime);
     }
 
@@ -976,6 +978,15 @@
       if (!Number.isFinite(currentBucketIndex) || currentBucketIndex < 0) {
         return false;
       }
+      const nowMs = Date.now();
+      if (
+        currentBucketIndex === this.liveLastBackfillBucketIndex &&
+        nowMs - Number(this.liveLastBackfillAt || 0) < 900
+      ) {
+        return false;
+      }
+      this.liveLastBackfillBucketIndex = currentBucketIndex;
+      this.liveLastBackfillAt = nowMs;
       if (!this.video || !this.video.textTracks || !this.video.textTracks.length) {
         return false;
       }
@@ -1054,7 +1065,6 @@
 
       const windowSnapshot = this.readTextTrackWindowSnapshot(currentBucketIndex);
       const activeSnapshot = this.readTextTrackSnapshotAtCurrentTime();
-      const overlayText = this.readVisibleCaptionText();
       let text = "";
       let anchorTime = currentBucketIndex * this.getLiveWindowSeconds();
       let usedOverlayOnlyPath = false;
@@ -1075,12 +1085,13 @@
           anchorTime = now;
         }
         this.updateLiveOverlayAnchorOffset(now, activeSnapshot.startTime);
+        const overlayText = this.readVisibleCaptionText();
         if (overlayText) {
           text = this.mergeLiveCaptionText(text, overlayText);
         }
       } else {
         usedOverlayOnlyPath = true;
-        text = overlayText;
+        text = this.readVisibleCaptionText();
         const canonical = this.toCaptionCanonical(text);
         const previousUtterance = this.liveOverlayUtterance;
         let targetBucketIndex = currentBucketIndex;
@@ -1365,6 +1376,8 @@
       this.liveLastObservedTime = Number.NaN;
       this.liveMaxBucketIndexSeen = -1;
       this.liveLockCutoffIndex = -1;
+      this.liveLastBackfillAt = 0;
+      this.liveLastBackfillBucketIndex = -1;
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
@@ -1388,6 +1401,8 @@
       this.liveCaptureSuppressedUntil = 0;
       this.liveMaxBucketIndexSeen = -1;
       this.liveLockCutoffIndex = -1;
+      this.liveLastBackfillAt = 0;
+      this.liveLastBackfillBucketIndex = -1;
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.liveBubbles = [];
