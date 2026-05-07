@@ -61,6 +61,10 @@
       this.liveOverlayUtterance = null;
       this.lastCaptionProbeAt = 0;
       this.captionsEnsured = false;
+      this.captionEnsureStarted = false;
+      this.captionWorkStarted = false;
+      this.captionsWereOnBeforeExtension = null;
+      this.captionsEnabledByExtension = false;
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
       this.pendingSeekFocus = null;
@@ -80,16 +84,24 @@
         this.settings.collapsed = false;
         settingsStore.save(this.settings);
       }
+      if (!this.settings.panelClosed) {
+        this.settings.panelClosed = true;
+        settingsStore.save(this.settings);
+      }
       await this.refreshEntitlement();
       this.panel = new DialoguePanel({
         settings: this.settings,
         features: this.features,
         onSeek: (index) => this.seekToChunk(index),
         onChunkSizeChange: (chunkSize) => this.onChunkSizeChange(chunkSize),
-        onSettingsChange: (settings) => this.onSettingsChanged(settings)
+        onSettingsChange: (settings, patch) => this.onSettingsChanged(settings, patch)
       });
       this.panel.mount();
-      this.panel.setStatus("Loading subtitles...");
+      this.panel.setStatus(
+        this.settings.panelClosed
+          ? "Open panel to start live subtitle capture."
+          : "Loading subtitles..."
+      );
 
       this.video = await this.waitForVideoElement(12000);
       if (!this.video) {
@@ -99,10 +111,9 @@
 
       this.bindKeyboardHandler();
       this.bindVideoSync();
-      this.startCaptionEnsureLoop();
-      this.enableLiveCaptureMode();
-      await this.loadTranscript();
-      this.syncActiveChunk(true);
+      if (!this.settings.panelClosed) {
+        await this.startCaptionWork();
+      }
     }
 
     destroy() {
@@ -119,6 +130,7 @@
       }
       this.cleanupFns.length = 0;
       this.disableLiveCaptureMode();
+      this.restoreSubtitlesIfExtensionEnabled();
 
       if (this.panel) {
         this.panel.destroy();
@@ -1158,9 +1170,56 @@
       }
     }
 
+    setSubtitlesEnabled(enabled) {
+      const desired = Boolean(enabled);
+      const subtitleButton = document.querySelector(".ytp-subtitles-button");
+      if (subtitleButton instanceof HTMLElement) {
+        const pressed = String(subtitleButton.getAttribute("aria-pressed") || "").toLowerCase();
+        const isOn = pressed === "true";
+        if (isOn === desired) {
+          return true;
+        }
+        try {
+          subtitleButton.click();
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      const player = document.getElementById("movie_player");
+      try {
+        const isOn = Boolean(player && typeof player.isSubtitlesOn === "function" && player.isSubtitlesOn());
+        if (isOn === desired) {
+          return true;
+        }
+        if (player && typeof player.toggleSubtitles === "function") {
+          player.toggleSubtitles();
+          return true;
+        }
+      } catch {
+        return false;
+      }
+      return false;
+    }
+
+    restoreSubtitlesIfExtensionEnabled() {
+      if (!this.captionsEnabledByExtension || this.captionsWereOnBeforeExtension !== false) {
+        return;
+      }
+      if (this.isSubtitlesEnabled()) {
+        this.setSubtitlesEnabled(false);
+      }
+      this.captionsEnabledByExtension = false;
+      this.captionsEnsured = false;
+    }
+
     ensureCaptionsEnabledOnce() {
       if (this.destroyed) {
         return;
+      }
+      if (this.captionsWereOnBeforeExtension === null) {
+        this.captionsWereOnBeforeExtension = this.isSubtitlesEnabled();
       }
       if (this.isSubtitlesEnabled()) {
         this.captionsEnsured = true;
@@ -1178,10 +1237,15 @@
 
       if (this.isSubtitlesEnabled()) {
         this.captionsEnsured = true;
+        this.captionsEnabledByExtension = this.captionsWereOnBeforeExtension === false;
       }
     }
 
     startCaptionEnsureLoop() {
+      if (this.captionEnsureStarted) {
+        return;
+      }
+      this.captionEnsureStarted = true;
       const delaysMs = [0, 350, 800, 1500, 2600, 4200, 6200];
       for (let index = 0; index < delaysMs.length; index += 1) {
         const timerId = window.setTimeout(() => {
@@ -1200,6 +1264,29 @@
         return;
       }
       this.probeCaptionsNow();
+    }
+
+    async startCaptionWork() {
+      if (this.destroyed || this.settings.panelClosed) {
+        return;
+      }
+      if (this.captionWorkStarted) {
+        this.ensureCaptionsEnabledOnce();
+        if (!this.liveCaptureEnabled) {
+          this.enableLiveCaptureMode();
+        }
+        this.syncActiveChunk(true);
+        return;
+      }
+
+      this.captionWorkStarted = true;
+      if (this.panel) {
+        this.panel.setStatus("Loading subtitles...");
+      }
+      this.startCaptionEnsureLoop();
+      this.enableLiveCaptureMode();
+      await this.loadTranscript();
+      this.syncActiveChunk(true);
     }
 
     enableLiveCaptureMode() {
@@ -1802,8 +1889,20 @@
       this.syncActiveChunk(true);
     }
 
-    onSettingsChanged(nextSettings) {
+    onSettingsChanged(nextSettings, patch) {
+      const wasClosed = Boolean(this.settings.panelClosed);
       this.persistSettings(nextSettings, true);
+      const isClosed = Boolean(this.settings.panelClosed);
+      const changedPanelClosed =
+        patch && Object.prototype.hasOwnProperty.call(patch, "panelClosed") && wasClosed !== isClosed;
+
+      if (changedPanelClosed && isClosed) {
+        this.restoreSubtitlesIfExtensionEnabled();
+        return;
+      }
+      if (changedPanelClosed && !isClosed) {
+        this.startCaptionWork();
+      }
     }
 
     persistSettings(nextSettings, alreadyNormalized) {

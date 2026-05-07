@@ -13,7 +13,7 @@
     panelPosition: null,
     panelSize: null,
     launcherPosition: null,
-    panelClosed: false,
+    panelClosed: true,
     chunkSize: "medium",
     keyboardStepSeconds: 8,
     autoScroll: true,
