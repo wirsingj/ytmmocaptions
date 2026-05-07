@@ -1448,7 +1448,7 @@
           }
           this.panel.setStatus(
             shouldEnableLiveCapture
-              ? "Live overlay fallback mode active. Turn YouTube CC on and play; lines will stream into this log."
+              ? "Turn on YouTube CC if needed. Click any chat bubble to seek, or hover here and use Space / Shift+Space."
               : (response && response.reason) || "Subtitles are unavailable."
           );
         }
