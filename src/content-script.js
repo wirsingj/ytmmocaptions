@@ -1383,10 +1383,7 @@
         if (!bucket || !bucket.text) {
           continue;
         }
-        const previousChunk = chunks[chunks.length - 1];
-        const text = this.liveCaptureEnabled && previousChunk
-          ? this.trimLeadingCaptionOverlap(previousChunk.text, bucket.text)
-          : bucket.text;
+        const text = bucket.text;
         if (!text) {
           continue;
         }
@@ -1398,7 +1395,74 @@
           text: text
         });
       }
-      return this.liveCaptureEnabled ? chunks : this.polishFixedWindowChunks(chunks);
+      return this.liveCaptureEnabled ? this.groupLiveChunksBySentence(chunks) : this.polishFixedWindowChunks(chunks);
+    }
+
+    isCaptionStageDirection(text) {
+      const value = this.normalizeLiveCaptionText(text);
+      if (!value) {
+        return false;
+      }
+      return /^(\[[^\]]+\]\s*)+$/.test(value);
+    }
+
+    shouldStartNewLiveBubble(previousChunk, nextChunk) {
+      if (!previousChunk) {
+        return true;
+      }
+      if (this.isCaptionStageDirection(previousChunk.text) || this.isCaptionStageDirection(nextChunk.text)) {
+        return true;
+      }
+      const previousEnd = Number(previousChunk.end || 0);
+      const nextStart = Number(nextChunk.start || 0);
+      const gap = nextStart - previousEnd;
+      const hasRealPause = Number.isFinite(gap) && gap >= 2.4;
+      if (hasRealPause) {
+        return true;
+      }
+
+      if (!this.textEndsNaturally(previousChunk.text)) {
+        return false;
+      }
+
+      const combined = this.normalizeLiveCaptionText(previousChunk.text + " " + nextChunk.text);
+      const previousLength = this.normalizeLiveCaptionText(previousChunk.text).length;
+      return previousLength >= 190 || combined.length >= 330;
+    }
+
+    groupLiveChunksBySentence(chunks) {
+      const source = Array.isArray(chunks) ? chunks : [];
+      const grouped = [];
+
+      for (let index = 0; index < source.length; index += 1) {
+        const chunk = source[index];
+        const text = this.normalizeLiveCaptionText(chunk && chunk.text ? chunk.text : "");
+        if (!chunk || !text) {
+          continue;
+        }
+
+        const previous = grouped[grouped.length - 1];
+        const nextChunk = {
+          ...chunk,
+          text: previous ? this.trimLeadingCaptionOverlap(previous.text, text) : text
+        };
+        if (!nextChunk.text) {
+          continue;
+        }
+
+        if (this.shouldStartNewLiveBubble(previous, nextChunk)) {
+          grouped.push(nextChunk);
+          continue;
+        }
+
+        previous.text = this.mergeLiveCaptionText(previous.text, nextChunk.text);
+        previous.end = Math.max(Number(previous.end || 0), Number(nextChunk.end || 0));
+      }
+
+      for (let index = 0; index < grouped.length; index += 1) {
+        grouped[index].id = index;
+      }
+      return grouped;
     }
 
     rebuildChunks() {
