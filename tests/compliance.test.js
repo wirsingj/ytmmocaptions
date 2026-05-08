@@ -125,4 +125,10 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(!source.includes("sessionStorage"), fileName + " should not use page session storage");
     }
   });
+
+  await runCase("README does not imply global keyboard shortcuts or Android support", () => {
+    const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
+    assert.ok(readme.includes("Hover the panel and press `Space`"));
+    assert.ok(readme.includes("Firefox for Android is not a v1 support target"));
+  });
 };

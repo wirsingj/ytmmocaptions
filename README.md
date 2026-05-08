@@ -15,8 +15,8 @@ the current release candidate instead of stale builds.
 
 - Bottom-left floating chat panel with scroll history.
 - Subtitle cues grouped into readable chunks.
-- `Space` goes to next chunk.
-- `Shift+Space` goes to previous chunk.
+- Hover the panel and press `Space` to go to the next chunk.
+- Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
 - Panel preferences persist across YouTube videos: open/closed state, panel size/position, pill position, opacity, and text size.
@@ -144,6 +144,7 @@ For AMO signing/upload, use:
 - License terms are in `LICENSE`.
 - Firefox manifest includes `browser_specific_settings.gecko.data_collection_permissions.required=["none"]`.
 - Firefox minimum version is 140+ because that manifest declaration is only supported in newer Firefox releases.
+- Firefox for Android is not a v1 support target; the Android minimum metadata exists only to keep AMO lint compatibility explicit.
 
 ## License
 
