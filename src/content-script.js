@@ -59,6 +59,8 @@
       this.liveLockCutoffIndex = -1;
       this.liveLastBackfillAt = 0;
       this.liveLastBackfillBucketIndex = -1;
+      this.liveLastFutureBackfillAt = 0;
+      this.liveLastFutureBackfillBucketIndex = -1;
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.lastCaptionProbeAt = 0;
@@ -855,6 +857,38 @@
       return changed;
     }
 
+    backfillFutureLiveBucketsFromTextTracks(currentBucketIndex) {
+      if (!Number.isFinite(currentBucketIndex) || currentBucketIndex < 0) {
+        return false;
+      }
+      const nowMs = Date.now();
+      if (
+        currentBucketIndex === this.liveLastFutureBackfillBucketIndex &&
+        nowMs - Number(this.liveLastFutureBackfillAt || 0) < 900
+      ) {
+        return false;
+      }
+      this.liveLastFutureBackfillBucketIndex = currentBucketIndex;
+      this.liveLastFutureBackfillAt = nowMs;
+      if (!this.video || !this.video.textTracks || !this.video.textTracks.length) {
+        return false;
+      }
+
+      let changed = false;
+      for (let offset = 1; offset <= 4; offset += 1) {
+        const bucketIndex = currentBucketIndex + offset;
+        const snapshot = this.readTextTrackWindowSnapshot(bucketIndex);
+        if (!snapshot || !snapshot.text) {
+          continue;
+        }
+        const sampleTime = bucketIndex * this.getLiveWindowSeconds();
+        if (this.upsertLiveBucketCue(snapshot.text, sampleTime, { force: true })) {
+          changed = true;
+        }
+      }
+      return changed;
+    }
+
     shouldContinueOverlayUtterance(previousCanonical, nextCanonical) {
       const prev = String(previousCanonical || "").trim();
       const next = String(nextCanonical || "").trim();
@@ -911,6 +945,7 @@
       const currentBucketIndex = this.getLiveWindowIndex(now);
       this.updateLiveBucketLocks(currentBucketIndex);
       const backfilled = this.backfillLiveBucketsFromTextTracks(currentBucketIndex);
+      const futureBackfilled = this.backfillFutureLiveBucketsFromTextTracks(currentBucketIndex);
 
       const windowSnapshot = this.readTextTrackWindowSnapshot(currentBucketIndex);
       const activeSnapshot = this.readTextTrackSnapshotAtCurrentTime();
@@ -969,7 +1004,7 @@
             this.liveOverlayUtterance = null;
           }
         }
-        if (backfilled) {
+        if (backfilled || futureBackfilled) {
           this.rebuildChunks();
           this.syncActiveChunk(true);
         }
@@ -988,7 +1023,7 @@
       }
 
       const changed = this.upsertLiveBucketCue(normalized, anchorTime);
-      if (changed || backfilled) {
+      if (changed || backfilled || futureBackfilled) {
         this.rebuildChunks();
         this.syncActiveChunk(true);
         if (this.panel && this.cues.length === 1) {
@@ -1233,6 +1268,8 @@
       this.liveLockCutoffIndex = -1;
       this.liveLastBackfillAt = 0;
       this.liveLastBackfillBucketIndex = -1;
+      this.liveLastFutureBackfillAt = 0;
+      this.liveLastFutureBackfillBucketIndex = -1;
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
@@ -1253,6 +1290,8 @@
       this.liveLockCutoffIndex = -1;
       this.liveLastBackfillAt = 0;
       this.liveLastBackfillBucketIndex = -1;
+      this.liveLastFutureBackfillAt = 0;
+      this.liveLastFutureBackfillBucketIndex = -1;
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.liveBubbles = [];
@@ -1318,7 +1357,7 @@
     }
 
     canShowFuturePreviewChunks() {
-      return !this.liveCaptureEnabled && Array.isArray(this.allChunks) && this.allChunks.length > 0;
+      return Array.isArray(this.allChunks) && this.allChunks.length > Number(this.revealedChunkCount || 0);
     }
 
     getFuturePreviewChunks() {
