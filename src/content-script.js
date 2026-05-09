@@ -71,6 +71,9 @@
       this.captionsEnabledByExtension = false;
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
+      this.transcriptUpgradeAttempts = 0;
+      this.transcriptUpgradeInFlight = false;
+      this.lastTranscriptUpgradeAt = 0;
       this.pendingSeekFocus = null;
       this.liveCaptureSuppressedUntil = 0;
       this.liveBubbles = [];
@@ -1325,6 +1328,7 @@
       this.liveCapturePollId = window.setInterval(() => {
         this.maybeProbeCaptions();
         this.captureLiveCaptionLine();
+        this.maybeUpgradeLiveCaptureToTranscript();
       }, 120);
     }
 
@@ -1477,6 +1481,75 @@
       if (this.loadAbortController) {
         this.loadAbortController.abort();
         this.loadAbortController = null;
+      }
+    }
+
+    maybeUpgradeLiveCaptureToTranscript() {
+      if (
+        this.destroyed ||
+        this.settings.panelClosed ||
+        !this.liveCaptureEnabled ||
+        this.transcriptUpgradeInFlight ||
+        this.transcriptUpgradeAttempts >= 8
+      ) {
+        return;
+      }
+      const now = Date.now();
+      if (now - Number(this.lastTranscriptUpgradeAt || 0) < 7000) {
+        return;
+      }
+      this.lastTranscriptUpgradeAt = now;
+      this.transcriptUpgradeAttempts += 1;
+      this.tryUpgradeLiveCaptureToTranscript();
+    }
+
+    async tryUpgradeLiveCaptureToTranscript() {
+      if (this.transcriptUpgradeInFlight || this.destroyed || this.settings.panelClosed || !this.liveCaptureEnabled) {
+        return;
+      }
+      this.transcriptUpgradeInFlight = true;
+      this.ensurePageBridgeForWatchPage();
+      this.probeCaptionsNow();
+      const controller = new AbortController();
+      const signal = controller.signal;
+      const timeoutId = window.setTimeout(() => controller.abort(), 11000);
+
+      try {
+        await this.waitForCaptionContextReady(1600);
+        if (signal.aborted || this.destroyed || this.settings.panelClosed || !this.liveCaptureEnabled) {
+          return;
+        }
+        const response = await transcript.loadTranscript(window.location.href, signal, {
+          videoElement: this.video
+        });
+        if (
+          !response ||
+          !response.ok ||
+          response.videoId !== this.videoId ||
+          !Array.isArray(response.cues) ||
+          !response.cues.length ||
+          this.destroyed ||
+          this.settings.panelClosed
+        ) {
+          return;
+        }
+
+        this.disableLiveCaptureMode();
+        this.transcriptMode = response.mode || "direct transcript mode";
+        this.cues = response.cues;
+        this.revealedChunkCount = 0;
+        this.rebuildChunks();
+        this.syncActiveChunk(true);
+        if (this.panel) {
+          this.panel.setStatus("Full transcript loaded. Next up previews are available.", true);
+        }
+      } catch (error) {
+        if (!error || error.name !== "AbortError") {
+          // Keep live overlay mode quiet; failed upgrades are expected on some videos.
+        }
+      } finally {
+        window.clearTimeout(timeoutId);
+        this.transcriptUpgradeInFlight = false;
       }
     }
 

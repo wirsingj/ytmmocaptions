@@ -153,4 +153,12 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("actualIndex: index"));
     assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks())"));
   });
+
+  await runCase("live fallback periodically upgrades to full transcript for future previews", () => {
+    assert.ok(source.includes("maybeUpgradeLiveCaptureToTranscript()"));
+    assert.ok(source.includes("tryUpgradeLiveCaptureToTranscript()"));
+    assert.ok(source.includes("this.transcriptUpgradeAttempts >= 8"));
+    assert.ok(source.includes("Full transcript loaded. Next up previews are available."));
+    assert.ok(source.includes("this.disableLiveCaptureMode();"));
+  });
 };
