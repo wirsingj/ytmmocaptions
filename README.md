@@ -30,7 +30,6 @@ ytmmocaptions/
     platform.js
     page-context.js
     settings-store.js
-    feature-flags.js
     chunker.js
     bubble-state.js
     transcript.js
@@ -120,7 +119,7 @@ For Chrome Web Store upload, use:
 ### Firefox
 
 1. Run `npm run build:firefox:xpi`.
-2. Use Firefox version 140 or newer.
+2. Use Firefox version 142 or newer.
 3. Open `about:debugging#/runtime/this-firefox`.
 4. Click Load Temporary Add-on.
 5. Select `build/firefox/manifest.json`.
@@ -143,8 +142,8 @@ For AMO signing/upload, use:
 - Privacy details are in `PRIVACY.md`.
 - License terms are in `LICENSE`.
 - Firefox manifest includes `browser_specific_settings.gecko.data_collection_permissions.required=["none"]`.
-- Firefox minimum version is 140+ because that manifest declaration is only supported in newer Firefox releases.
-- Firefox for Android is not a v1 support target; the Android minimum metadata exists only to keep AMO lint compatibility explicit.
+- Firefox minimum version is 142+ because the manifest data-collection declaration needs newer Firefox validation support.
+- v1 targets desktop Chrome and desktop Firefox only. Do not select Firefox for Android in AMO unless it is tested separately.
 
 ## License
 

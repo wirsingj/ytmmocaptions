@@ -3,13 +3,12 @@
   const transcript = app.transcript;
   const chunker = app.chunker;
   const settingsStore = app.settingsStore;
-  const featureFlags = app.featureFlags;
   const bubbleState = app.bubbleState;
   const platform = app.platform;
   const pageContext = app.pageContext;
   const DialoguePanel = app.DialoguePanel;
 
-  if (!transcript || !chunker || !settingsStore || !featureFlags || !bubbleState || !platform || !DialoguePanel) {
+  if (!transcript || !chunker || !settingsStore || !bubbleState || !platform || !DialoguePanel) {
     console.warn("[Dialogue Captions] Missing required modules.");
     return;
   }
@@ -41,8 +40,6 @@
       this.revealedChunkCount = 0;
       this.activeIndex = -1;
       this.settings = { ...settingsStore.DEFAULTS };
-      this.entitlement = { plan: "free", source: "settings" };
-      this.features = featureFlags.buildFeatureState("free", {});
 
       this.cleanupFns = [];
       this.syncRafId = 0;
@@ -79,12 +76,9 @@
 
     async init() {
       this.settings = await settingsStore.load();
-      await this.refreshEntitlement();
       this.panel = new DialoguePanel({
         settings: this.settings,
-        features: this.features,
         onSeek: (index) => this.seekToChunk(index),
-        onChunkSizeChange: (chunkSize) => this.onChunkSizeChange(chunkSize),
         onSettingsChange: (settings, patch) => this.onSettingsChanged(settings, patch)
       });
       this.panel.mount();
@@ -243,10 +237,7 @@
         if (isTypingContext(event.target)) {
           return false;
         }
-        return (
-          (this.features.globalKeyboardMode && this.settings.globalKeyboardEnabled) ||
-          this.panel.isPointerInside()
-        );
+        return this.panel.isPointerInside();
       };
 
       const onKeyDown = (event) => {
@@ -2004,18 +1995,6 @@
       this.activeIndex = -1;
     }
 
-    onChunkSizeChange(chunkSize) {
-      if (!this.features.chunkSizeControl) {
-        return;
-      }
-      if (chunkSize === this.settings.chunkSize) {
-        return;
-      }
-      this.persistSettings({ chunkSize: chunkSize });
-      this.rebuildChunks();
-      this.syncActiveChunk(true);
-    }
-
     onSettingsChanged(nextSettings, patch) {
       const wasClosed = Boolean(this.settings.panelClosed);
       this.persistSettings(nextSettings, true);
@@ -2036,28 +2015,7 @@
       this.settings = alreadyNormalized
         ? settingsStore.normalizeSettings(nextSettings)
         : settingsStore.normalizeSettings({ ...this.settings, ...nextSettings });
-      this.applyFeatureGates();
       settingsStore.save(this.settings);
-    }
-
-    async refreshEntitlement() {
-      this.entitlement = await featureFlags.resolveEntitlement(this.settings);
-      this.features = featureFlags.buildFeatureState(
-        this.entitlement.plan,
-        this.settings.featureOverrides
-      );
-      this.applyFeatureGates();
-    }
-
-    applyFeatureGates() {
-      if (!this.features.globalKeyboardMode) {
-        this.settings.globalKeyboardEnabled = false;
-      }
-      this.settings.chunkSize = "medium";
-      this.settings.keyboardStepSeconds = 8;
-      if (!this.features.autoScrollControl) {
-        this.settings.autoScroll = true;
-      }
     }
 
     getKeyboardStepSeconds() {

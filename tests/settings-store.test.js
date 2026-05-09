@@ -65,14 +65,18 @@ exports.run = async function runSettingsStoreTests(ctx) {
   await runCase("settings save writes normalized values", async () => {
     const { store, saved } = makeStore();
     const persisted = await store.save({
-      plan: "premium",
       panelOpacity: 12,
-      textScale: 999
+      textScale: 999,
+      plan: "legacy-ignored",
+      featureOverrides: { oldGate: true },
+      globalKeyboardEnabled: true
     });
-    assert.equal(persisted.plan, "premium");
     assert.equal(persisted.panelOpacity, 35);
     assert.equal(persisted.textScale, 200);
     assert.equal(persisted.schemaVersion, 1);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, "plan"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, "featureOverrides"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, "globalKeyboardEnabled"), false);
     assert.ok(saved["dialogueCaptions.settings.v1"]);
   });
 

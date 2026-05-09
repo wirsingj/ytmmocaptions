@@ -6,8 +6,6 @@
   const SCHEMA_VERSION = 1;
   const DEFAULTS = Object.freeze({
     schemaVersion: SCHEMA_VERSION,
-    plan: "free",
-    featureOverrides: {},
     panelOpacity: 88,
     textScale: 120,
     panelPosition: null,
@@ -16,8 +14,7 @@
     panelClosed: true,
     chunkSize: "medium",
     keyboardStepSeconds: 8,
-    autoScroll: true,
-    globalKeyboardEnabled: false
+    autoScroll: true
   });
 
   function normalizeChunkSize(value) {
@@ -98,17 +95,8 @@
 
   function normalizeSettings(input) {
     const source = input && typeof input === "object" ? input : {};
-    const rawOverrides =
-      source.featureOverrides && typeof source.featureOverrides === "object" ? source.featureOverrides : {};
-    const featureOverrides = {};
-    for (const key of Object.keys(rawOverrides)) {
-      featureOverrides[key] = Boolean(rawOverrides[key]);
-    }
-
     return {
       schemaVersion: SCHEMA_VERSION,
-      plan: source.plan === "premium" ? "premium" : DEFAULTS.plan,
-      featureOverrides: featureOverrides,
       panelOpacity: normalizePanelOpacity(source.panelOpacity),
       textScale: normalizeTextScale(source.textScale),
       panelPosition: normalizePanelPosition(source.panelPosition),
@@ -117,11 +105,7 @@
       panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed,
       chunkSize: normalizeChunkSize(source.chunkSize),
       keyboardStepSeconds: normalizeKeyboardStepSeconds(source.keyboardStepSeconds),
-      autoScroll: typeof source.autoScroll === "boolean" ? source.autoScroll : DEFAULTS.autoScroll,
-      globalKeyboardEnabled:
-        typeof source.globalKeyboardEnabled === "boolean"
-          ? source.globalKeyboardEnabled
-          : DEFAULTS.globalKeyboardEnabled
+      autoScroll: typeof source.autoScroll === "boolean" ? source.autoScroll : DEFAULTS.autoScroll
     };
   }
 

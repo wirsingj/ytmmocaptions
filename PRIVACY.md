@@ -12,12 +12,12 @@ The extension does not:
 - create user accounts;
 - collect names, emails, phone numbers, addresses, payment data, or identifiers;
 - send analytics, telemetry, or ad-tracking events.
+- load advertisements or connect to an ad network.
 
 ## Local Data Stored
 
 The extension stores only local preference settings in extension storage:
 - preference schema version for safe future migrations;
-- plan/feature gate state (`free`/`premium` and local feature override booleans);
 - panel background blend/transparency;
 - text size;
 - panel position and size;
@@ -25,8 +25,7 @@ The extension stores only local preference settings in extension storage:
 - panel open/closed state;
 - chunk size (`short`, `medium`, `long`);
 - keyboard step length;
-- auto-scroll enabled/disabled;
-- keyboard mode setting, currently release-gated so shortcuts are pointer-over-panel only by default.
+- auto-scroll enabled/disabled.
 
 These settings remain on the user's browser profile unless removed by uninstalling the extension or clearing extension storage.
 
@@ -59,12 +58,11 @@ If subtitles or transcript data are unavailable, the extension fails gracefully 
 Keyboard controls are not globally enabled in the release UI.
 
 - Default mode: shortcuts work only when the pointer is over the extension panel.
-- Any future global keyboard mode remains gated and must preserve the safety checks below.
 - Shortcuts are ignored while typing in inputs, textareas, selects, or editable fields.
 
 ## Third-Party Services
 
-Dialogue Captions does not integrate with third-party analytics, advertising, or remote code services.
+Dialogue Captions does not integrate with third-party analytics, advertising, ad network, account, payment, or remote code services.
 
 ## Contact
 

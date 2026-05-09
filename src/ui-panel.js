@@ -24,7 +24,6 @@
     constructor(options) {
       this.options = options || {};
       this.settings = this.options.settings || {};
-      this.features = this.options.features || {};
 
       this.root = null;
       this.body = null;
@@ -34,12 +33,6 @@
       this.windowContainer = null;
       this.bottomSpacer = null;
 
-      this.autoScrollButton = null;
-      this.keyboardButton = null;
-      this.chunkSizeSelect = null;
-      this.stepWrap = null;
-      this.stepSelect = null;
-      this.sizeWrap = null;
       this.opacityWrap = null;
       this.opacityInput = null;
       this.textScaleWrap = null;
@@ -115,59 +108,6 @@
       this.resetButton.className = "dc-btn dc-btn-reset";
       this.resetButton.textContent = "Reset";
       this.resetButton.title = "Reset panel size, position, transparency, and text size";
-
-      this.autoScrollButton = document.createElement("button");
-      this.autoScrollButton.type = "button";
-      this.autoScrollButton.className = "dc-btn";
-      this.autoScrollButton.title = "Toggle auto-scroll";
-
-      this.keyboardButton = document.createElement("button");
-      this.keyboardButton.type = "button";
-      this.keyboardButton.className = "dc-btn dc-btn-keys";
-      this.keyboardButton.title = "Keyboard mode: focus-only or global";
-
-      const sizeWrap = document.createElement("label");
-      sizeWrap.className = "dc-size-wrap";
-      sizeWrap.textContent = "Chunk";
-      this.sizeWrap = sizeWrap;
-
-      this.chunkSizeSelect = document.createElement("select");
-      this.chunkSizeSelect.className = "dc-size-select";
-      const sizeOptions = [
-        { value: "short", label: "Short" },
-        { value: "medium", label: "Medium" },
-        { value: "long", label: "Long" }
-      ];
-      for (const optionData of sizeOptions) {
-        const option = document.createElement("option");
-        option.value = optionData.value;
-        option.textContent = optionData.label;
-        this.chunkSizeSelect.append(option);
-      }
-      this.chunkSizeSelect.value = this.settings.chunkSize || "medium";
-      sizeWrap.append(this.chunkSizeSelect);
-
-      const stepWrap = document.createElement("label");
-      stepWrap.className = "dc-step-wrap";
-      stepWrap.textContent = "Step";
-      this.stepWrap = stepWrap;
-
-      this.stepSelect = document.createElement("select");
-      this.stepSelect.className = "dc-size-select";
-      const stepOptions = [
-        { value: "3", label: "3s" },
-        { value: "8", label: "8s" },
-        { value: "5", label: "5s" },
-        { value: "12", label: "12s" }
-      ];
-      for (const optionData of stepOptions) {
-        const option = document.createElement("option");
-        option.value = optionData.value;
-        option.textContent = optionData.label;
-        this.stepSelect.append(option);
-      }
-      this.stepSelect.value = String(this.settings.keyboardStepSeconds || 8);
-      stepWrap.append(this.stepSelect);
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
@@ -338,39 +278,8 @@
 
       const onClose = () => this.closeToNearestCorner();
       const onReset = () => this.resetPanelDefaults();
-      const onAuto = () => {
-        if (!this.features.autoScrollControl) {
-          return;
-        }
-        this.updateSettings({ autoScroll: !this.settings.autoScroll });
-      };
-      const onKeyboard = () => {
-        if (!this.features.globalKeyboardMode) {
-          return;
-        }
-        this.updateSettings({ globalKeyboardEnabled: !this.settings.globalKeyboardEnabled });
-      };
-
       this.addListener(this.closeButton, "click", onClose);
       this.addListener(this.resetButton, "click", onReset);
-      this.addListener(this.autoScrollButton, "click", onAuto);
-      this.addListener(this.keyboardButton, "click", onKeyboard);
-
-      const onChunkSizeChange = () => {
-        if (!this.features.chunkSizeControl) {
-          return;
-        }
-        this.updateSettings({ chunkSize: this.chunkSizeSelect.value });
-        if (typeof this.options.onChunkSizeChange === "function") {
-          this.options.onChunkSizeChange(this.chunkSizeSelect.value);
-        }
-      };
-      this.addListener(this.chunkSizeSelect, "change", onChunkSizeChange);
-
-      const onStepSecondsChange = () => {
-        this.updateSettings({ keyboardStepSeconds: Number(this.stepSelect.value || 8) });
-      };
-      this.addListener(this.stepSelect, "change", onStepSecondsChange);
 
       const onOpacityInput = () => {
         this.updateSettings({ panelOpacity: Number(this.opacityInput.value) });
@@ -526,31 +435,6 @@
       } else {
         this.root.style.width = "";
         this.root.style.height = "";
-      }
-
-      const autoLabel = this.settings.autoScroll ? "Auto On" : "Auto Off";
-      this.autoScrollButton.textContent = autoLabel;
-      this.autoScrollButton.classList.toggle("is-active", Boolean(this.settings.autoScroll));
-      this.autoScrollButton.style.display = this.features.autoScrollControl ? "" : "none";
-
-      const keyLabel = this.settings.globalKeyboardEnabled ? "Keys Global" : "Keys Focus";
-      this.keyboardButton.textContent = keyLabel;
-      this.keyboardButton.classList.toggle("is-active", Boolean(this.settings.globalKeyboardEnabled));
-      this.keyboardButton.style.display = this.features.globalKeyboardMode ? "" : "none";
-
-      const normalizedSize = this.settings.chunkSize || "medium";
-      if (this.chunkSizeSelect.value !== normalizedSize) {
-        this.chunkSizeSelect.value = normalizedSize;
-      }
-      if (this.sizeWrap) {
-        this.sizeWrap.style.display = "none";
-      }
-      const normalizedStep = String(Number(this.settings.keyboardStepSeconds || 8));
-      if (this.stepSelect && this.stepSelect.value !== normalizedStep) {
-        this.stepSelect.value = normalizedStep;
-      }
-      if (this.stepWrap) {
-        this.stepWrap.style.display = "none";
       }
 
       const panelOpacity = Number(this.settings.panelOpacity || 100);

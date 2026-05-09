@@ -64,11 +64,8 @@ exports.run = async function runComplianceTests(ctx) {
     const id = manifest.browser_specific_settings.gecko.id;
     assert.notEqual(id, "dialogue-captions@example.local");
     assert.ok(/@/.test(id), "Firefox extension ID should be stable");
-    assert.equal(
-      manifest.browser_specific_settings.gecko_android.strict_min_version,
-      "142.0",
-      "Firefox Android minimum must support data_collection_permissions if AMO lints Android metadata"
-    );
+    assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "142.0");
+    assert.equal(Object.prototype.hasOwnProperty.call(manifest.browser_specific_settings, "gecko_android"), false);
   });
 
   await runCase("package build script does not bump versions", () => {
@@ -93,10 +90,10 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes('path.endsWith("/api/timedtext") || path === "/youtubei/v1/get_transcript"'));
   });
 
-  await runCase("global keyboard requires feature gate and setting", () => {
+  await runCase("global keyboard is pointer-over-panel only", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
-    assert.ok(source.includes("this.features.globalKeyboardMode && this.settings.globalKeyboardEnabled"));
-    assert.ok(source.includes("this.panel.isPointerInside()"));
+    assert.ok(source.includes("return this.panel.isPointerInside();"));
+    assert.ok(!source.includes("globalKeyboardEnabled"));
   });
 
   await runCase("build output manifests keep storage permission when present", () => {
@@ -126,9 +123,30 @@ exports.run = async function runComplianceTests(ctx) {
     }
   });
 
-  await runCase("README does not imply global keyboard shortcuts or Android support", () => {
+  await runCase("README does not imply global keyboard shortcuts or Android targeting", () => {
     const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
     assert.ok(readme.includes("Hover the panel and press `Space`"));
-    assert.ok(readme.includes("Firefox for Android is not a v1 support target"));
+    assert.ok(readme.includes("desktop Chrome and desktop Firefox only"));
+    assert.ok(!readme.includes("gecko_android"));
+  });
+
+  await runCase("release has no dormant monetization or ad-network scaffolding", () => {
+    const files = [
+      "README.md",
+      "PRIVACY.md",
+      "manifest.json",
+      "manifest.chrome.json",
+      "manifest.firefox.json",
+      "src/settings-store.js",
+      "src/content-script.js"
+    ];
+    for (const fileName of files) {
+      const source = fs.readFileSync(path.join(ROOT_DIR, fileName), "utf8");
+      assert.ok(!source.includes("feature-flags"), fileName);
+      assert.ok(!source.includes("premium"), fileName);
+      assert.ok(!source.includes("featureOverrides"), fileName);
+      assert.ok(!source.includes("globalKeyboardEnabled"), fileName);
+    }
+    assert.equal(fs.existsSync(path.join(ROOT_DIR, "src", "feature-flags.js")), false);
   });
 };

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dialogue Captions",
-  "version": "0.25.88",
+  "version": "0.25.89",
   "description": "MMO-style dialogue panel for YouTube subtitles with chunk navigation.",
   "host_permissions": [
     "https://www.youtube.com/watch*"
@@ -17,9 +17,6 @@
           "none"
         ]
       },
-      "strict_min_version": "140.0"
-    },
-    "gecko_android": {
       "strict_min_version": "142.0"
     }
   },
@@ -32,7 +29,6 @@
         "scripts/platform.js",
         "scripts/page-context.js",
         "scripts/settings-store.js",
-        "scripts/feature-flags.js",
         "scripts/chunker.js",
         "scripts/bubble-state.js",
         "scripts/transcript.js",
