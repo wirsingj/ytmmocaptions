@@ -11,26 +11,8 @@
     panelPosition: null,
     panelSize: null,
     launcherPosition: null,
-    panelClosed: true,
-    chunkSize: "medium",
-    keyboardStepSeconds: 8,
-    autoScroll: true
+    panelClosed: true
   });
-
-  function normalizeChunkSize(value) {
-    if (value === "short" || value === "medium" || value === "long") {
-      return value;
-    }
-    return DEFAULTS.chunkSize;
-  }
-
-  function normalizeKeyboardStepSeconds(value) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) {
-      return DEFAULTS.keyboardStepSeconds;
-    }
-    return Math.max(2, Math.min(30, Math.round(number)));
-  }
 
   function normalizePanelOpacity(value) {
     const number = Number(value);
@@ -102,10 +84,7 @@
       panelPosition: normalizePanelPosition(source.panelPosition),
       panelSize: normalizePanelSize(source.panelSize),
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),
-      panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed,
-      chunkSize: normalizeChunkSize(source.chunkSize),
-      keyboardStepSeconds: normalizeKeyboardStepSeconds(source.keyboardStepSeconds),
-      autoScroll: typeof source.autoScroll === "boolean" ? source.autoScroll : DEFAULTS.autoScroll
+      panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed
     };
   }
 

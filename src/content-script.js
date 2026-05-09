@@ -4,11 +4,12 @@
   const chunker = app.chunker;
   const settingsStore = app.settingsStore;
   const bubbleState = app.bubbleState;
+  const captionText = app.captionText;
   const platform = app.platform;
   const pageContext = app.pageContext;
   const DialoguePanel = app.DialoguePanel;
 
-  if (!transcript || !chunker || !settingsStore || !bubbleState || !platform || !DialoguePanel) {
+  if (!transcript || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
     console.warn("[Dialogue Captions] Missing required modules.");
     return;
   }
@@ -339,221 +340,43 @@
     }
 
     normalizeLiveCaptionText(input) {
-      const raw = String(input || "")
-        .replace(/\u200b/g, "")
-        .replace(/\r\n?/g, "\n")
-        .replace(/\s+>>\s+/g, "\n");
-      const lines = raw
-        .split("\n")
-        .map((line) =>
-          line
-            .replace(/^\s*>>\s*/, "")
-            .replace(/\s+/g, " ")
-            .trim()
-        )
-        .filter(Boolean);
-      return lines.join("\n");
+      return captionText.normalizeText(input);
     }
 
     sanitizeOverlayCandidateText(input) {
-      return String(input || "")
-        .replace(
-          /(^|[\s>])(?:English|[A-Z][A-Za-z -]{1,28})\s*\(\s*(?:auto-generated|automatic captions)\s*\)/g,
-          "$1"
-        )
-        .replace(/\bclick for settings\b/gi, " ")
-        .replace(/\bsubtitles\/closed captions\b/gi, " ")
-        .replace(/\[\s*[_-]+\s*\]/g, " ");
+      return captionText.sanitizeOverlayText(input);
     }
 
     cleanCaptionCandidateText(input) {
-      const sanitized = this.sanitizeOverlayCandidateText(input);
-      const normalized = this.normalizeLiveCaptionText(sanitized);
-      if (!normalized) {
-        return "";
-      }
-      const lower = normalized.toLowerCase();
-      if (
-        lower === "cc" ||
-        lower === "subtitles" ||
-        lower === "closed captions" ||
-        lower === "auto-generated"
-      ) {
-        return "";
-      }
-      return this.collapseOverlaySpamIfNeeded(normalized);
+      return captionText.cleanCandidate(input);
     }
 
     collapseOverlaySpamIfNeeded(input) {
-      const normalized = this.normalizeLiveCaptionText(input);
-      if (!normalized) {
-        return "";
-      }
-      const collapsed = this.collapseRepeatedCaptionPhrases(normalized);
-      if (!collapsed) {
-        return "";
-      }
-      return this.collapseRepeatedCaptionSentences(collapsed);
+      return captionText.collapseOverlaySpam(input);
     }
 
     toCaptionCanonical(text) {
-      return String(text || "")
-        .toLowerCase()
-        .replace(/[^\w\s]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+      return captionText.toCanonical(text);
     }
 
     collapseRepeatedCaptionPhrases(text) {
-      const input = this.normalizeLiveCaptionText(text);
-      if (!input) {
-        return "";
-      }
-      const words = input.split(" ").filter(Boolean);
-      if (words.length < 6) {
-        return input;
-      }
-
-      const compact = words.slice();
-      let changed = true;
-      while (changed) {
-        changed = false;
-        const maxWindow = Math.min(14, Math.floor(compact.length / 2));
-        for (let windowSize = maxWindow; windowSize >= 3; windowSize -= 1) {
-          for (let index = 0; index + windowSize * 2 <= compact.length; index += 1) {
-            let same = true;
-            for (let offset = 0; offset < windowSize; offset += 1) {
-              const left = String(compact[index + offset] || "").toLowerCase();
-              const right = String(compact[index + windowSize + offset] || "").toLowerCase();
-              if (left !== right) {
-                same = false;
-                break;
-              }
-            }
-            if (!same) {
-              continue;
-            }
-            compact.splice(index + windowSize, windowSize);
-            changed = true;
-            index = Math.max(-1, index - windowSize);
-          }
-        }
-      }
-
-      return this.normalizeLiveCaptionText(compact.join(" "));
+      return captionText.collapseRepeatedPhrases(text);
     }
 
     collapseRepeatedCaptionSentences(text) {
-      const input = this.normalizeLiveCaptionText(text);
-      if (!input) {
-        return "";
-      }
-      const parts = input.match(/[^.!?]+[.!?]["')\]]*|[^.!?]+$/g) || [input];
-      const seen = new Set();
-      const kept = [];
-      for (let index = 0; index < parts.length; index += 1) {
-        const part = this.normalizeLiveCaptionText(parts[index]);
-        const canonical = this.toCaptionCanonical(part);
-        if (!part || !canonical) {
-          continue;
-        }
-        if (canonical.length >= 24 && seen.has(canonical)) {
-          continue;
-        }
-        if (canonical.length >= 24) {
-          seen.add(canonical);
-        }
-        kept.push(part);
-      }
-      return this.normalizeLiveCaptionText(kept.join(" "));
+      return captionText.collapseRepeatedSentences(text);
     }
 
     dedupeCaptionCandidates(candidates) {
-      const source = Array.isArray(candidates) ? candidates : [];
-      const selected = [];
-      for (let index = 0; index < source.length; index += 1) {
-        const candidate = this.cleanCaptionCandidateText(source[index]);
-        if (!candidate) {
-          continue;
-        }
-        let dropped = false;
-        for (let selectedIndex = 0; selectedIndex < selected.length; selectedIndex += 1) {
-          const existing = selected[selectedIndex];
-          if (!this.isHighOverlapText(candidate, existing)) {
-            continue;
-          }
-          if (candidate.length > existing.length + 6) {
-            selected[selectedIndex] = candidate;
-          }
-          dropped = true;
-          break;
-        }
-        if (!dropped) {
-          selected.push(candidate);
-        }
-      }
-      return selected.slice(0, 6);
+      return captionText.dedupeCandidates(candidates);
     }
 
     mergeLiveCaptionText(previousText, nextText) {
-      const previous = this.normalizeLiveCaptionText(previousText);
-      const next = this.normalizeLiveCaptionText(nextText);
-      if (!previous) {
-        return next;
-      }
-      if (!next) {
-        return previous;
-      }
-      if (previous === next) {
-        return previous;
-      }
-
-      const previousCanonical = this.toCaptionCanonical(previous);
-      const nextCanonical = this.toCaptionCanonical(next);
-      if (previousCanonical && nextCanonical) {
-        if (previousCanonical.includes(nextCanonical)) {
-          return previous;
-        }
-        if (nextCanonical.includes(previousCanonical)) {
-          return next;
-        }
-      }
-
-      const previousTokens = previous.split(/\s+/).filter(Boolean);
-      const nextTokens = next.split(/\s+/).filter(Boolean);
-      const maxOverlap = Math.min(18, previousTokens.length, nextTokens.length);
-      let overlap = 0;
-      for (let size = maxOverlap; size >= 1; size -= 1) {
-        let matches = true;
-        for (let index = 0; index < size; index += 1) {
-          const left = String(previousTokens[previousTokens.length - size + index] || "").toLowerCase();
-          const right = String(nextTokens[index] || "").toLowerCase();
-          if (left !== right) {
-            matches = false;
-            break;
-          }
-        }
-        if (matches) {
-          overlap = size;
-          break;
-        }
-      }
-
-      if (overlap > 0) {
-        const tail = nextTokens.slice(overlap).join(" ");
-        if (!tail) {
-          return previous;
-        }
-        return this.normalizeLiveCaptionText(previous + " " + tail);
-      }
-
-      return this.normalizeLiveCaptionText(previous + " " + next);
+      return captionText.mergeText(previousText, nextText);
     }
 
     normalizeCaptionToken(token) {
-      return String(token || "")
-        .toLowerCase()
-        .replace(/[^\w]/g, "");
+      return captionText.normalizeToken(token);
     }
 
     trimLiveChunkAgainstPrevious(previousText, chunk) {
@@ -576,34 +399,7 @@
     }
 
     isHighOverlapText(leftText, rightText) {
-      const left = this.toCaptionCanonical(leftText);
-      const right = this.toCaptionCanonical(rightText);
-      if (!left || !right) {
-        return false;
-      }
-      if (left === right) {
-        return true;
-      }
-      if (left.length >= 22 && right.length >= 22) {
-        if (left.includes(right) || right.includes(left)) {
-          return true;
-        }
-      }
-
-      const leftTokens = left.split(" ").filter(Boolean);
-      const rightTokens = right.split(" ").filter(Boolean);
-      if (!leftTokens.length || !rightTokens.length) {
-        return false;
-      }
-      const rightSet = new Set(rightTokens);
-      let overlap = 0;
-      for (let index = 0; index < leftTokens.length; index += 1) {
-        if (rightSet.has(leftTokens[index])) {
-          overlap += 1;
-        }
-      }
-      const ratio = overlap / Math.max(leftTokens.length, rightTokens.length);
-      return ratio >= 0.8;
+      return captionText.isHighOverlap(leftText, rightText);
     }
 
     isNodeVisible(node) {
@@ -1673,6 +1469,14 @@
       const bucketCount = Array.isArray(previousChunk.bucketIndexes) ? previousChunk.bucketIndexes.length : 1;
       const previousLength = this.normalizeLiveCaptionText(previousChunk.text).length;
       const combined = this.normalizeLiveCaptionText(previousChunk.text + " " + nextChunk.text);
+      const lyricLike =
+        captionText.looksLyricLike(previousChunk.text) ||
+        captionText.looksLyricLike(nextChunk.text) ||
+        captionText.looksLyricLike(combined);
+
+      if (lyricLike && (bucketCount >= 2 || previousLength >= 180 || combined.length >= 260)) {
+        return true;
+      }
 
       if (!this.textEndsNaturally(previousChunk.text)) {
         return bucketCount >= 3 || previousLength >= 340 || combined.length >= 430;
@@ -2023,114 +1827,15 @@
     }
 
     textEndsNaturally(text) {
-      return /[.!?]["')\]]?$/.test(String(text || "").trim());
+      return captionText.endsNaturally(text);
     }
 
     splitLongCaptionThought(text, maxChars) {
-      const normalized = this.normalizeLiveCaptionText(text);
-      const limit = Number.isFinite(maxChars) ? Math.max(120, Number(maxChars)) : 330;
-      if (!normalized || normalized.length <= limit) {
-        return normalized ? [normalized] : [];
-      }
-      if (normalized.length < limit * 1.45) {
-        return [normalized];
-      }
-
-      const pieces = [];
-      let remaining = normalized;
-      while (remaining.length > limit) {
-        const search = remaining.slice(0, limit + 1);
-        let cutAt = Math.max(search.lastIndexOf(", "), search.lastIndexOf("; "), search.lastIndexOf(": "));
-        if (cutAt < 180) {
-          cutAt = -1;
-          const softBreaks = /\s+(?:and|but|so|because|which|then|if|when|where|while|uh|um)\s+/gi;
-          let match = softBreaks.exec(search);
-          while (match) {
-            if (match.index >= 180) {
-              cutAt = match.index;
-            }
-            match = softBreaks.exec(search);
-          }
-        }
-        if (cutAt < 180) {
-          break;
-        }
-
-        const piece = this.normalizeLiveCaptionText(remaining.slice(0, cutAt + 1));
-        if (piece) {
-          pieces.push(piece);
-        }
-        remaining = this.normalizeLiveCaptionText(remaining.slice(cutAt + 1));
-      }
-
-      if (remaining) {
-        pieces.push(remaining);
-      }
-      return pieces.length ? pieces : [normalized];
+      return captionText.splitLongThought(text, maxChars);
     }
 
     splitTextByNaturalBreaks(text, maxChars, allowWordSplit) {
-      const normalized = this.normalizeLiveCaptionText(text);
-      if (!normalized) {
-        return [];
-      }
-      const limit = Number.isFinite(maxChars) ? Math.max(120, Number(maxChars)) : 330;
-      const canSplitWords = allowWordSplit !== false;
-      if (normalized.length <= limit) {
-        return [normalized];
-      }
-
-      const sentences = normalized.match(/[^.!?]+[.!?]["')\]]*|[^.!?]+$/g) || [normalized];
-      const pieces = [];
-      let buffer = "";
-
-      const flush = () => {
-        const value = this.normalizeLiveCaptionText(buffer);
-        if (value) {
-          pieces.push(value);
-        }
-        buffer = "";
-      };
-
-      for (let index = 0; index < sentences.length; index += 1) {
-        const sentence = this.normalizeLiveCaptionText(sentences[index]);
-        if (!sentence) {
-          continue;
-        }
-        const candidate = buffer ? buffer + " " + sentence : sentence;
-        if (buffer && candidate.length > limit) {
-          flush();
-        }
-        if (sentence.length <= limit) {
-          buffer = buffer ? buffer + " " + sentence : sentence;
-          continue;
-        }
-
-        if (!canSplitWords) {
-          const softParts = this.splitLongCaptionThought(sentence, limit);
-          for (let softIndex = 0; softIndex < softParts.length; softIndex += 1) {
-            const softPart = softParts[softIndex];
-            const softCandidate = buffer ? buffer + " " + softPart : softPart;
-            if (buffer && softCandidate.length > limit) {
-              flush();
-            }
-            buffer = buffer ? buffer + " " + softPart : softPart;
-          }
-          continue;
-        }
-
-        const words = sentence.split(/\s+/).filter(Boolean);
-        for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
-          const word = words[wordIndex];
-          const next = buffer ? buffer + " " + word : word;
-          if (buffer && next.length > limit) {
-            flush();
-          }
-          buffer = buffer ? buffer + " " + word : word;
-        }
-      }
-      flush();
-      return pieces;
+      return captionText.splitByNaturalBreaks(text, maxChars, allowWordSplit);
     }
 
     polishFixedWindowChunks(chunks) {

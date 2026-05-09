@@ -21,6 +21,16 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(method.includes("return true;"));
   });
 
+  await runCase("lyric-like captions split sooner than regular rambling speech", () => {
+    const method = source.slice(
+      source.indexOf("shouldStartNewLiveBubble(previousChunk, nextChunk)"),
+      source.indexOf("getLiveChunkBucketIndex(chunk)")
+    );
+    assert.ok(method.includes("captionText.looksLyricLike"));
+    assert.ok(method.includes("previousLength >= 180"));
+    assert.ok(method.includes("combined.length >= 260"));
+  });
+
   await runCase("locked display bubbles use bounded natural splits and preserve seek starts", () => {
     const start = source.indexOf("    createLockedDisplayBubbles(bubble)");
     const method = source.slice(
@@ -43,8 +53,9 @@ exports.run = async function runLiveBubbleTests(ctx) {
   });
 
   await runCase("overlay text is deduped and merged instead of duplicated", () => {
-    assert.ok(source.includes("collapseRepeatedCaptionPhrases"));
-    assert.ok(source.includes("collapseRepeatedCaptionSentences"));
+    const captionTextSource = fs.readFileSync(path.join(ROOT_DIR, "src", "caption-text.js"), "utf8");
+    assert.ok(captionTextSource.includes("collapseRepeatedPhrases"));
+    assert.ok(captionTextSource.includes("collapseRepeatedSentences"));
     assert.ok(source.includes("mergeLiveCaptionText"));
     assert.ok(source.includes("trimLiveChunkAgainstPrevious"));
   });

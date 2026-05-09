@@ -11,7 +11,7 @@ Dialogue Captions does not collect, store, sell, or transmit personal data to th
 The extension does not:
 - create user accounts;
 - collect names, emails, phone numbers, addresses, payment data, or identifiers;
-- send analytics, telemetry, or ad-tracking events.
+- send analytics, telemetry, or ad-tracking events;
 - load advertisements or connect to an ad network.
 
 ## Local Data Stored
@@ -22,10 +22,7 @@ The extension stores only local preference settings in extension storage:
 - text size;
 - panel position and size;
 - launcher/pill position;
-- panel open/closed state;
-- chunk size (`short`, `medium`, `long`);
-- keyboard step length;
-- auto-scroll enabled/disabled.
+- panel open/closed state.
 
 These settings remain on the user's browser profile unless removed by uninstalling the extension or clearing extension storage.
 
@@ -40,7 +37,7 @@ The extension does not store transcript text, chat bubble history, the active bu
   Used only on YouTube pages so the extension can detect watch-page navigation and read captions for the current video.
 
 The extension's content script is injected on `https://www.youtube.com/*` only to detect YouTube SPA route changes.
-Feature logic remains gated to watch pages (`/watch`) and the panel does not activate on other page types.
+Runtime logic remains gated to watch pages (`/watch`) and the panel does not activate on other page types.
 Chrome and Firefox may ignore path portions of host-permission patterns, so the extension also checks the route before starting caption work.
 
 No additional host permissions are requested.

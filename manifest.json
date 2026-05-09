@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dialogue Captions",
-  "version": "0.25.89",
+  "version": "0.25.90",
   "description": "MMO-style dialogue panel for YouTube subtitles with chunk navigation.",
   "host_permissions": [
     "https://www.youtube.com/watch*"
@@ -18,6 +18,7 @@
         "src/platform.js",
         "src/page-context.js",
         "src/settings-store.js",
+        "src/caption-text.js",
         "src/chunker.js",
         "src/bubble-state.js",
         "src/transcript.js",

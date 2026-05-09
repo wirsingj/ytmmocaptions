@@ -30,10 +30,13 @@ exports.run = async function runComplianceTests(ctx) {
     for (const fileName of manifests) {
       const manifest = readJson(fileName);
       const js = manifest.content_scripts[0].js;
+      const captionTextIndex = js.findIndex((item) => item.includes("caption-text.js"));
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
       const contentIndex = js.findIndex((item) => item.includes("content-script.js"));
+      assert.ok(captionTextIndex >= 0, fileName + " missing caption-text.js");
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
       assert.ok(contentIndex >= 0, fileName + " missing content-script.js");
+      assert.ok(captionTextIndex < contentIndex, fileName + " loads content-script before caption-text");
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
     }
   });
@@ -148,5 +151,16 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(!source.includes("globalKeyboardEnabled"), fileName);
     }
     assert.equal(fs.existsSync(path.join(ROOT_DIR, "src", "feature-flags.js")), false);
+  });
+
+  await runCase("release stores only visible local panel preferences", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "settings-store.js"), "utf8");
+    assert.ok(!source.includes("chunkSize"));
+    assert.ok(!source.includes("keyboardStepSeconds"));
+    assert.ok(!source.includes("autoScroll"));
+    const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
+    assert.ok(!privacy.includes("chunk size"));
+    assert.ok(!privacy.includes("keyboard step"));
+    assert.ok(!privacy.includes("auto-scroll"));
   });
 };

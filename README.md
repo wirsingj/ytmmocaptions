@@ -30,6 +30,7 @@ ytmmocaptions/
     platform.js
     page-context.js
     settings-store.js
+    caption-text.js
     chunker.js
     bubble-state.js
     transcript.js

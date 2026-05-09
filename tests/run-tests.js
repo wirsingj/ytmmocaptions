@@ -98,6 +98,7 @@ async function main() {
   const shared = { assert, loadModule, readFixture };
   const modules = [
     "compliance.test.js",
+    "caption-text.test.js",
     "chunker.test.js",
     "chunker-regression.test.js",
     "bubble-state.test.js",

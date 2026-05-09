@@ -337,12 +337,6 @@
           this.scheduleWindowRender();
           return;
         }
-        if (!this.settings.autoScroll) {
-          this.stickToBottom = this.isNearBottom(1.8);
-          this.updateJumpBottomVisibility();
-          this.scheduleWindowRender();
-          return;
-        }
         if (this.isNearBottom(2.6)) {
           this.stickToBottom = true;
         } else if (this.getBottomDistance() > BOTTOM_PROXIMITY_PX * 2) {
@@ -449,7 +443,7 @@
       if (this.textScaleInput && this.textScaleInput.value !== String(normalizedTextScale)) {
         this.textScaleInput.value = String(normalizedTextScale);
       }
-      if (this.settings.autoScroll && this.stickToBottom) {
+      if (this.stickToBottom) {
         this.scrollToBottom();
       }
 
@@ -987,8 +981,7 @@
     }
 
     setChunks(chunks) {
-      const shouldStick =
-        Boolean(this.settings.autoScroll) && (this.stickToBottom || this.isNearBottom(2.6));
+      const shouldStick = this.stickToBottom || this.isNearBottom(2.6);
       this.chunks = Array.isArray(chunks) ? chunks : [];
       if (this.activeIndex >= this.chunks.length) {
         this.activeIndex = this.chunks.length - 1;
@@ -1026,7 +1019,7 @@
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
       }
-      if (hasChanged && this.settings.autoScroll && options && options.ensureVisible) {
+      if (hasChanged && options && options.ensureVisible) {
         if (bounded >= Math.max(0, this.chunks.length - 2)) {
           this.stickToBottom = true;
         }

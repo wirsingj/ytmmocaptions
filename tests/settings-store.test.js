@@ -35,11 +35,13 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const result = normalize({
       panelOpacity: 1000,
       textScale: 25,
-      keyboardStepSeconds: 999
+      keyboardStepSeconds: 999,
+      autoScroll: false
     });
     assert.equal(result.panelOpacity, 100);
     assert.equal(result.textScale, 100);
-    assert.equal(result.keyboardStepSeconds, 30);
+    assert.equal(Object.prototype.hasOwnProperty.call(result, "keyboardStepSeconds"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(result, "autoScroll"), false);
   });
 
   await runCase("settings normalization sanitizes position objects", () => {
@@ -69,7 +71,10 @@ exports.run = async function runSettingsStoreTests(ctx) {
       textScale: 999,
       plan: "legacy-ignored",
       featureOverrides: { oldGate: true },
-      globalKeyboardEnabled: true
+      globalKeyboardEnabled: true,
+      chunkSize: "long",
+      keyboardStepSeconds: 30,
+      autoScroll: false
     });
     assert.equal(persisted.panelOpacity, 35);
     assert.equal(persisted.textScale, 200);
@@ -77,6 +82,9 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "plan"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "featureOverrides"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "globalKeyboardEnabled"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, "chunkSize"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, "keyboardStepSeconds"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, "autoScroll"), false);
     assert.ok(saved["dialogueCaptions.settings.v1"]);
   });
 
@@ -88,6 +96,9 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelPosition: { left: 45, top: 80 },
       panelSize: { width: 640, height: 420 },
       launcherPosition: { left: 15, top: 300 },
+      chunkSize: "short",
+      keyboardStepSeconds: 12,
+      autoScroll: false,
       activeVideoId: "should-not-persist",
       activeBubbleIndex: 4,
       transcriptText: "should not be stored"
@@ -100,6 +111,9 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(loaded.panelPosition, { left: 45, top: 80 });
     assert.deepEqual(loaded.panelSize, { width: 640, height: 420 });
     assert.deepEqual(loaded.launcherPosition, { left: 15, top: 300 });
+    assert.equal(Object.prototype.hasOwnProperty.call(loaded, "chunkSize"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(loaded, "keyboardStepSeconds"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(loaded, "autoScroll"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "activeVideoId"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "activeBubbleIndex"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "transcriptText"), false);
