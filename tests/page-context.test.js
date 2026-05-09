@@ -1,15 +1,18 @@
 exports.run = async function runPageContextTests(ctx) {
   const { assert, loadModule, runCase } = ctx;
 
-  function loadContext() {
+  function loadContext(options) {
+    const opts = options || {};
     const listeners = {};
     const posted = [];
+    const location = {
+      href: "https://www.youtube.com/watch?v=video-a",
+      origin: "https://www.youtube.com"
+    };
+    const appendedScripts = [];
     const module = loadModule("page-context.js", {
       windowProps: {
-        location: {
-          href: "https://www.youtube.com/watch?v=video-a",
-          origin: "https://www.youtube.com"
-        },
+        location,
         setTimeout,
         clearTimeout,
         postMessage(message) {
@@ -38,21 +41,35 @@ exports.run = async function runPageContextTests(ctx) {
         createElement() {
           return {
             dataset: {},
+            src: "",
+            async: true,
             remove() {}
           };
         },
         head: {
-          append() {}
+          append(script) {
+            appendedScripts.push(script);
+            if (opts.failBridgeLoads && typeof script.onerror === "function") {
+              script.onerror();
+            }
+          }
         },
         documentElement: {
-          append() {}
+          append(script) {
+            appendedScripts.push(script);
+            if (opts.failBridgeLoads && typeof script.onerror === "function") {
+              script.onerror();
+            }
+          }
         }
       }
     });
     return {
       pageContext: module.pageContext,
+      location,
       listeners,
-      posted
+      posted,
+      appendedScripts
     };
   }
 
@@ -107,5 +124,18 @@ exports.run = async function runPageContextTests(ctx) {
       }
     });
     assert.equal(pageContext.getTimedtextCaptures("video-a").length, 0);
+  });
+
+  await runCase("page context resets bridge injection attempts on video change", () => {
+    const { pageContext, location, appendedScripts } = loadContext({ failBridgeLoads: true });
+    for (let index = 0; index < 6; index += 1) {
+      pageContext.ensureBridgeInjected();
+    }
+    assert.equal(appendedScripts.length, 4);
+
+    location.href = "https://www.youtube.com/watch?v=video-b";
+    pageContext.ensureBridgeInjected();
+    assert.equal(appendedScripts.length, 5);
+    assert.equal(pageContext.getCurrentWatchVideoId(), "video-b");
   });
 };

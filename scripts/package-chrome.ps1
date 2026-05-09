@@ -66,6 +66,10 @@ try {
 
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
 try {
+  $hasBackslashEntries = $archive.Entries | Where-Object { $_.FullName -like "*\*" }
+  if ($hasBackslashEntries) {
+    throw "Chrome zip contains Windows-style backslash archive paths."
+  }
   if (-not ($archive.Entries | Where-Object { $_.FullName -eq "manifest.json" })) {
     throw "Chrome zip is missing manifest.json at archive root."
   }

@@ -79,6 +79,15 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!packageJson.scripts["release:check"].includes("bump-version"));
   });
 
+  await runCase("test runner auto-discovers every test file", () => {
+    const runner = fs.readFileSync(path.join(ROOT_DIR, "tests", "run-tests.js"), "utf8");
+    const testFiles = fs.readdirSync(path.join(ROOT_DIR, "tests")).filter((fileName) => fileName.endsWith(".test.js"));
+    assert.ok(runner.includes(".filter((fileName) => fileName.endsWith(\".test.js\"))"));
+    for (const fileName of testFiles) {
+      assert.ok(runner.includes(fileName) || runner.includes("discovered"), "runner may omit " + fileName);
+    }
+  });
+
   await runCase("content script does not inject page bridge at module startup", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
     const startupRegion = source.slice(0, source.indexOf("class DialogueCaptionsApp"));
@@ -116,6 +125,14 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(gitignore.includes("*.pem"), "private signing keys must stay ignored");
     assert.ok(gitignore.includes("downloads/*/"), "extracted local packages should stay ignored");
     assert.ok(!readme.includes("dialogue-captions-friend-v0.25.61.zip"));
+  });
+
+  await runCase("package scripts reject Windows-style archive paths", () => {
+    for (const fileName of ["package-chrome.ps1", "package-firefox.ps1"]) {
+      const source = fs.readFileSync(path.join(ROOT_DIR, "scripts", fileName), "utf8");
+      assert.ok(source.includes("hasBackslashEntries"), fileName);
+      assert.ok(source.includes("Windows-style backslash archive paths"), fileName);
+    }
   });
 
   await runCase("runtime does not use page localStorage for settings or debug state", () => {

@@ -15,6 +15,7 @@ the current release candidate instead of stale builds.
 
 - Bottom-left floating chat panel with scroll history.
 - Subtitle cues grouped into readable chunks.
+- Music/lyric-like captions split a little sooner so song lines do not become paragraph blobs.
 - Hover the panel and press `Space` to go to the next chunk.
 - Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.

@@ -96,7 +96,7 @@ async function runCase(state, name, fn) {
 async function main() {
   const state = { total: 0, failed: 0 };
   const shared = { assert, loadModule, readFixture };
-  const modules = [
+  const preferredOrder = [
     "compliance.test.js",
     "caption-text.test.js",
     "chunker.test.js",
@@ -110,6 +110,13 @@ async function main() {
     "navigation.test.js",
     "settings-store.test.js"
   ];
+  const discovered = fs
+    .readdirSync(__dirname)
+    .filter((fileName) => fileName.endsWith(".test.js"))
+    .sort();
+  const modules = preferredOrder
+    .filter((fileName) => discovered.includes(fileName))
+    .concat(discovered.filter((fileName) => !preferredOrder.includes(fileName)));
 
   for (const fileName of modules) {
     console.log("");

@@ -23,6 +23,7 @@
   let bridgeEnsureAttempts = 0;
   let bridgeEnsureTimer = 0;
   let bridgeScriptPathIndex = 0;
+  let bridgeAttemptVideoId = "";
 
   function isObject(value) {
     return Boolean(value && typeof value === "object");
@@ -187,17 +188,34 @@
     });
   }
 
+  function getCurrentWatchVideoId() {
+    try {
+      const parsed = new URL(scope.location.href);
+      if (parsed.hostname !== "www.youtube.com" || parsed.pathname !== "/watch") {
+        return "";
+      }
+      return parsed.searchParams.get("v") || "";
+    } catch {
+      return "";
+    }
+  }
+
   function ensureBridgeInjected() {
     if (!platform || typeof platform.runtimeGetURL !== "function") {
       return;
     }
-    try {
-      const parsed = new URL(scope.location.href);
-      if (parsed.hostname !== "www.youtube.com" || parsed.pathname !== "/watch" || !parsed.searchParams.get("v")) {
-        return;
-      }
-    } catch {
+    const videoId = getCurrentWatchVideoId();
+    if (!videoId) {
       return;
+    }
+    if (bridgeAttemptVideoId !== videoId) {
+      bridgeAttemptVideoId = videoId;
+      bridgeEnsureAttempts = 0;
+      bridgeScriptPathIndex = 0;
+      if (bridgeEnsureTimer) {
+        scope.clearTimeout(bridgeEnsureTimer);
+        bridgeEnsureTimer = 0;
+      }
     }
     if (bridgeEnsureAttempts >= BRIDGE_BOOT_MAX_ATTEMPTS) {
       return;
@@ -257,6 +275,7 @@
     BRIDGE_TIMEDTEXT_CAPTURE_TYPE,
     bridgeToken,
     ensureBridgeInjected,
+    getCurrentWatchVideoId,
     getSnapshot,
     getTimedtextCaptures,
     pageFetch,
