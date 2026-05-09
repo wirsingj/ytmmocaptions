@@ -343,6 +343,16 @@
           return;
         }
         if (typeof this.options.onSeek === "function") {
+          if (chunkButton.classList.contains("dc-chunk-future")) {
+            this.options.onSeek({
+              future: true,
+              index: index,
+              seekStart: Number(chunkButton.getAttribute("data-seek-start")),
+              start: Number(chunkButton.getAttribute("data-start")),
+              end: Number(chunkButton.getAttribute("data-end"))
+            });
+            return;
+          }
           this.options.onSeek(index);
         }
       };
@@ -1300,6 +1310,11 @@
       item.type = "button";
       item.className = isFuture ? "dc-chunk dc-chunk-future" : "dc-chunk";
       item.setAttribute("data-index", String(index));
+      if (isFuture) {
+        item.setAttribute("data-seek-start", String(Number(chunk && chunk.seekStart)));
+        item.setAttribute("data-start", String(Number(chunk && chunk.start)));
+        item.setAttribute("data-end", String(Number(chunk && chunk.end)));
+      }
 
       const seekIcon = document.createElement("span");
       seekIcon.className = "dc-chunk-seek-icon";

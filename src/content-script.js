@@ -77,6 +77,7 @@
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
       this.liveNextBubbleUid = 1;
+      this.liveFuturePreviewChunks = [];
     }
 
     async init() {
@@ -857,36 +858,45 @@
       return changed;
     }
 
-    backfillFutureLiveBucketsFromTextTracks(currentBucketIndex) {
+    readFuturePreviewChunksFromTextTracks(currentBucketIndex) {
       if (!Number.isFinite(currentBucketIndex) || currentBucketIndex < 0) {
-        return false;
+        return [];
       }
       const nowMs = Date.now();
       if (
         currentBucketIndex === this.liveLastFutureBackfillBucketIndex &&
         nowMs - Number(this.liveLastFutureBackfillAt || 0) < 900
       ) {
-        return false;
+        return this.liveFuturePreviewChunks || [];
       }
       this.liveLastFutureBackfillBucketIndex = currentBucketIndex;
       this.liveLastFutureBackfillAt = nowMs;
       if (!this.video || !this.video.textTracks || !this.video.textTracks.length) {
-        return false;
+        this.liveFuturePreviewChunks = [];
+        return [];
       }
 
-      let changed = false;
+      const previews = [];
       for (let offset = 1; offset <= 4; offset += 1) {
         const bucketIndex = currentBucketIndex + offset;
         const snapshot = this.readTextTrackWindowSnapshot(bucketIndex);
         if (!snapshot || !snapshot.text) {
           continue;
         }
-        const sampleTime = bucketIndex * this.getLiveWindowSeconds();
-        if (this.upsertLiveBucketCue(snapshot.text, sampleTime, { force: true })) {
-          changed = true;
-        }
+        const start = bucketIndex * this.getLiveWindowSeconds();
+        const end = this.getLiveWindowEnd(start);
+        const seekStart = Number.isFinite(snapshot.startTime) ? Math.max(0, Number(snapshot.startTime)) : start;
+        previews.push(this.createBubbleRecord({
+          sourceId: "future-" + bucketIndex,
+          start: start,
+          end: end,
+          seekStart: seekStart,
+          locked: true,
+          text: snapshot.text
+        }));
       }
-      return changed;
+      this.liveFuturePreviewChunks = previews;
+      return previews;
     }
 
     shouldContinueOverlayUtterance(previousCanonical, nextCanonical) {
@@ -945,7 +955,9 @@
       const currentBucketIndex = this.getLiveWindowIndex(now);
       this.updateLiveBucketLocks(currentBucketIndex);
       const backfilled = this.backfillLiveBucketsFromTextTracks(currentBucketIndex);
-      const futureBackfilled = this.backfillFutureLiveBucketsFromTextTracks(currentBucketIndex);
+      const previousFutureKey = this.getFuturePreviewKey();
+      this.readFuturePreviewChunksFromTextTracks(currentBucketIndex);
+      const futureChanged = previousFutureKey !== this.getFuturePreviewKey();
 
       const windowSnapshot = this.readTextTrackWindowSnapshot(currentBucketIndex);
       const activeSnapshot = this.readTextTrackSnapshotAtCurrentTime();
@@ -1004,9 +1016,11 @@
             this.liveOverlayUtterance = null;
           }
         }
-        if (backfilled || futureBackfilled) {
+        if (backfilled) {
           this.rebuildChunks();
           this.syncActiveChunk(true);
+        } else if (futureChanged) {
+          this.updateFuturePreviewChunks();
         }
         this.maybeProbeCaptions();
         return;
@@ -1023,12 +1037,14 @@
       }
 
       const changed = this.upsertLiveBucketCue(normalized, anchorTime);
-      if (changed || backfilled || futureBackfilled) {
+      if (changed || backfilled) {
         this.rebuildChunks();
         this.syncActiveChunk(true);
         if (this.panel && this.cues.length === 1) {
           this.panel.setStatus("Live subtitle capture started.", true);
         }
+      } else if (futureChanged) {
+        this.updateFuturePreviewChunks();
       }
     }
 
@@ -1270,6 +1286,7 @@
       this.liveLastBackfillBucketIndex = -1;
       this.liveLastFutureBackfillAt = 0;
       this.liveLastFutureBackfillBucketIndex = -1;
+      this.liveFuturePreviewChunks = [];
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
@@ -1292,6 +1309,7 @@
       this.liveLastBackfillBucketIndex = -1;
       this.liveLastFutureBackfillAt = 0;
       this.liveLastFutureBackfillBucketIndex = -1;
+      this.liveFuturePreviewChunks = [];
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.liveBubbles = [];
@@ -1357,12 +1375,30 @@
     }
 
     canShowFuturePreviewChunks() {
+      if (this.liveCaptureEnabled) {
+        return Array.isArray(this.liveFuturePreviewChunks) && this.liveFuturePreviewChunks.length > 0;
+      }
       return Array.isArray(this.allChunks) && this.allChunks.length > Number(this.revealedChunkCount || 0);
+    }
+
+    getFuturePreviewKey() {
+      const previews = Array.isArray(this.liveFuturePreviewChunks) ? this.liveFuturePreviewChunks : [];
+      return previews
+        .map((chunk) => [chunk.start, chunk.end, chunk.seekStart, chunk.text].join(":"))
+        .join("|");
     }
 
     getFuturePreviewChunks() {
       if (!this.canShowFuturePreviewChunks()) {
         return [];
+      }
+      if (this.liveCaptureEnabled) {
+        const previews = Array.isArray(this.liveFuturePreviewChunks) ? this.liveFuturePreviewChunks : [];
+        return previews.slice(0, 4).map((chunk, index) => ({
+          ...chunk,
+          actualIndex: Number.isInteger(chunk.actualIndex) ? chunk.actualIndex : -1000 - index,
+          futurePreviewOnly: true
+        }));
       }
       const previewStart = Math.max(0, Number(this.revealedChunkCount || 0));
       const previewEnd = Math.min(this.allChunks.length, previewStart + 4);
@@ -2193,7 +2229,14 @@
 
     seekToChunk(index, options) {
       const video = this.refreshVideoReference();
-      if (!video || !this.panel || index < 0 || index >= this.allChunks.length) {
+      if (!video || !this.panel) {
+        return;
+      }
+      if (index && typeof index === "object" && index.future) {
+        this.seekToPreviewChunk(index, options);
+        return;
+      }
+      if (index < 0 || index >= this.allChunks.length) {
         return;
       }
       const opts = options && typeof options === "object" ? options : {};
@@ -2230,6 +2273,58 @@
       }
       this.commitTimelineSync(opts.ensureVisible !== false);
       this.requestTimelineSync(opts.ensureVisible !== false);
+    }
+
+    seekToPreviewChunk(target, options) {
+      const video = this.refreshVideoReference();
+      if (!video || !this.panel || !target || typeof target !== "object") {
+        return;
+      }
+      const opts = options && typeof options === "object" ? options : {};
+      const seekStart = Number(target.seekStart);
+      const start = Number(target.start);
+      const end = Number(target.end);
+      const baseTime = Number.isFinite(seekStart)
+        ? seekStart
+        : Number.isFinite(start)
+          ? start
+          : Number.NaN;
+      if (!Number.isFinite(baseTime)) {
+        return;
+      }
+      const seekLeadSeconds = Number.isFinite(opts.seekLeadSeconds) ? Math.max(0, Number(opts.seekLeadSeconds)) : 0.45;
+      const targetTime = Math.max(0, baseTime - seekLeadSeconds);
+      const wasPaused = video.paused;
+      this.beginTimelineAction({
+        source: "future-preview-click",
+        targetTime: targetTime,
+        index: -1,
+        seekStart: baseTime,
+        forceGlowReset: true,
+        forceScroll: true
+      });
+      this.pendingSeekFocus = null;
+      this.activeIndex = -1;
+      if (this.panel) {
+        this.panel.setActiveIndex(-1);
+        this.panel.setPlaybackTime(targetTime, { forceGlowReset: true });
+      }
+      video.currentTime = targetTime;
+      const autoplay = opts.autoplay !== false;
+      if (autoplay) {
+        const playResult = video.play();
+        if (playResult && typeof playResult.catch === "function") {
+          playResult.catch(() => {});
+        }
+      } else if (opts.preservePlayback) {
+        window.setTimeout(() => this.enforcePlaybackState(wasPaused), 0);
+        window.setTimeout(() => this.enforcePlaybackState(wasPaused), 80);
+      }
+      if (Number.isFinite(end)) {
+        window.setTimeout(() => this.commitTimelineSync(true), 80);
+      } else {
+        this.requestTimelineSync(true);
+      }
     }
   }
 
