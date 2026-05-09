@@ -41,6 +41,16 @@ foreach ($contentScript in $manifest.content_scripts) {
   }
 }
 
+if (-not $manifest.icons) {
+  throw "Firefox manifest is missing marketplace icons."
+}
+foreach ($iconPath in $manifest.icons.PSObject.Properties.Value) {
+  $filePath = Join-Path $firefoxBuild $iconPath
+  if (-not (Test-Path -LiteralPath $filePath)) {
+    throw "Missing icon file: $filePath"
+  }
+}
+
 Get-ChildItem -LiteralPath $firefoxBuild -File -Filter "ytmmocaptions-firefox-v*.xpi" |
   Remove-Item -Force
 

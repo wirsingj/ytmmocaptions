@@ -37,9 +37,11 @@ async function createTargetBuild(targetName, manifestSource) {
   await ensureDir(targetRoot);
   await clearDir(path.join(targetRoot, "scripts"));
   await clearDir(path.join(targetRoot, "styles"));
+  await clearDir(path.join(targetRoot, "assets"));
 
   await copyDir(path.join(projectRoot, "src"), path.join(targetRoot, "scripts"));
   await copyDir(path.join(projectRoot, "styles"), path.join(targetRoot, "styles"));
+  await copyDir(path.join(projectRoot, "assets"), path.join(targetRoot, "assets"));
 
   await copyFile(path.join(projectRoot, manifestSource), path.join(targetRoot, "manifest.json"));
   await copyFile(path.join(projectRoot, "LICENSE"), path.join(targetRoot, "LICENSE"));

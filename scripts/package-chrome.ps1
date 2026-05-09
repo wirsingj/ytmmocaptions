@@ -32,6 +32,16 @@ foreach ($contentScript in $manifest.content_scripts) {
   }
 }
 
+if (-not $manifest.icons) {
+  throw "Chrome manifest is missing marketplace icons."
+}
+foreach ($iconPath in $manifest.icons.PSObject.Properties.Value) {
+  $filePath = Join-Path $chromeBuild $iconPath
+  if (-not (Test-Path -LiteralPath $filePath)) {
+    throw "Missing icon file: $filePath"
+  }
+}
+
 Get-ChildItem -LiteralPath $chromeBuild -File -Filter "ytmmocaptions-chrome-v*.zip" |
   Remove-Item -Force
 

@@ -55,6 +55,34 @@ exports.run = async function runComplianceTests(ctx) {
           assert.ok(runtimePathExists(fileName, resource), fileName + " missing " + resource);
         }
       }
+      for (const iconPath of Object.values(manifest.icons || {})) {
+        assert.ok(runtimePathExists(fileName, iconPath), fileName + " missing icon " + iconPath);
+      }
+    }
+  });
+
+  await runCase("v1 release manifests include marketplace icons", () => {
+    for (const fileName of manifests) {
+      const manifest = readJson(fileName);
+      assert.equal(manifest.version, "1.0.0", fileName);
+      assert.deepEqual(Object.keys(manifest.icons || {}).sort(), ["128", "48", "96"], fileName);
+      for (const iconPath of Object.values(manifest.icons)) {
+        assert.ok(iconPath.startsWith("assets/icons/"), fileName);
+        assert.ok(fs.existsSync(path.join(ROOT_DIR, iconPath)), iconPath);
+      }
+    }
+  });
+
+  await runCase("marketplace listing assets exist but are not packaged as runtime files", () => {
+    assert.ok(fs.existsSync(path.join(ROOT_DIR, "store-assets", "amo-listing-draft.md")));
+    assert.ok(fs.existsSync(path.join(ROOT_DIR, "store-assets", "screenshot-panel-over-video.png")));
+    for (const dirName of ["build/chrome", "build/firefox"]) {
+      const buildPath = path.join(ROOT_DIR, dirName);
+      if (!fs.existsSync(buildPath)) {
+        continue;
+      }
+      assert.equal(fs.existsSync(path.join(buildPath, "store-assets")), false, dirName);
+      assert.ok(fs.existsSync(path.join(buildPath, "assets", "icons", "icon-128.png")), dirName);
     }
   });
 

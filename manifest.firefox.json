@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dialogue Captions",
-  "version": "0.25.93",
+  "version": "1.0.0",
   "description": "MMO-style dialogue panel for YouTube subtitles with chunk navigation.",
   "host_permissions": [
     "https://www.youtube.com/watch*"
@@ -51,5 +51,10 @@
         "https://www.youtube.com/*"
       ]
     }
-  ]
+  ],
+  "icons": {
+    "48": "assets/icons/icon-48.png",
+    "96": "assets/icons/icon-96.png",
+    "128": "assets/icons/icon-128.png"
+  }
 }

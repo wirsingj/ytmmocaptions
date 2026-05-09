@@ -11,6 +11,25 @@ Latest packaged builds are checked into `downloads/`:
 Older local test packages are intentionally pruned so the repo points people at
 the current release candidate instead of stale builds.
 
+## Store Listing Assets
+
+Marketplace helper files live in `store-assets/`:
+- `store-assets/amo-listing-draft.md`
+- `store-assets/screenshot-panel-over-video.png`
+
+The packaged extension includes only runtime files, icons, README, privacy
+policy, and license. Store listing assets are not included in release packages.
+
+## Firefox Marketplace Submission
+
+Use the Firefox XPI from `downloads/` for AMO upload. For v1:
+- upload `downloads/ytmmocaptions-firefox-v1.0.0.xpi`;
+- target desktop Firefox only;
+- select no data collection;
+- paste `PRIVACY.md` if AMO asks for a privacy policy;
+- use `store-assets/amo-listing-draft.md` for listing copy and reviewer notes;
+- upload `store-assets/screenshot-panel-over-video.png` as a listing screenshot.
+
 ## Core UX
 
 - Bottom-left floating chat panel with scroll history.
@@ -40,8 +59,13 @@ ytmmocaptions/
     page-bridge.js
   styles/
     panel.css
+  assets/
+    icons/
   scripts/
     build.mjs
+  store-assets/
+    amo-listing-draft.md
+    screenshot-panel-over-video.png
   manifest.chrome.json
   manifest.firefox.json
   manifest.json
