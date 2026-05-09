@@ -143,6 +143,16 @@ exports.run = async function runComplianceTests(ctx) {
     }
   });
 
+  await runCase("panel cleans temporary pointer listeners during route teardown", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    assert.ok(panelSource.includes("activePointerCleanupFns"));
+    assert.ok(panelSource.includes("cleanupActivePointerListeners()"));
+    assert.ok(panelSource.includes("trackActivePointerListeners"));
+    assert.ok(panelSource.includes("this.dragState = null;"));
+    assert.ok(panelSource.includes("this.resizeState = null;"));
+    assert.ok(panelSource.includes("this.launcherDragState = null;"));
+  });
+
   await runCase("README does not imply global keyboard shortcuts or Android targeting", () => {
     const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
     assert.ok(readme.includes("Hover the panel and press `Space`"));

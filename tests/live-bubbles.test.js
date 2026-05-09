@@ -67,10 +67,60 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("handleDiscontinuousTimeMove"));
   });
 
+  await runCase("new timeline actions clear stale pending flashes and focus", () => {
+    assert.ok(source.includes("clearPendingBubbleStartFlashes()"));
+    assert.ok(source.includes("this.clearPendingBubbleStartFlashes();"));
+    assert.ok(source.includes("this.timelineAction = null;"));
+    assert.ok(source.includes("this.pendingSeekFocus = null;"));
+    assert.ok(source.includes("chunk.flashOnStart.done = true;"));
+  });
+
+  await runCase("manual seeks clear stale click focus unless the programmatic seek is settling", () => {
+    const method = source.slice(
+      source.indexOf("handleDiscontinuousTimeMove()"),
+      source.indexOf("suppressLiveCaptureForSeek(targetTime)")
+    );
+    assert.ok(method.includes("isTimelineActionCurrentForTime(currentTime)"));
+    assert.ok(method.includes("clearTimelineActionState"));
+    assert.ok(source.includes("return Math.abs(now - targetTime) <= 1.15;"));
+  });
+
   await runCase("clicking or rewinding suppresses stale overlay capture during seek settle", () => {
     assert.ok(source.includes("liveCaptureSuppressedUntil"));
     assert.ok(source.includes("suppressLiveCaptureForSeek(this.timelineAction.targetTime)"));
     assert.ok(source.includes("Date.now() < Number(this.liveCaptureSuppressedUntil || 0)"));
+  });
+
+  await runCase("closed pill mode pauses caption polling without wiping bubble state", () => {
+    const closeBranch = source.slice(
+      source.indexOf("if (changedPanelClosed && isClosed)"),
+      source.indexOf("if (changedPanelClosed && !isClosed)")
+    );
+    assert.ok(closeBranch.includes("this.abortTranscriptLoad();"));
+    assert.ok(closeBranch.includes("this.stopLiveCapturePolling();"));
+    assert.ok(closeBranch.includes("this.restoreSubtitlesIfExtensionEnabled();"));
+    assert.ok(source.includes("startLiveCapturePolling()"));
+    assert.ok(source.includes("stopLiveCapturePolling()"));
+    assert.ok(source.includes("this.settings.panelClosed"));
+    assert.ok(!closeBranch.includes("disableLiveCaptureMode()"));
+  });
+
+  await runCase("video sync listeners are rebound and cleaned when YouTube swaps video elements", () => {
+    assert.ok(source.includes("this.videoCleanupFns = [];"));
+    assert.ok(source.includes("this.boundVideo = null;"));
+    assert.ok(source.includes("if (this.boundVideo === this.video)"));
+    assert.ok(source.includes("const boundVideo = this.video;"));
+    assert.ok(source.includes("boundVideo.removeEventListener"));
+    assert.ok(source.includes("this.cleanupVideoSync();"));
+  });
+
+  await runCase("async init exits safely if SPA navigation destroys the app mid-load", () => {
+    const initStart = source.indexOf("    async init()");
+    const initBody = source.slice(initStart, source.indexOf("    destroy()", initStart));
+    assert.ok(initBody.includes("this.settings = await settingsStore.load();"));
+    assert.ok(initBody.includes("if (this.destroyed)"));
+    assert.ok(initBody.includes("this.video = await this.waitForVideoElement(12000);"));
+    assert.ok(initBody.includes("if (this.panel)"));
   });
 
   await runCase("live capture avoids repeated expensive caption reads during steady playback", () => {

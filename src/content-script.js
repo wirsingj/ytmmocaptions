@@ -43,6 +43,8 @@
       this.settings = { ...settingsStore.DEFAULTS };
 
       this.cleanupFns = [];
+      this.videoCleanupFns = [];
+      this.boundVideo = null;
       this.syncRafId = 0;
       this.loadAbortController = null;
       this.destroyed = false;
@@ -77,6 +79,9 @@
 
     async init() {
       this.settings = await settingsStore.load();
+      if (this.destroyed) {
+        return;
+      }
       this.panel = new DialoguePanel({
         settings: this.settings,
         onSeek: (index) => this.seekToChunk(index),
@@ -90,8 +95,13 @@
       );
 
       this.video = await this.waitForVideoElement(12000);
+      if (this.destroyed) {
+        return;
+      }
       if (!this.video) {
-        this.panel.setStatus("Could not find the YouTube video element.");
+        if (this.panel) {
+          this.panel.setStatus("Could not find the YouTube video element.");
+        }
         return;
       }
 
@@ -115,6 +125,7 @@
         cleanup();
       }
       this.cleanupFns.length = 0;
+      this.cleanupVideoSync();
       this.disableLiveCaptureMode();
       this.restoreSubtitlesIfExtensionEnabled();
 
@@ -308,6 +319,12 @@
       if (!this.video) {
         return;
       }
+      if (this.boundVideo === this.video) {
+        return;
+      }
+      this.cleanupVideoSync();
+      const boundVideo = this.video;
+      this.boundVideo = boundVideo;
       const onTimeUpdate = () => {
         this.scheduleSync();
         if (this.liveCaptureEnabled) {
@@ -315,9 +332,7 @@
         }
       };
       const onSeeked = () => {
-        if (this.liveCaptureEnabled) {
-          this.handleDiscontinuousTimeMove("seeked");
-        }
+        this.handleDiscontinuousTimeMove("seeked");
         this.scheduleSync();
         if (this.liveCaptureEnabled) {
           this.captureLiveCaptionLine();
@@ -330,13 +345,21 @@
         this.scheduleSync();
       };
 
-      this.video.addEventListener("timeupdate", onTimeUpdate);
-      this.video.addEventListener("seeked", onSeeked);
-      this.video.addEventListener("loadedmetadata", onLoadedMetadata);
+      boundVideo.addEventListener("timeupdate", onTimeUpdate);
+      boundVideo.addEventListener("seeked", onSeeked);
+      boundVideo.addEventListener("loadedmetadata", onLoadedMetadata);
 
-      this.cleanupFns.push(() => this.video && this.video.removeEventListener("timeupdate", onTimeUpdate));
-      this.cleanupFns.push(() => this.video && this.video.removeEventListener("seeked", onSeeked));
-      this.cleanupFns.push(() => this.video && this.video.removeEventListener("loadedmetadata", onLoadedMetadata));
+      this.videoCleanupFns.push(() => boundVideo.removeEventListener("timeupdate", onTimeUpdate));
+      this.videoCleanupFns.push(() => boundVideo.removeEventListener("seeked", onSeeked));
+      this.videoCleanupFns.push(() => boundVideo.removeEventListener("loadedmetadata", onLoadedMetadata));
+    }
+
+    cleanupVideoSync() {
+      for (const cleanup of this.videoCleanupFns) {
+        cleanup();
+      }
+      this.videoCleanupFns.length = 0;
+      this.boundVideo = null;
     }
 
     normalizeLiveCaptionText(input) {
@@ -617,10 +640,14 @@
     }
 
     handleDiscontinuousTimeMove() {
+      const currentTime = this.video ? Number(this.video.currentTime || 0) : Number.NaN;
+      if (!this.isTimelineActionCurrentForTime(currentTime)) {
+        this.clearTimelineActionState("discontinuous-time-move");
+      }
       if (!this.liveCaptureEnabled) {
         return;
       }
-      this.liveLastObservedTime = this.video ? Number(this.video.currentTime || 0) : Number.NaN;
+      this.liveLastObservedTime = currentTime;
       this.liveOverlayUtterance = null;
     }
 
@@ -634,6 +661,7 @@
     }
 
     beginTimelineAction(action) {
+      this.clearPendingBubbleStartFlashes();
       const source = action && action.source ? String(action.source) : "timeline";
       const targetTime = Number(action && action.targetTime);
       const index = Number.isInteger(action && action.index) ? action.index : -1;
@@ -653,6 +681,40 @@
       this.timelineActionId = this.timelineAction.id;
       this.suppressLiveCaptureForSeek(this.timelineAction.targetTime);
       return this.timelineAction;
+    }
+
+    isTimelineActionCurrentForTime(currentTime) {
+      const action = this.timelineAction;
+      const now = Number(currentTime);
+      if (!action || !Number.isFinite(now) || Date.now() > Number(action.settleUntil || 0)) {
+        return false;
+      }
+      const targetTime = Number(action.targetTime);
+      if (!Number.isFinite(targetTime)) {
+        return false;
+      }
+      return Math.abs(now - targetTime) <= 1.15;
+    }
+
+    clearTimelineActionState() {
+      this.timelineAction = null;
+      this.pendingSeekFocus = null;
+      this.clearPendingBubbleStartFlashes();
+      if (this.panel && typeof this.panel.setPlaybackTime === "function" && this.video) {
+        this.panel.setPlaybackTime(Number(this.video.currentTime || 0), { forceGlowReset: true });
+      }
+    }
+
+    clearPendingBubbleStartFlashes() {
+      if (!Array.isArray(this.allChunks)) {
+        return;
+      }
+      for (let index = 0; index < this.allChunks.length; index += 1) {
+        const chunk = this.allChunks[index];
+        if (chunk && chunk.flashOnStart && !chunk.flashOnStart.done) {
+          chunk.flashOnStart.done = true;
+        }
+      }
     }
 
     applyTimelineActionFocus(action) {
@@ -829,7 +891,7 @@
     }
 
     captureLiveCaptionLine() {
-      if (!this.liveCaptureEnabled || !this.video) {
+      if (!this.liveCaptureEnabled || !this.video || this.settings.panelClosed) {
         return;
       }
 
@@ -1076,7 +1138,7 @@
     }
 
     ensureCaptionsEnabledOnce() {
-      if (this.destroyed) {
+      if (this.destroyed || this.settings.panelClosed) {
         return;
       }
       if (this.captionsWereOnBeforeExtension === null) {
@@ -1120,6 +1182,9 @@
     }
 
     maybeProbeCaptions() {
+      if (this.settings.panelClosed) {
+        return;
+      }
       const now = Date.now();
       if (now - this.lastCaptionProbeAt < 2500) {
         return;
@@ -1135,6 +1200,8 @@
         this.ensureCaptionsEnabledOnce();
         if (!this.liveCaptureEnabled) {
           this.enableLiveCaptureMode();
+        } else {
+          this.startLiveCapturePolling();
         }
         this.syncActiveChunk(true);
         return;
@@ -1153,6 +1220,7 @@
 
     enableLiveCaptureMode() {
       if (this.liveCaptureEnabled) {
+        this.startLiveCapturePolling();
         return;
       }
       this.transcriptMode = "live overlay fallback mode";
@@ -1174,12 +1242,7 @@
       this.probeCaptionsNow();
       this.captureLiveCaptionLine();
 
-      if (!this.liveCapturePollId) {
-        this.liveCapturePollId = window.setInterval(() => {
-          this.maybeProbeCaptions();
-          this.captureLiveCaptionLine();
-        }, 120);
-      }
+      this.startLiveCapturePolling();
     }
 
     disableLiveCaptureMode() {
@@ -1195,6 +1258,20 @@
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
+      this.stopLiveCapturePolling();
+    }
+
+    startLiveCapturePolling() {
+      if (this.liveCapturePollId || this.destroyed || this.settings.panelClosed) {
+        return;
+      }
+      this.liveCapturePollId = window.setInterval(() => {
+        this.maybeProbeCaptions();
+        this.captureLiveCaptionLine();
+      }, 120);
+    }
+
+    stopLiveCapturePolling() {
       if (this.liveCapturePollId) {
         window.clearInterval(this.liveCapturePollId);
         this.liveCapturePollId = 0;
@@ -1807,6 +1884,9 @@
         patch && Object.prototype.hasOwnProperty.call(patch, "panelClosed") && wasClosed !== isClosed;
 
       if (changedPanelClosed && isClosed) {
+        this.abortTranscriptLoad();
+        this.stopLiveCapturePolling();
+        this.clearTimelineActionState("panel-closed");
         this.restoreSubtitlesIfExtensionEnabled();
         return;
       }
@@ -1923,7 +2003,10 @@
     refreshVideoReference() {
       const liveVideo = this.getCurrentVideoElement();
       if (liveVideo instanceof HTMLVideoElement) {
-        this.video = liveVideo;
+        if (liveVideo !== this.video) {
+          this.video = liveVideo;
+          this.bindVideoSync();
+        }
       }
       return this.video;
     }

@@ -60,6 +60,7 @@
       this.programmaticScrollUntil = 0;
 
       this.cleanupFns = [];
+      this.activePointerCleanupFns = [];
       this.layoutRefreshTimers = [];
       this.rafRenderId = 0;
       this.statusTimer = 0;
@@ -217,6 +218,7 @@
         this.cleanupFns[index]();
       }
       this.cleanupFns.length = 0;
+      this.cleanupActivePointerListeners();
       if (this.root) {
         this.root.remove();
         this.root = null;
@@ -244,6 +246,28 @@
       }
       target.addEventListener(type, handler, options);
       this.cleanupFns.push(() => target.removeEventListener(type, handler, options));
+    }
+
+    trackActivePointerListeners(cleanup) {
+      if (typeof cleanup !== "function") {
+        return cleanup;
+      }
+      this.activePointerCleanupFns.push(cleanup);
+      return () => {
+        cleanup();
+        this.activePointerCleanupFns = this.activePointerCleanupFns.filter((item) => item !== cleanup);
+      };
+    }
+
+    cleanupActivePointerListeners() {
+      const cleanups = this.activePointerCleanupFns.slice();
+      this.activePointerCleanupFns.length = 0;
+      for (let index = 0; index < cleanups.length; index += 1) {
+        cleanups[index]();
+      }
+      this.dragState = null;
+      this.resizeState = null;
+      this.launcherDragState = null;
     }
 
     bindEvents() {
@@ -752,11 +776,17 @@
       };
 
       const onMove = (moveEvent) => this.handleDragMove(moveEvent);
+      let cleanupPointerListeners = null;
       const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+        if (cleanupPointerListeners) {
+          cleanupPointerListeners();
+        }
         this.finishDrag();
       };
+      cleanupPointerListeners = this.trackActivePointerListeners(() => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      });
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
@@ -821,11 +851,17 @@
       };
 
       const onMove = (moveEvent) => this.handleResizeMove(moveEvent);
+      let cleanupPointerListeners = null;
       const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+        if (cleanupPointerListeners) {
+          cleanupPointerListeners();
+        }
         this.finishResize();
       };
+      cleanupPointerListeners = this.trackActivePointerListeners(() => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      });
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
@@ -911,11 +947,17 @@
       };
 
       const onMove = (moveEvent) => this.handleLauncherDragMove(moveEvent);
+      let cleanupPointerListeners = null;
       const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+        if (cleanupPointerListeners) {
+          cleanupPointerListeners();
+        }
         this.finishLauncherDrag();
       };
+      cleanupPointerListeners = this.trackActivePointerListeners(() => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      });
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     }
