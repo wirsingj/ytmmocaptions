@@ -1,4 +1,4 @@
-﻿# Dialogue Captions v1.0.0 Source Submission
+﻿# Dialogue Captions v1.0.1 Source Submission
 
 This source package reproduces the Firefox extension package submitted to AMO.
 
@@ -23,7 +23,7 @@ npm run package:firefox
 The generated package will be:
 
 ```text
-build/firefox/ytmmocaptions-firefox-v1.0.0.xpi
+build/firefox/ytmmocaptions-firefox-v1.0.1.xpi
 ```
 
 ## Full Release Verification
@@ -54,3 +54,4 @@ npm run lint:firefox
 ## Privacy / Network Behavior
 
 Dialogue Captions is local-only. It has no server, account system, analytics, ad network, or tracking. Caption data is processed locally for the active YouTube watch page and is not transmitted to the developer.
+

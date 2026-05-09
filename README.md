@@ -22,8 +22,8 @@ policy, and license. Store listing assets are not included in release packages.
 
 ## Firefox Marketplace Submission
 
-Use the Firefox XPI from `downloads/` for AMO upload. For v1:
-- upload `downloads/ytmmocaptions-firefox-v1.0.0.xpi`;
+Use the Firefox XPI from `downloads/` for AMO upload. For each release:
+- upload `downloads/ytmmocaptions-firefox-v<version>.xpi`;
 - target desktop Firefox only;
 - select no data collection;
 - paste `PRIVACY.md` if AMO asks for a privacy policy;

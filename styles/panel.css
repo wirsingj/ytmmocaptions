@@ -415,6 +415,52 @@
   box-shadow: 0 0 0 1px rgba(222, 214, 195, 0.12);
 }
 
+.dc-future-divider {
+  appearance: none;
+  -moz-appearance: none;
+  border: 0;
+  border-top: 1px solid rgba(222, 214, 195, 0.22);
+  width: 100%;
+  margin: 2px 0 -1px;
+  padding: 7px 4px 1px;
+  background: transparent;
+  color: rgba(222, 214, 195, 0.68);
+  cursor: pointer;
+  font-size: calc(10px * var(--dc-text-scale));
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.dc-future-divider:hover,
+.dc-future-divider:focus-visible {
+  color: rgba(246, 241, 226, 0.92);
+}
+
+.dc-chunk-future {
+  border-style: dashed;
+  border-color: rgba(218, 222, 226, 0.13);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 45%),
+    rgba(20, 21, 23, 0.28);
+  color: rgba(238, 244, 243, 0.54);
+  opacity: 0.78;
+}
+
+.dc-chunk-future .dc-chunk-time,
+.dc-chunk-future .dc-chunk-seek-icon {
+  opacity: 0.52;
+}
+
+.dc-chunk-future:hover {
+  border-color: rgba(222, 214, 195, 0.42);
+  color: rgba(246, 241, 226, 0.82);
+  opacity: 0.95;
+  background:
+    radial-gradient(circle at left center, rgba(222, 214, 195, 0.09), transparent 48%),
+    rgba(28, 29, 31, 0.42);
+}
+
 .dc-chunk-seek-icon {
   align-self: center;
   color: var(--dc-accent);

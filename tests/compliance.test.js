@@ -62,9 +62,11 @@ exports.run = async function runComplianceTests(ctx) {
   });
 
   await runCase("v1 release manifests include marketplace icons", () => {
+    const packageJson = readJson("package.json");
+    assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
     for (const fileName of manifests) {
       const manifest = readJson(fileName);
-      assert.equal(manifest.version, "1.0.0", fileName);
+      assert.equal(manifest.version, packageJson.version, fileName);
       assert.deepEqual(Object.keys(manifest.icons || {}).sort(), ["128", "48", "96"], fileName);
       for (const iconPath of Object.values(manifest.icons)) {
         assert.ok(iconPath.startsWith("assets/icons/"), fileName);
@@ -179,6 +181,18 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.dragState = null;"));
     assert.ok(panelSource.includes("this.resizeState = null;"));
     assert.ok(panelSource.includes("this.launcherDragState = null;"));
+  });
+
+  await runCase("future preview UI is collapsible and visually ghosted", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes("futureCollapsed"));
+    assert.ok(panelSource.includes("dc-future-divider"));
+    assert.ok(panelSource.includes("dc-chunk-future"));
+    assert.ok(panelSource.includes("aria-expanded"));
+    assert.ok(css.includes(".dc-chunk-future"));
+    assert.ok(css.includes(".dc-future-divider"));
+    assert.ok(css.includes("border-style: dashed"));
   });
 
   await runCase("README does not imply global keyboard shortcuts or Android targeting", () => {

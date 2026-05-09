@@ -44,12 +44,16 @@
       this.jumpBottomButton = null;
 
       this.chunks = [];
+      this.futureChunks = [];
+      this.futureCollapsed = false;
       this.activeIndex = -1;
       this.playbackTime = Number.NaN;
       this.lastGlowIndex = -1;
       this.lastGlowWordStart = -1;
       this.currentWindowStart = -1;
       this.currentWindowEnd = -1;
+      this.currentFutureCount = -1;
+      this.currentFutureCollapsed = false;
       this.dragState = null;
       this.resizeState = null;
       this.launcherDragState = null;
@@ -1037,6 +1041,22 @@
       this.updateJumpBottomVisibility();
     }
 
+    setFutureChunks(chunks) {
+      const normalized = Array.isArray(chunks) ? chunks : [];
+      const key = normalized
+        .map((chunk) => [chunk.actualIndex, chunk.start, chunk.end, chunk.text].join(":"))
+        .join("|");
+      if (key === this.futureChunksKey && this.futureChunks.length === normalized.length) {
+        return;
+      }
+      this.futureChunks = normalized;
+      this.futureChunksKey = key;
+      this.currentWindowStart = -1;
+      this.currentWindowEnd = -1;
+      this.scheduleWindowRender(true);
+      this.updateJumpBottomVisibility();
+    }
+
     setActiveIndex(index, options) {
       if (!Array.isArray(this.chunks) || !this.chunks.length) {
         this.activeIndex = -1;
@@ -1215,7 +1235,8 @@
       }
 
       const chunkCount = this.chunks.length;
-      if (!chunkCount) {
+      const futureCount = this.futureChunks.length;
+      if (!chunkCount && !futureCount) {
         this.topSpacer.style.height = "0px";
         this.bottomSpacer.style.height = "0px";
         this.windowContainer.replaceChildren();
@@ -1224,9 +1245,15 @@
 
       const start = 0;
       const end = chunkCount - 1;
-      const shouldRebuild = start !== this.currentWindowStart || end !== this.currentWindowEnd;
+      const shouldRebuild =
+        start !== this.currentWindowStart ||
+        end !== this.currentWindowEnd ||
+        futureCount !== this.currentFutureCount ||
+        this.futureCollapsed !== this.currentFutureCollapsed;
       this.currentWindowStart = start;
       this.currentWindowEnd = end;
+      this.currentFutureCount = futureCount;
+      this.currentFutureCollapsed = this.futureCollapsed;
       this.topSpacer.style.height = "0px";
       this.bottomSpacer.style.height = "0px";
 
@@ -1239,36 +1266,63 @@
       const fragment = document.createDocumentFragment();
       for (let index = start; index <= end; index += 1) {
         const chunk = this.chunks[index];
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "dc-chunk";
-        item.setAttribute("data-index", String(index));
+        fragment.append(this.createChunkButton(chunk, index, false));
+      }
 
-        const seekIcon = document.createElement("span");
-        seekIcon.className = "dc-chunk-seek-icon";
-        seekIcon.textContent = "\u25b6";
-        seekIcon.setAttribute("aria-hidden", "true");
+      if (futureCount) {
+        const divider = document.createElement("button");
+        divider.type = "button";
+        divider.className = "dc-future-divider";
+        divider.setAttribute("aria-expanded", this.futureCollapsed ? "false" : "true");
+        divider.textContent = this.futureCollapsed ? "Next up +" : "Next up -";
+        divider.addEventListener("click", () => {
+          this.futureCollapsed = !this.futureCollapsed;
+          this.currentWindowStart = -1;
+          this.currentWindowEnd = -1;
+          this.scheduleWindowRender();
+        });
+        fragment.append(divider);
 
-        const content = document.createElement("span");
-        content.className = "dc-chunk-content";
-
-        const time = document.createElement("span");
-        time.className = "dc-chunk-time";
-        time.textContent = chunker.formatTimestamp(chunk.start);
-
-        const text = document.createElement("span");
-        text.className = "dc-chunk-text";
-
-        content.append(time, text);
-        item.append(seekIcon, content);
-        if (index === this.activeIndex) {
-          item.classList.add("is-current");
+        if (!this.futureCollapsed) {
+          for (let index = 0; index < futureCount; index += 1) {
+            const preview = this.futureChunks[index];
+            const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
+            fragment.append(this.createChunkButton(preview, actualIndex, true));
+          }
         }
-        this.renderChunkText(text, chunk, index === this.activeIndex);
-        fragment.append(item);
       }
 
       this.windowContainer.replaceChildren(fragment);
+    }
+
+    createChunkButton(chunk, index, isFuture) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = isFuture ? "dc-chunk dc-chunk-future" : "dc-chunk";
+      item.setAttribute("data-index", String(index));
+
+      const seekIcon = document.createElement("span");
+      seekIcon.className = "dc-chunk-seek-icon";
+      seekIcon.textContent = "\u25b6";
+      seekIcon.setAttribute("aria-hidden", "true");
+
+      const content = document.createElement("span");
+      content.className = "dc-chunk-content";
+
+      const time = document.createElement("span");
+      time.className = "dc-chunk-time";
+      time.textContent = chunker.formatTimestamp(chunk && chunk.start);
+
+      const text = document.createElement("span");
+      text.className = "dc-chunk-text";
+
+      content.append(time, text);
+      item.append(seekIcon, content);
+      if (!isFuture && index === this.activeIndex) {
+        item.classList.add("is-current");
+      }
+      this.renderChunkText(text, chunk, !isFuture && index === this.activeIndex);
+      return item;
     }
 
     renderChunkText(textElement, chunk, isActive) {

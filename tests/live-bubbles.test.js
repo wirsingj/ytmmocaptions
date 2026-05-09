@@ -143,4 +143,12 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("this.requestTimelineSync(false)"));
     assert.ok(!source.includes("syncTimelineTick"));
   });
+
+  await runCase("future caption previews are limited, honest, and clickable", () => {
+    assert.ok(source.includes("getFuturePreviewChunks()"));
+    assert.ok(source.includes("!this.liveCaptureEnabled"));
+    assert.ok(source.includes("previewStart + 4"));
+    assert.ok(source.includes("actualIndex: index"));
+    assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks())"));
+  });
 };

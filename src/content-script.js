@@ -1313,6 +1313,33 @@
       this.chunks = this.allChunks.slice(0, this.revealedChunkCount);
       if (this.panel) {
         this.panel.setChunks(this.chunks);
+        this.updateFuturePreviewChunks();
+      }
+    }
+
+    canShowFuturePreviewChunks() {
+      return !this.liveCaptureEnabled && Array.isArray(this.allChunks) && this.allChunks.length > 0;
+    }
+
+    getFuturePreviewChunks() {
+      if (!this.canShowFuturePreviewChunks()) {
+        return [];
+      }
+      const previewStart = Math.max(0, Number(this.revealedChunkCount || 0));
+      const previewEnd = Math.min(this.allChunks.length, previewStart + 4);
+      const previews = [];
+      for (let index = previewStart; index < previewEnd; index += 1) {
+        previews.push({
+          ...this.allChunks[index],
+          actualIndex: index
+        });
+      }
+      return previews;
+    }
+
+    updateFuturePreviewChunks() {
+      if (this.panel && typeof this.panel.setFutureChunks === "function") {
+        this.panel.setFutureChunks(this.getFuturePreviewChunks());
       }
     }
 
@@ -1322,6 +1349,7 @@
       }
       const sourceChunks = this.allChunks;
       if (!sourceChunks.length) {
+        this.updateFuturePreviewChunks();
         return;
       }
       const currentTime = this.video.currentTime || 0;
@@ -1348,9 +1376,11 @@
       if (nextIndex < 0) {
         this.activeIndex = -1;
         this.panel.setActiveIndex(-1);
+        this.updateFuturePreviewChunks();
         return;
       }
       this.ensureChunkVisible(nextIndex);
+      this.updateFuturePreviewChunks();
       this.activeIndex = Math.max(0, Math.min(nextIndex, this.chunks.length - 1));
       this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
       if (typeof this.panel.setPlaybackTime === "function") {
@@ -1872,6 +1902,7 @@
       this.chunks = this.allChunks.slice(0, this.revealedChunkCount);
       if (this.panel) {
         this.panel.setChunks(this.chunks);
+        this.updateFuturePreviewChunks();
       }
       this.activeIndex = -1;
     }
