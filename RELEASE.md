@@ -92,6 +92,7 @@ store credentials and manual approval flow.
 Chrome Web Store:
 
 ```text
+CHROME_PUBLISHER_ID
 CHROME_EXTENSION_ID
 CHROME_CLIENT_ID
 CHROME_CLIENT_SECRET

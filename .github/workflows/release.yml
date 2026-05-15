@@ -65,6 +65,7 @@ jobs:
       contents: read
     env:
       STORE_PUBLISH_MODE: ${{ vars.STORE_PUBLISH_MODE || 'upload' }}
+      CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
       CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
       CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
       CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}

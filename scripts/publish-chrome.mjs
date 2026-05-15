@@ -50,15 +50,15 @@ async function requestAccessToken() {
 }
 
 async function uploadPackage({ accessToken, extensionId, zipPath }) {
+  const publisherId = requireEnv("CHROME_PUBLISHER_ID");
   const bytes = fs.readFileSync(zipPath);
   const response = await fetch(
-    `https://www.googleapis.com/upload/chromewebstore/v1.1/items/${encodeURIComponent(extensionId)}?uploadType=media`,
+    `https://chromewebstore.googleapis.com/upload/v2/publishers/${encodeURIComponent(publisherId)}/items/${encodeURIComponent(extensionId)}:upload`,
     {
-      method: "PUT",
+      method: "POST",
       headers: {
         authorization: `Bearer ${accessToken}`,
-        "content-type": "application/zip",
-        "x-goog-api-version": "2"
+        "content-type": "application/zip"
       },
       body: bytes
     }
@@ -71,14 +71,14 @@ async function uploadPackage({ accessToken, extensionId, zipPath }) {
 }
 
 async function publishPackage({ accessToken, extensionId }) {
+  const publisherId = requireEnv("CHROME_PUBLISHER_ID");
   const response = await fetch(
-    `https://www.googleapis.com/chromewebstore/v1.1/items/${encodeURIComponent(extensionId)}/publish`,
+    `https://chromewebstore.googleapis.com/v2/publishers/${encodeURIComponent(publisherId)}/items/${encodeURIComponent(extensionId)}:publish`,
     {
       method: "POST",
       headers: {
         authorization: `Bearer ${accessToken}`,
-        "content-length": "0",
-        "x-goog-api-version": "2"
+        "content-length": "0"
       }
     }
   );

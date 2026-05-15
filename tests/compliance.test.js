@@ -191,6 +191,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(release.includes("environment: store-publish"));
     assert.ok(release.includes("scripts/verify-release-version.mjs"));
     assert.ok(release.includes("STORE_PUBLISH_MODE"));
+    assert.ok(release.includes("CHROME_PUBLISHER_ID"));
     assert.ok(release.includes("CHROME_EXTENSION_ID"));
     assert.ok(release.includes("AMO_JWT_ISSUER"));
     assert.ok(releaseDocs.includes("STORE_PUBLISH_MODE"));
@@ -201,8 +202,10 @@ exports.run = async function runComplianceTests(ctx) {
     const chrome = fs.readFileSync(path.join(ROOT_DIR, "scripts", "publish-chrome.mjs"), "utf8");
     const firefox = fs.readFileSync(path.join(ROOT_DIR, "scripts", "publish-firefox.ps1"), "utf8");
     assert.ok(chrome.includes('process.env.STORE_PUBLISH_MODE || "upload"'));
+    assert.ok(chrome.includes("CHROME_PUBLISHER_ID"));
     assert.ok(chrome.includes("https://oauth2.googleapis.com/token"));
-    assert.ok(chrome.includes("chromewebstore/v1.1/items"));
+    assert.ok(chrome.includes("chromewebstore.googleapis.com/upload/v2/publishers"));
+    assert.ok(chrome.includes("chromewebstore.googleapis.com/v2/publishers"));
     assert.ok(!chrome.includes("console.log(accessToken"));
     assert.ok(!chrome.includes("CHROME_CLIENT_SECRET\";"));
     assert.ok(firefox.includes('if ($Mode -eq "upload")'));
