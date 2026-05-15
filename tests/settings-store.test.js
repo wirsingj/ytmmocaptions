@@ -101,7 +101,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       keyboardStepSeconds: 30,
       autoScroll: false
     });
-    assert.equal(persisted.panelOpacity, 35);
+    assert.equal(persisted.panelOpacity, 12);
     assert.equal(persisted.textScale, 200);
     assert.equal(persisted.themeName, "ocean");
     assert.equal(persisted.customThemeColor, "#336699");

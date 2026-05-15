@@ -200,7 +200,7 @@
       this.opacityInput = document.createElement("input");
       this.opacityInput.type = "range";
       this.opacityInput.className = "dc-opacity-input";
-      this.opacityInput.min = "35";
+      this.opacityInput.min = "10";
       this.opacityInput.max = "100";
       this.opacityInput.step = "1";
       this.opacityInput.value = String(this.settings.panelOpacity || 100);
@@ -560,7 +560,7 @@
       }
 
       const panelOpacity = Number(this.settings.panelOpacity || 100);
-      const normalizedOpacity = Math.max(35, Math.min(100, panelOpacity));
+      const normalizedOpacity = Math.max(10, Math.min(100, panelOpacity));
       this.applyTheme();
       this.applyPanelBlend(normalizedOpacity);
       if (this.opacityInput && this.opacityInput.value !== String(normalizedOpacity)) {
@@ -617,20 +617,20 @@
       if (!this.root) {
         return;
       }
-      const normalizedPercent = Math.max(35, Math.min(100, Number(opacityPercent)));
-      const blend = (normalizedPercent - 35) / 65;
+      const normalizedPercent = Math.max(10, Math.min(100, Number(opacityPercent)));
+      const blend = (normalizedPercent - 10) / 90;
       const setAlpha = (name, value) => {
         this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
       };
-      setAlpha("--dc-panel-alpha-inner", 0.002 + blend * 0.17);
-      setAlpha("--dc-panel-alpha-mid", 0.018 + blend * 0.34);
-      setAlpha("--dc-panel-alpha-outer", 0.34 + blend * 0.54);
-      setAlpha("--dc-panel-alpha-base", 0.02 + blend * 0.32);
-      setAlpha("--dc-panel-fade-light", 0.002 + blend * 0.018);
-      setAlpha("--dc-panel-fade-shadow", 0.035 + blend * 0.23);
-      setAlpha("--dc-panel-fade-shadow-soft", (0.035 + blend * 0.23) * 0.62);
-      setAlpha("--dc-card-alpha", 0.34 + blend * 0.3);
-      setAlpha("--dc-card-current-alpha", 0.42 + blend * 0.32);
+      setAlpha("--dc-panel-alpha-inner", 0 + blend * 0.172);
+      setAlpha("--dc-panel-alpha-mid", 0.004 + blend * 0.354);
+      setAlpha("--dc-panel-alpha-outer", 0.14 + blend * 0.74);
+      setAlpha("--dc-panel-alpha-base", 0.004 + blend * 0.336);
+      setAlpha("--dc-panel-fade-light", 0.001 + blend * 0.019);
+      setAlpha("--dc-panel-fade-shadow", 0.012 + blend * 0.253);
+      setAlpha("--dc-panel-fade-shadow-soft", (0.012 + blend * 0.253) * 0.62);
+      setAlpha("--dc-card-alpha", 0.16 + blend * 0.48);
+      setAlpha("--dc-card-current-alpha", 0.22 + blend * 0.52);
       this.root.style.opacity = "1";
     }
 

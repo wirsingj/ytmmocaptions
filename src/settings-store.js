@@ -21,7 +21,7 @@
     if (!Number.isFinite(number)) {
       return DEFAULTS.panelOpacity;
     }
-    return Math.max(35, Math.min(100, Math.round(number)));
+    return Math.max(10, Math.min(100, Math.round(number)));
   }
 
   function normalizeTextScale(value) {
