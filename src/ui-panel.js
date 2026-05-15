@@ -131,6 +131,7 @@
       this.root.id = PANEL_ID;
       this.root.className = "dc-panel";
       this.root.tabIndex = 0;
+      this.root.setAttribute("aria-label", "MMO dialogue captions panel");
       this.resizeHandles = [];
       const resizeCorners = ["top-left", "top-right", "bottom-left", "bottom-right"];
       for (let index = 0; index < resizeCorners.length; index += 1) {
@@ -171,6 +172,7 @@
       this.themeSelect = document.createElement("select");
       this.themeSelect.className = "dc-theme-select";
       this.themeSelect.title = "Panel theme";
+      this.themeSelect.setAttribute("aria-label", "Panel theme");
       const themeOptions = [
         ["stone", "Stone"],
         ["ember", "Ember"],
@@ -190,6 +192,7 @@
       this.themeColorInput.type = "color";
       this.themeColorInput.className = "dc-theme-color";
       this.themeColorInput.title = "Custom theme color";
+      this.themeColorInput.setAttribute("aria-label", "Custom theme color");
       this.themeColorInput.value = this.settings.customThemeColor || "#ded6c3";
 
       const opacityWrap = document.createElement("label");
@@ -237,6 +240,7 @@
 
       this.statusEl = document.createElement("div");
       this.statusEl.className = "dc-status";
+      this.statusEl.setAttribute("aria-live", "polite");
 
       this.listViewport = document.createElement("div");
       this.listViewport.className = "dc-list-viewport";

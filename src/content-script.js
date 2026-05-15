@@ -7,6 +7,7 @@
   const captionText = app.captionText;
   const platform = app.platform;
   const pageContext = app.pageContext;
+  const diagnostics = app.diagnostics || { record() {} };
   const DialoguePanel = app.DialoguePanel;
 
   if (!transcript || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
@@ -85,6 +86,7 @@
 
     async init() {
       this.settings = await settingsStore.load();
+      diagnostics.record("app:init", { panelClosed: Boolean(this.settings.panelClosed) });
       if (this.destroyed) {
         return;
       }
@@ -120,6 +122,7 @@
 
     destroy() {
       this.destroyed = true;
+      diagnostics.record("app:destroy", { liveCaptureEnabled: Boolean(this.liveCaptureEnabled) });
       this.abortTranscriptLoad();
 
       if (this.syncRafId) {
@@ -1299,6 +1302,7 @@
       this.rebuildChunks();
       this.probeCaptionsNow();
       this.captureLiveCaptionLine();
+      diagnostics.record("captions:live-fallback", {});
 
       this.startLiveCapturePolling();
     }
@@ -1601,6 +1605,10 @@
         if (shouldEnableLiveCapture) {
           this.enableLiveCaptureMode();
           this.transcriptMode = "live overlay fallback mode";
+          diagnostics.record("captions:transcript-failed", {
+            attempts: this.transcriptLoadAttempts,
+            reason: reason
+          });
         }
         if (this.panel) {
           if (!this.cues.length) {
@@ -1624,6 +1632,10 @@
       this.cues = response.cues;
       this.revealedChunkCount = 0;
       this.rebuildChunks();
+      diagnostics.record("captions:transcript-loaded", {
+        cueCount: response.cues.length,
+        mode: response.mode || "direct transcript mode"
+      });
       if (this.panel) {
         const stepSeconds = this.getKeyboardStepSeconds();
         this.panel.setStatus(
@@ -1977,11 +1989,15 @@
           const part = sourceParts[partIndex];
           const start = Math.max(minNextStart, Number(part.start || 0));
           const end = Math.max(start + 0.25, Number(part.end || start + 0.25));
+          const originalSeekStart = Number(part.seekStart);
+          const seekStart = Number.isFinite(originalSeekStart) && originalSeekStart >= 0
+            ? originalSeekStart
+            : start;
           records.push({
             ...part,
             start: start,
             end: end,
-            seekStart: start,
+            seekStart: seekStart,
             ts_start: start,
             ts_stop: end
           });
@@ -2302,6 +2318,12 @@
       }
       const wasPaused = video.paused;
       video.currentTime = target;
+      diagnostics.record("timeline:space", {
+        backward: Boolean(isBackward),
+        from: now,
+        to: target,
+        focused: flashIndex >= 0
+      });
       this.commitTimelineSync(true);
       this.requestTimelineSync(true);
       window.setTimeout(() => this.commitTimelineSync(true), 80);
@@ -2369,6 +2391,11 @@
       });
       this.applyTimelineActionFocus(action);
       video.currentTime = targetTime;
+      diagnostics.record("timeline:click", {
+        index: index,
+        target: targetTime,
+        seekStart: seekStart
+      });
       const autoplay = opts.autoplay !== false;
       if (autoplay) {
         const playResult = video.play();
@@ -2418,6 +2445,10 @@
         this.panel.setPlaybackTime(targetTime, { forceGlowReset: true });
       }
       video.currentTime = targetTime;
+      diagnostics.record("timeline:future-click", {
+        target: targetTime,
+        seekStart: baseTime
+      });
       const autoplay = opts.autoplay !== false;
       if (autoplay) {
         const playResult = video.play();
@@ -2493,6 +2524,7 @@
 
       const url = window.location.href;
       if (!transcript.isWatchPage(url)) {
+        diagnostics.record("route:leave-watch", {});
         this.activeVideoId = null;
         this.teardownApp();
         return;
@@ -2500,6 +2532,7 @@
 
       const videoId = transcript.getVideoId(url);
       if (!videoId) {
+        diagnostics.record("route:missing-video-id", {});
         this.activeVideoId = null;
         this.teardownApp();
         return;
@@ -2510,6 +2543,7 @@
       }
 
       this.activeVideoId = videoId;
+      diagnostics.record("route:watch-video", {});
       this.loadNonce += 1;
       const currentNonce = this.loadNonce;
 

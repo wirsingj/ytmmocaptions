@@ -1,4 +1,4 @@
-﻿# Dialogue Captions v1.0.2 Source Submission
+# Dialogue Captions Source Submission
 
 This source package reproduces the Firefox extension package submitted to AMO.
 
@@ -23,7 +23,7 @@ npm run package:firefox
 The generated package will be:
 
 ```text
-build/firefox/ytmmocaptions-firefox-v1.0.2.xpi
+build/firefox/ytmmocaptions-firefox-v<package-version>.xpi
 ```
 
 ## Full Release Verification

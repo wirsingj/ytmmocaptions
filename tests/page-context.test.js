@@ -126,6 +126,16 @@ exports.run = async function runPageContextTests(ctx) {
     assert.equal(pageContext.getTimedtextCaptures("video-a").length, 0);
   });
 
+  await runCase("page context does not send bridge requests off watch pages", async () => {
+    const { pageContext, location, posted } = loadContext();
+    location.href = "https://www.youtube.com/results?search_query=captions";
+    assert.equal(pageContext.isCurrentWatchPageWithVideo(), false);
+    assert.equal(pageContext.triggerCaptionProbe(), false);
+    assert.equal(posted.length, 0);
+    const result = await pageContext.pageFetch("https://www.youtube.com/api/timedtext?v=video-a", {}, 1);
+    assert.equal(result, null);
+  });
+
   await runCase("page context resets bridge injection attempts on video change", () => {
     const { pageContext, location, appendedScripts } = loadContext({ failBridgeLoads: true });
     for (let index = 0; index < 6; index += 1) {

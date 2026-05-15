@@ -7,6 +7,7 @@ Dialogue Captions is a Chrome/Firefox extension that turns YouTube subtitles int
 Latest packaged builds are checked into `downloads/`:
 - `downloads/ytmmocaptions-chrome-v<version>.zip`
 - `downloads/ytmmocaptions-firefox-v<version>.xpi`
+- `downloads/ytmmocaptions-source-v<version>.zip`
 
 Older local test packages are intentionally pruned so the repo points people at
 the current release candidate instead of stale builds.
@@ -24,6 +25,7 @@ policy, and license. Store listing assets are not included in release packages.
 
 Use the Firefox XPI from `downloads/` for AMO upload. For each release:
 - upload `downloads/ytmmocaptions-firefox-v<version>.xpi`;
+- if AMO asks for source code, upload `downloads/ytmmocaptions-source-v<version>.zip`;
 - target desktop Firefox only;
 - select no data collection;
 - paste `PRIVACY.md` if AMO asks for a privacy policy;
@@ -48,6 +50,7 @@ Use the Firefox XPI from `downloads/` for AMO upload. For each release:
 ytmmocaptions/
   src/
     platform.js
+    diagnostics.js
     page-context.js
     settings-store.js
     caption-text.js
@@ -126,8 +129,14 @@ installed locally and may be affected by network/player changes.
 ```powershell
 npm install --save-dev playwright
 npx playwright install
-npm run diagnostic:e2e
+npm run diagnostic:e2e -- --url=https://www.youtube.com/watch?v=VIDEO_ID
 ```
+For local debugging, add `dcdebug=1` to a YouTube watch URL to enable concise
+console diagnostics. The in-memory report is available from DevTools as
+`window.DialogueCaptions.diagnostics.getReport()`. It stores no raw captions,
+video titles, account data, cookies, tokens, or remote telemetry.
+The optional Playwright diagnostic writes a local ignored report with counts,
+status, and caption text lengths only; it avoids raw caption text by default.
 
 ## Load Unpacked
 

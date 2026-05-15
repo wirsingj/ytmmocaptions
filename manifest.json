@@ -16,6 +16,7 @@
       ],
       "js": [
         "src/platform.js",
+        "src/diagnostics.js",
         "src/page-context.js",
         "src/settings-store.js",
         "src/caption-text.js",

@@ -62,6 +62,14 @@ Keyboard controls are not globally enabled in the release UI.
 
 Dialogue Captions does not integrate with third-party analytics, advertising, ad network, account, payment, or remote code services.
 
+## Local Diagnostics
+
+If a user or developer adds `dcdebug=1` to a YouTube watch URL, the extension
+prints concise local diagnostics to the browser console and keeps a small
+in-memory event report for that page. Diagnostics are for troubleshooting only,
+are not sent anywhere, are cleared when the page reloads, and avoid raw
+captions, video titles, account data, cookies, tokens, and personal identifiers.
+
 ## Contact
 
 For privacy questions, use the support contact listed in the extension store listing.

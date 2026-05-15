@@ -15,6 +15,7 @@ downloads/*/
 
 # Local browser automation artifacts
 .playwright-user-data*/
+tests/artifacts/
 
 # Logs / coverage / temp
 *.log

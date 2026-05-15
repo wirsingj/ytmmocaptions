@@ -30,12 +30,20 @@ exports.run = async function runComplianceTests(ctx) {
     for (const fileName of manifests) {
       const manifest = readJson(fileName);
       const js = manifest.content_scripts[0].js;
+      const platformIndex = js.findIndex((item) => item.includes("platform.js"));
+      const diagnosticsIndex = js.findIndex((item) => item.includes("diagnostics.js"));
+      const pageContextIndex = js.findIndex((item) => item.includes("page-context.js"));
       const captionTextIndex = js.findIndex((item) => item.includes("caption-text.js"));
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
       const contentIndex = js.findIndex((item) => item.includes("content-script.js"));
+      assert.ok(platformIndex >= 0, fileName + " missing platform.js");
+      assert.ok(diagnosticsIndex >= 0, fileName + " missing diagnostics.js");
+      assert.ok(pageContextIndex >= 0, fileName + " missing page-context.js");
       assert.ok(captionTextIndex >= 0, fileName + " missing caption-text.js");
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
       assert.ok(contentIndex >= 0, fileName + " missing content-script.js");
+      assert.ok(platformIndex < diagnosticsIndex, fileName + " loads platform before diagnostics");
+      assert.ok(diagnosticsIndex < pageContextIndex, fileName + " loads diagnostics before page-context");
       assert.ok(captionTextIndex < contentIndex, fileName + " loads content-script before caption-text");
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
     }
@@ -166,11 +174,42 @@ exports.run = async function runComplianceTests(ctx) {
   });
 
   await runCase("runtime does not use page localStorage for settings or debug state", () => {
-    for (const fileName of ["settings-store.js", "transcript.js", "content-script.js"]) {
+    for (const fileName of ["settings-store.js", "transcript.js", "content-script.js", "diagnostics.js"]) {
       const source = fs.readFileSync(path.join(ROOT_DIR, "src", fileName), "utf8");
       assert.ok(!source.includes("localStorage"), fileName + " should use extension storage only");
       assert.ok(!source.includes("sessionStorage"), fileName + " should not use page session storage");
     }
+  });
+
+  await runCase("diagnostics are local-only, opt-in, and redact sensitive detail", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "diagnostics.js"), "utf8");
+    const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
+    const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
+    assert.ok(source.includes('searchParams.get("dcdebug") === "1"'));
+    assert.ok(source.includes("if (!isDebugEnabled())"));
+    assert.ok(source.includes("/text|caption|transcript|body|token|cookie|title|url/i"));
+    assert.ok(!source.includes("fetch("));
+    assert.ok(readme.includes("window.DialogueCaptions.diagnostics.getReport()"));
+    assert.ok(privacy.includes("Local Diagnostics"));
+  });
+
+  await runCase("source submission docs do not pin stale package versions", () => {
+    const sourceSubmission = fs.readFileSync(path.join(ROOT_DIR, "SOURCE_SUBMISSION.md"), "utf8");
+    assert.ok(sourceSubmission.includes("ytmmocaptions-firefox-v<package-version>.xpi"));
+    assert.ok(!/v1\\.0\\.2/.test(sourceSubmission));
+  });
+
+  await runCase("optional e2e diagnostic requires an explicit YouTube URL", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "tests", "e2e-extension-debug.js"), "utf8");
+    const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
+    const gitignore = fs.readFileSync(path.join(ROOT_DIR, ".gitignore"), "utf8");
+    assert.ok(source.includes('url: ""'));
+    assert.ok(source.includes("Pass a YouTube watch URL"));
+    assert.ok(source.includes("textLength"));
+    assert.ok(!source.includes("document.title"));
+    assert.ok(!source.includes("dQw4w9WgXcQ"));
+    assert.ok(readme.includes("npm run diagnostic:e2e -- --url=https://www.youtube.com/watch?v=VIDEO_ID"));
+    assert.ok(gitignore.includes("tests/artifacts/"));
   });
 
   await runCase("panel cleans temporary pointer listeners during route teardown", () => {
@@ -193,6 +232,16 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-chunk-future"));
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes("border-style: dashed"));
+  });
+
+  await runCase("panel exposes basic accessibility labels and reduced-motion CSS", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes('aria-label", "MMO dialogue captions panel"'));
+    assert.ok(panelSource.includes('aria-live", "polite"'));
+    assert.ok(panelSource.includes('aria-label", "Panel theme"'));
+    assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
+    assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 
   await runCase("README does not imply global keyboard shortcuts or Android targeting", () => {

@@ -9,6 +9,7 @@ function loadPageBridge(url) {
   const posted = [];
   let intervalCallback = null;
   let fetchCalls = 0;
+  let cloneReads = 0;
   let href = url;
   const bridgeToken = "test-bridge-token";
   function makeLocation(nextUrl) {
@@ -58,7 +59,12 @@ function loadPageBridge(url) {
         url: "https://www.youtube.com/api/timedtext",
         headers: { get: () => "application/json" },
         clone() {
-          return { text: async () => "{}" };
+          return {
+            text: async () => {
+              cloneReads += 1;
+              return "{}";
+            }
+          };
         },
         text: async () => "{}"
       });
@@ -162,6 +168,9 @@ function loadPageBridge(url) {
     },
     get fetchCalls() {
       return fetchCalls;
+    },
+    get cloneReads() {
+      return cloneReads;
     }
   };
 }
@@ -220,6 +229,7 @@ exports.run = async function runPageBridgeTests(ctx) {
     bridge.setUrl("https://www.youtube.com/feed/subscriptions");
     const posts = await bridge.fetchTimedtext();
     assert.equal(posts.length, 0);
+    assert.equal(bridge.cloneReads, 0);
   });
 
   await runCase("page bridge ignores caption probes off watch pages", () => {

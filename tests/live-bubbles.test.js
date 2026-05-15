@@ -41,6 +41,14 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(method.includes("splitTextByNaturalBreaks(text, maxLiveBubbleChars, false)"));
     assert.ok(method.includes("seekStart: alignedStart"));
     assert.ok(method.includes("locked: true"));
+    const polishStart = source.indexOf("    polishLiveBubbles(bubbles)");
+    const polishMethod = source.slice(
+      polishStart,
+      source.indexOf("    createLockedDisplayBubbles(bubble)", polishStart)
+    );
+    assert.ok(polishMethod.includes("const originalSeekStart = Number(part.seekStart);"));
+    assert.ok(polishMethod.includes("seekStart: seekStart"));
+    assert.ok(!polishMethod.includes("seekStart: start,"));
   });
 
   await runCase("finished live bubble entities are sealed before display rendering", () => {

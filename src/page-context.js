@@ -155,7 +155,7 @@
 
   async function pageFetch(url, init, timeoutMs) {
     const safeUrl = String(url || "");
-    if (!safeUrl) {
+    if (!safeUrl || !isCurrentWatchPageWithVideo()) {
       return null;
     }
     const requestId = ++requestCounter;
@@ -198,6 +198,10 @@
     } catch {
       return "";
     }
+  }
+
+  function isCurrentWatchPageWithVideo() {
+    return Boolean(getCurrentWatchVideoId());
   }
 
   function ensureBridgeInjected() {
@@ -255,6 +259,9 @@
   }
 
   function triggerCaptionProbe() {
+    if (!isCurrentWatchPageWithVideo()) {
+      return false;
+    }
     scope.postMessage(
       {
         type: BRIDGE_CAPTION_PROBE_REQUEST_TYPE,
@@ -262,6 +269,7 @@
       },
       scope.location.origin
     );
+    return true;
   }
 
   scope.addEventListener("message", onWindowMessage);
@@ -278,6 +286,7 @@
     getCurrentWatchVideoId,
     getSnapshot,
     getTimedtextCaptures,
+    isCurrentWatchPageWithVideo,
     pageFetch,
     triggerCaptionProbe
   };

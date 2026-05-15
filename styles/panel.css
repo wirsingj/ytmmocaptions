@@ -597,6 +597,18 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .dc-chunk,
+  .dc-chunk-seek-icon,
+  .dc-launcher {
+    transition: none;
+  }
+
+  .dc-chunk.is-start-flash {
+    animation: none;
+  }
+}
+
 .dc-launcher {
   position: fixed;
   left: 14px;

@@ -4,7 +4,7 @@ const { chromium } = require("playwright");
 
 function parseArgs(argv) {
   const options = {
-    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    url: "",
     headless: true,
     timeoutMs: 45000,
     keepOpen: false
@@ -41,6 +41,9 @@ async function readConsoleValues(msg) {
 
 async function run() {
   const options = parseArgs(process.argv.slice(2));
+  if (!options.url) {
+    throw new Error("Pass a YouTube watch URL with --url=https://www.youtube.com/watch?v=...");
+  }
   const projectRoot = path.resolve(__dirname, "..");
   const extensionPath = path.join(projectRoot, "build", "chrome");
   const manifestPath = path.join(extensionPath, "manifest.json");
@@ -128,7 +131,6 @@ async function run() {
       const chunks = Array.from(document.querySelectorAll("#dc-panel .dc-chunk")).slice(0, 8);
       return {
         href: location.href,
-        title: document.title,
         panelFoundByWait: Boolean(wasPanelFound),
         hasPanel: Boolean(panel),
         statusText: status ? status.textContent || "" : "",
@@ -136,9 +138,10 @@ async function run() {
         sampleChunks: chunks.map((node) => {
           const time = node.querySelector(".dc-chunk-time");
           const text = node.querySelector(".dc-chunk-text");
+          const value = text ? text.textContent || "" : "";
           return {
             time: time ? time.textContent || "" : "",
-            text: text ? (text.textContent || "").slice(0, 120) : ""
+            textLength: value.length
           };
         })
       };

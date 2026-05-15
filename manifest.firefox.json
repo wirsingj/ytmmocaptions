@@ -27,6 +27,7 @@
       ],
       "js": [
         "scripts/platform.js",
+        "scripts/diagnostics.js",
         "scripts/page-context.js",
         "scripts/settings-store.js",
         "scripts/caption-text.js",

@@ -209,7 +209,12 @@
           if (response && typeof response.url === "string") {
             recordTimedtextUrl(response.url);
           }
-          if (response && isTimedtextUrl(response.url || requestUrl) && typeof response.clone === "function") {
+          if (
+            isCurrentWatchPageWithVideo() &&
+            response &&
+            isTimedtextUrl(response.url || requestUrl) &&
+            typeof response.clone === "function"
+          ) {
             const clone = response.clone();
             const responseUrl = response.url || requestUrl;
             const contentType = response.headers && typeof response.headers.get === "function"
@@ -251,7 +256,7 @@
               recordTimedtextUrl(this.responseURL);
             }
             const responseUrl = this && this.responseURL ? this.responseURL : this.__dcTimedtextUrl;
-            if (!isTimedtextUrl(responseUrl)) {
+            if (!isCurrentWatchPageWithVideo() || !isTimedtextUrl(responseUrl)) {
               return;
             }
             const responseType = this && typeof this.responseType === "string" ? this.responseType : "";
