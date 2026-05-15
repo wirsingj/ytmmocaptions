@@ -2211,6 +2211,32 @@
       return now >= chunkStart - leadTolerance && now <= effectiveEnd + trailTolerance;
     }
 
+    findShortcutFocusIndex(chunks, targetTime, isBackward) {
+      if (!Array.isArray(chunks) || !chunks.length) {
+        return -1;
+      }
+      const target = Number(targetTime);
+      if (!Number.isFinite(target)) {
+        return -1;
+      }
+      const active = chunker.findActiveChunkIndexAtTime(chunks, target, 0.9);
+      if (active >= 0) {
+        return active;
+      }
+      const floorIndex = chunker.findChunkIndexAtTime(chunks, target);
+      if (isBackward) {
+        return floorIndex;
+      }
+      const nextIndex = floorIndex < 0 ? 0 : floorIndex + 1;
+      if (nextIndex >= 0 && nextIndex < chunks.length) {
+        const nextStart = this.getChunkSeekStart(chunks[nextIndex]);
+        if (Number.isFinite(nextStart) && nextStart <= target + 1.2) {
+          return nextIndex;
+        }
+      }
+      return floorIndex;
+    }
+
     handleSpaceShortcut(isBackward) {
       const video = this.refreshVideoReference();
       if (!video) {
@@ -2222,8 +2248,13 @@
       const duration = Number(video.duration);
       const upperBound = Number.isFinite(duration) ? Math.max(0, duration) : Number.POSITIVE_INFINITY;
       const sourceChunks = Array.isArray(this.allChunks) ? this.allChunks : [];
-      const currentIndex =
+      const timeIndex =
         sourceChunks.length > 0 ? chunker.findChunkIndexAtTime(sourceChunks, now) : -1;
+      const visibleActiveIndex = Number.isInteger(this.activeIndex) ? this.activeIndex : -1;
+      const currentIndex =
+        this.isChunkIndexAlignedWithTime(sourceChunks, visibleActiveIndex, now)
+          ? visibleActiveIndex
+          : timeIndex;
       const canUseChunkNavigation =
         sourceChunks.length > 0 && this.isChunkIndexAlignedWithTime(sourceChunks, currentIndex, now);
       const rawTarget = isBackward
@@ -2233,14 +2264,17 @@
       let flashIndex = -1;
       let flashAt = Number.NaN;
 
-      if (isBackward && canUseChunkNavigation) {
-        const rewindIndex = chunker.findChunkIndexAtTime(sourceChunks, rawTarget);
-        if (rewindIndex >= 0) {
-          const anchoredStart = this.getChunkSeekStart(sourceChunks[rewindIndex]);
-          if (Number.isFinite(anchoredStart) && anchoredStart <= now - 0.2) {
+      if (canUseChunkNavigation) {
+        const focusIndex = this.findShortcutFocusIndex(sourceChunks, rawTarget, isBackward);
+        if (focusIndex >= 0) {
+          const anchoredStart = this.getChunkSeekStart(sourceChunks[focusIndex]);
+          if (isBackward && Number.isFinite(anchoredStart) && anchoredStart <= now - 0.2) {
             target = anchoredStart;
-            flashIndex = rewindIndex;
+            flashIndex = focusIndex;
             flashAt = anchoredStart;
+          } else if (!isBackward && this.isChunkIndexAlignedWithTime(sourceChunks, focusIndex, rawTarget)) {
+            flashIndex = focusIndex;
+            flashAt = Number.isFinite(anchoredStart) ? anchoredStart : rawTarget;
           }
         }
       }

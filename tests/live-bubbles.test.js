@@ -144,6 +144,15 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(!source.includes("syncTimelineTick"));
   });
 
+  await runCase("space forward chooses and reveals a destination bubble instead of losing focus", () => {
+    assert.ok(source.includes("findShortcutFocusIndex(chunks, targetTime, isBackward)"));
+    assert.ok(source.includes("const visibleActiveIndex = Number.isInteger(this.activeIndex) ? this.activeIndex : -1;"));
+    assert.ok(source.includes("this.isChunkIndexAlignedWithTime(sourceChunks, visibleActiveIndex, now)"));
+    assert.ok(source.includes("!isBackward && this.isChunkIndexAlignedWithTime(sourceChunks, focusIndex, rawTarget)"));
+    assert.ok(source.includes('source: isBackward ? "rewind" : "forward"'));
+    assert.ok(source.includes("this.applyTimelineActionFocus(action);"));
+  });
+
   await runCase("future caption previews are limited, honest, and clickable", () => {
     assert.ok(source.includes("getFuturePreviewChunks()"));
     assert.ok(source.includes("readFuturePreviewChunksFromTextTracks(currentBucketIndex)"));
