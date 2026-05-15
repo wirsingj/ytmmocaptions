@@ -8,6 +8,8 @@
     schemaVersion: SCHEMA_VERSION,
     panelOpacity: 88,
     textScale: 120,
+    themeName: "stone",
+    customThemeColor: "#ded6c3",
     panelPosition: null,
     panelSize: null,
     launcherPosition: null,
@@ -28,6 +30,17 @@
       return DEFAULTS.textScale;
     }
     return Math.max(100, Math.min(200, Math.round(number)));
+  }
+
+  function normalizeThemeName(value) {
+    const name = String(value || "").toLowerCase();
+    const allowed = ["stone", "ember", "forest", "ocean", "violet", "custom"];
+    return allowed.includes(name) ? name : DEFAULTS.themeName;
+  }
+
+  function normalizeCustomThemeColor(value) {
+    const color = String(value || "").trim();
+    return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : DEFAULTS.customThemeColor;
   }
 
   function normalizePanelPosition(value) {
@@ -81,6 +94,8 @@
       schemaVersion: SCHEMA_VERSION,
       panelOpacity: normalizePanelOpacity(source.panelOpacity),
       textScale: normalizeTextScale(source.textScale),
+      themeName: normalizeThemeName(source.themeName),
+      customThemeColor: normalizeCustomThemeColor(source.customThemeColor),
       panelPosition: normalizePanelPosition(source.panelPosition),
       panelSize: normalizePanelSize(source.panelSize),
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),

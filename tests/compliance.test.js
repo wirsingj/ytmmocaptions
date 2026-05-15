@@ -231,5 +231,6 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
+    assert.ok(privacy.includes("panel theme preset and custom theme color"));
   });
 };

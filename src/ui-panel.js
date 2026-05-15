@@ -19,6 +19,58 @@
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
   const LAUNCHER_CONTROL_BAR_GAP = 54;
+  const THEME_PRESETS = Object.freeze({
+    stone: {
+      label: "Stone",
+      accent: "#ded6c3",
+      text: "#eceff1",
+      muted: "#a9adb3",
+      bg: [12, 12, 13],
+      panel: [28, 28, 30],
+      card: [22, 23, 25],
+      current: [48, 47, 44]
+    },
+    ember: {
+      label: "Ember",
+      accent: "#e2b07f",
+      text: "#fff1e5",
+      muted: "#c9aa94",
+      bg: [18, 11, 8],
+      panel: [48, 28, 20],
+      card: [34, 21, 16],
+      current: [68, 43, 30]
+    },
+    forest: {
+      label: "Forest",
+      accent: "#b8d6ad",
+      text: "#eef7eb",
+      muted: "#a9bca4",
+      bg: [9, 14, 11],
+      panel: [21, 39, 28],
+      card: [15, 29, 21],
+      current: [36, 61, 43]
+    },
+    ocean: {
+      label: "Ocean",
+      accent: "#a7cde3",
+      text: "#edf7fb",
+      muted: "#a7bac4",
+      bg: [8, 13, 17],
+      panel: [18, 38, 50],
+      card: [13, 29, 39],
+      current: [31, 59, 75]
+    },
+    violet: {
+      label: "Violet",
+      accent: "#cbb9ee",
+      text: "#f5efff",
+      muted: "#bab0c8",
+      bg: [13, 10, 18],
+      panel: [35, 26, 52],
+      card: [25, 20, 38],
+      current: [54, 43, 78]
+    }
+  });
 
   class DialoguePanel {
     constructor(options) {
@@ -37,6 +89,8 @@
       this.opacityInput = null;
       this.textScaleWrap = null;
       this.textScaleInput = null;
+      this.themeSelect = null;
+      this.themeColorInput = null;
       this.header = null;
       this.resetButton = null;
       this.closeButton = null;
@@ -114,6 +168,30 @@
       this.resetButton.textContent = "Reset";
       this.resetButton.title = "Reset panel size, position, transparency, and text size";
 
+      this.themeSelect = document.createElement("select");
+      this.themeSelect.className = "dc-theme-select";
+      this.themeSelect.title = "Panel theme";
+      const themeOptions = [
+        ["stone", "Stone"],
+        ["ember", "Ember"],
+        ["forest", "Forest"],
+        ["ocean", "Ocean"],
+        ["violet", "Violet"],
+        ["custom", "Custom"]
+      ];
+      for (let index = 0; index < themeOptions.length; index += 1) {
+        const option = document.createElement("option");
+        option.value = themeOptions[index][0];
+        option.textContent = themeOptions[index][1];
+        this.themeSelect.append(option);
+      }
+
+      this.themeColorInput = document.createElement("input");
+      this.themeColorInput.type = "color";
+      this.themeColorInput.className = "dc-theme-color";
+      this.themeColorInput.title = "Custom theme color";
+      this.themeColorInput.value = this.settings.customThemeColor || "#ded6c3";
+
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
       opacityWrap.textContent = "Blend";
@@ -145,6 +223,8 @@
       textScaleWrap.append(this.textScaleInput);
 
       controls.append(
+        this.themeSelect,
+        this.themeColorInput,
         opacityWrap,
         textScaleWrap,
         this.resetButton,
@@ -314,6 +394,16 @@
       };
       this.addListener(this.opacityInput, "input", onOpacityInput);
 
+      const onThemeChange = () => {
+        this.updateSettings({ themeName: this.themeSelect.value || "stone" });
+      };
+      this.addListener(this.themeSelect, "change", onThemeChange);
+
+      const onThemeColorInput = () => {
+        this.updateSettings({ themeName: "custom", customThemeColor: this.themeColorInput.value || "#ded6c3" });
+      };
+      this.addListener(this.themeColorInput, "input", onThemeColorInput);
+
       const onTextScaleInput = () => {
         this.updateSettings({ textScale: Number(this.textScaleInput.value) });
       };
@@ -471,6 +561,7 @@
 
       const panelOpacity = Number(this.settings.panelOpacity || 100);
       const normalizedOpacity = Math.max(35, Math.min(100, panelOpacity));
+      this.applyTheme();
       this.applyPanelBlend(normalizedOpacity);
       if (this.opacityInput && this.opacityInput.value !== String(normalizedOpacity)) {
         this.opacityInput.value = String(normalizedOpacity);
@@ -480,6 +571,19 @@
       this.root.style.setProperty("--dc-text-scale", String(normalizedTextScale / 100));
       if (this.textScaleInput && this.textScaleInput.value !== String(normalizedTextScale)) {
         this.textScaleInput.value = String(normalizedTextScale);
+      }
+      if (this.themeSelect) {
+        const themeName = this.getThemeName();
+        if (this.themeSelect.value !== themeName) {
+          this.themeSelect.value = themeName;
+        }
+      }
+      if (this.themeColorInput) {
+        const color = this.getCustomThemeColor();
+        if (this.themeColorInput.value.toLowerCase() !== color) {
+          this.themeColorInput.value = color;
+        }
+        this.themeColorInput.disabled = this.getThemeName() !== "custom";
       }
       if (this.stickToBottom) {
         this.scrollToBottom();
@@ -528,6 +632,127 @@
       setAlpha("--dc-card-alpha", 0.34 + blend * 0.3);
       setAlpha("--dc-card-current-alpha", 0.42 + blend * 0.32);
       this.root.style.opacity = "1";
+    }
+
+    getThemeName() {
+      const name = String(this.settings.themeName || "stone").toLowerCase();
+      return name === "custom" || Object.prototype.hasOwnProperty.call(THEME_PRESETS, name) ? name : "stone";
+    }
+
+    getCustomThemeColor() {
+      const color = String(this.settings.customThemeColor || "#ded6c3").trim();
+      return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#ded6c3";
+    }
+
+    hexToRgb(hex) {
+      const value = String(hex || "").replace("#", "");
+      if (!/^[0-9a-f]{6}$/i.test(value)) {
+        return [222, 214, 195];
+      }
+      return [
+        parseInt(value.slice(0, 2), 16),
+        parseInt(value.slice(2, 4), 16),
+        parseInt(value.slice(4, 6), 16)
+      ];
+    }
+
+    mixColor(left, right, amount) {
+      const ratio = Math.max(0, Math.min(1, Number(amount)));
+      return [
+        Math.round(left[0] * (1 - ratio) + right[0] * ratio),
+        Math.round(left[1] * (1 - ratio) + right[1] * ratio),
+        Math.round(left[2] * (1 - ratio) + right[2] * ratio)
+      ];
+    }
+
+    rotateHue(rgb, degrees) {
+      const normalized = rgb.map((value) => Math.max(0, Math.min(255, value)) / 255);
+      const max = Math.max(normalized[0], normalized[1], normalized[2]);
+      const min = Math.min(normalized[0], normalized[1], normalized[2]);
+      const lightness = (max + min) / 2;
+      const delta = max - min;
+      if (delta === 0) {
+        return rgb.slice();
+      }
+      const saturation = delta / (1 - Math.abs(2 * lightness - 1));
+      let hue = 0;
+      if (max === normalized[0]) {
+        hue = 60 * (((normalized[1] - normalized[2]) / delta) % 6);
+      } else if (max === normalized[1]) {
+        hue = 60 * ((normalized[2] - normalized[0]) / delta + 2);
+      } else {
+        hue = 60 * ((normalized[0] - normalized[1]) / delta + 4);
+      }
+      hue = (hue + degrees + 360) % 360;
+      const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+      const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+      const match = lightness - chroma / 2;
+      let next = [0, 0, 0];
+      if (hue < 60) {
+        next = [chroma, x, 0];
+      } else if (hue < 120) {
+        next = [x, chroma, 0];
+      } else if (hue < 180) {
+        next = [0, chroma, x];
+      } else if (hue < 240) {
+        next = [0, x, chroma];
+      } else if (hue < 300) {
+        next = [x, 0, chroma];
+      } else {
+        next = [chroma, 0, x];
+      }
+      return next.map((value) => Math.round((value + match) * 255));
+    }
+
+    rgbToHex(rgb) {
+      return "#" + rgb
+        .map((value) => Math.max(0, Math.min(255, Number(value) || 0)).toString(16).padStart(2, "0"))
+        .join("");
+    }
+
+    rgbString(rgb) {
+      return rgb.join(", ");
+    }
+
+    getActiveTheme() {
+      const name = this.getThemeName();
+      if (name !== "custom") {
+        return THEME_PRESETS[name] || THEME_PRESETS.stone;
+      }
+      const accent = this.hexToRgb(this.getCustomThemeColor());
+      const analogous = this.rotateHue(accent, -24);
+      const complement = this.rotateHue(accent, 170);
+      const baseDark = [10, 10, 12];
+      return {
+        label: "Custom",
+        accent: this.rgbToHex(accent),
+        text: this.rgbToHex(this.mixColor(this.mixColor(accent, analogous, 0.18), [255, 255, 255], 0.82)),
+        muted: this.rgbToHex(this.mixColor(this.mixColor(accent, complement, 0.22), [165, 165, 165], 0.62)),
+        bg: this.mixColor(this.mixColor(accent, complement, 0.36), baseDark, 0.88),
+        panel: this.mixColor(this.mixColor(accent, analogous, 0.42), [24, 24, 27], 0.72),
+        card: this.mixColor(this.mixColor(accent, complement, 0.3), [18, 18, 21], 0.8),
+        current: this.mixColor(this.mixColor(accent, analogous, 0.24), [46, 45, 43], 0.58)
+      };
+    }
+
+    applyTheme() {
+      if (!this.root) {
+        return;
+      }
+      const theme = this.getActiveTheme();
+      const accentRgb = this.hexToRgb(theme.accent);
+      const textRgb = this.hexToRgb(theme.text);
+      const mutedRgb = this.hexToRgb(theme.muted);
+      this.root.style.setProperty("--dc-accent", theme.accent);
+      this.root.style.setProperty("--dc-text", theme.text);
+      this.root.style.setProperty("--dc-muted", theme.muted);
+      this.root.style.setProperty("--dc-accent-rgb", this.rgbString(accentRgb));
+      this.root.style.setProperty("--dc-text-rgb", this.rgbString(textRgb));
+      this.root.style.setProperty("--dc-muted-rgb", this.rgbString(mutedRgb));
+      this.root.style.setProperty("--dc-bg-rgb", this.rgbString(theme.bg));
+      this.root.style.setProperty("--dc-panel-rgb", this.rgbString(theme.panel));
+      this.root.style.setProperty("--dc-card-rgb", this.rgbString(theme.card));
+      this.root.style.setProperty("--dc-current-rgb", this.rgbString(theme.current));
     }
 
     updatePanelFade() {
@@ -583,6 +808,8 @@
       this.updateSettings({
         panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 88,
         textScale: Number.isFinite(defaults.textScale) ? defaults.textScale : 120,
+        themeName: defaults.themeName || "stone",
+        customThemeColor: defaults.customThemeColor || "#ded6c3",
         panelPosition: null,
         panelSize: null,
         launcherPosition: null,

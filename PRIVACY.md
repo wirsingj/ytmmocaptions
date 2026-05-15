@@ -20,6 +20,7 @@ The extension stores only local preference settings in extension storage:
 - preference schema version for safe future migrations;
 - panel background blend/transparency;
 - text size;
+- panel theme preset and custom theme color;
 - panel position and size;
 - launcher/pill position;
 - panel open/closed state.

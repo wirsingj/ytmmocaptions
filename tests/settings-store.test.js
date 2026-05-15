@@ -36,10 +36,14 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelOpacity: 1000,
       textScale: 25,
       keyboardStepSeconds: 999,
+      themeName: "forest",
+      customThemeColor: "#AABBCC",
       autoScroll: false
     });
     assert.equal(result.panelOpacity, 100);
     assert.equal(result.textScale, 100);
+    assert.equal(result.themeName, "forest");
+    assert.equal(result.customThemeColor, "#aabbcc");
     assert.equal(Object.prototype.hasOwnProperty.call(result, "keyboardStepSeconds"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(result, "autoScroll"), false);
   });
@@ -61,7 +65,26 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const result = normalize({});
     assert.equal(result.panelClosed, true);
     assert.equal(result.textScale, 120);
+    assert.equal(result.themeName, "stone");
+    assert.equal(result.customThemeColor, "#ded6c3");
     assert.equal(result.schemaVersion, 1);
+  });
+
+  await runCase("settings normalization sanitizes theme preferences", () => {
+    const { normalize } = makeStore();
+    const invalid = normalize({
+      themeName: "neon-chaos",
+      customThemeColor: "javascript:alert(1)"
+    });
+    assert.equal(invalid.themeName, "stone");
+    assert.equal(invalid.customThemeColor, "#ded6c3");
+
+    const custom = normalize({
+      themeName: "custom",
+      customThemeColor: "#77CCAA"
+    });
+    assert.equal(custom.themeName, "custom");
+    assert.equal(custom.customThemeColor, "#77ccaa");
   });
 
   await runCase("settings save writes normalized values", async () => {
@@ -69,6 +92,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const persisted = await store.save({
       panelOpacity: 12,
       textScale: 999,
+      themeName: "ocean",
+      customThemeColor: "#336699",
       plan: "legacy-ignored",
       featureOverrides: { oldGate: true },
       globalKeyboardEnabled: true,
@@ -78,6 +103,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     });
     assert.equal(persisted.panelOpacity, 35);
     assert.equal(persisted.textScale, 200);
+    assert.equal(persisted.themeName, "ocean");
+    assert.equal(persisted.customThemeColor, "#336699");
     assert.equal(persisted.schemaVersion, 1);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "plan"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "featureOverrides"), false);
@@ -93,6 +120,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelClosed: false,
       panelOpacity: 77,
       textScale: 145,
+      themeName: "ember",
+      customThemeColor: "#aa5500",
       panelPosition: { left: 45, top: 80 },
       panelSize: { width: 640, height: 420 },
       launcherPosition: { left: 15, top: 300 },
@@ -108,6 +137,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(loaded.panelClosed, false);
     assert.equal(loaded.panelOpacity, 77);
     assert.equal(loaded.textScale, 145);
+    assert.equal(loaded.themeName, "ember");
+    assert.equal(loaded.customThemeColor, "#aa5500");
     assert.deepEqual(loaded.panelPosition, { left: 45, top: 80 });
     assert.deepEqual(loaded.panelSize, { width: 640, height: 420 });
     assert.deepEqual(loaded.launcherPosition, { left: 15, top: 300 });
