@@ -113,8 +113,13 @@ exports.run = async function runComplianceTests(ctx) {
     const packageJson = readJson("package.json");
     assert.equal(packageJson.scripts.build, "node scripts/build.mjs");
     assert.equal(packageJson.scripts["diagnostic:e2e"], "node tests/e2e-extension-debug.js");
+    assert.ok(packageJson.scripts["release:sanity"].includes("verify-release-artifacts.ps1"));
+    assert.ok(packageJson.scripts["verify:release-version"].includes("verify-release-version.mjs"));
+    assert.ok(packageJson.scripts["package:source"].includes("package-source.ps1"));
     assert.ok(!packageJson.scripts["release:check"].includes("version:bump"));
     assert.ok(!packageJson.scripts["release:check"].includes("bump-version"));
+    assert.ok(!packageJson.scripts["release:sanity"].includes("version:bump"));
+    assert.ok(!packageJson.scripts["release:sanity"].includes("bump-version"));
   });
 
   await runCase("test runner auto-discovers every test file", () => {
@@ -166,11 +171,45 @@ exports.run = async function runComplianceTests(ctx) {
   });
 
   await runCase("package scripts reject Windows-style archive paths", () => {
-    for (const fileName of ["package-chrome.ps1", "package-firefox.ps1"]) {
+    for (const fileName of ["package-chrome.ps1", "package-firefox.ps1", "package-source.ps1"]) {
       const source = fs.readFileSync(path.join(ROOT_DIR, "scripts", fileName), "utf8");
       assert.ok(source.includes("hasBackslashEntries"), fileName);
       assert.ok(source.includes("Windows-style backslash archive paths"), fileName);
     }
+  });
+
+  await runCase("release automation is tag-gated and manually approved before store publishing", () => {
+    const ci = fs.readFileSync(path.join(ROOT_DIR, ".github", "workflows", "ci.yml"), "utf8");
+    const release = fs.readFileSync(path.join(ROOT_DIR, ".github", "workflows", "release.yml"), "utf8");
+    const releaseDocs = fs.readFileSync(path.join(ROOT_DIR, "RELEASE.md"), "utf8");
+    assert.ok(ci.includes("pull_request:"));
+    assert.ok(ci.includes("npm run release:sanity"));
+    assert.ok(!ci.includes("store-publish"));
+    assert.ok(!ci.includes("CHROME_CLIENT_SECRET"));
+    assert.ok(release.includes('tags:'));
+    assert.ok(release.includes('- "v*"'));
+    assert.ok(release.includes("environment: store-publish"));
+    assert.ok(release.includes("scripts/verify-release-version.mjs"));
+    assert.ok(release.includes("STORE_PUBLISH_MODE"));
+    assert.ok(release.includes("CHROME_EXTENSION_ID"));
+    assert.ok(release.includes("AMO_JWT_ISSUER"));
+    assert.ok(releaseDocs.includes("STORE_PUBLISH_MODE"));
+    assert.ok(releaseDocs.includes("Recovery If One Store Succeeds And The Other Fails"));
+  });
+
+  await runCase("store publish scripts avoid secret logging and default to safe upload mode", () => {
+    const chrome = fs.readFileSync(path.join(ROOT_DIR, "scripts", "publish-chrome.mjs"), "utf8");
+    const firefox = fs.readFileSync(path.join(ROOT_DIR, "scripts", "publish-firefox.ps1"), "utf8");
+    assert.ok(chrome.includes('process.env.STORE_PUBLISH_MODE || "upload"'));
+    assert.ok(chrome.includes("https://oauth2.googleapis.com/token"));
+    assert.ok(chrome.includes("chromewebstore/v1.1/items"));
+    assert.ok(!chrome.includes("console.log(accessToken"));
+    assert.ok(!chrome.includes("CHROME_CLIENT_SECRET\";"));
+    assert.ok(firefox.includes('if ($Mode -eq "upload")'));
+    assert.ok(firefox.includes("web-ext lint"));
+    assert.ok(firefox.includes("web-ext"));
+    assert.ok(firefox.includes("sign"));
+    assert.ok(firefox.includes("AMO_JWT_SECRET"));
   });
 
   await runCase("runtime does not use page localStorage for settings or debug state", () => {

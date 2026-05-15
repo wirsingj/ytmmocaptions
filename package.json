@@ -11,8 +11,13 @@
     "lint:firefox": "npx --yes web-ext lint --source-dir build/firefox",
     "package:chrome": "powershell -ExecutionPolicy Bypass -File scripts/package-chrome.ps1",
     "package:firefox": "powershell -ExecutionPolicy Bypass -File scripts/package-firefox.ps1",
+    "package:source": "powershell -ExecutionPolicy Bypass -File scripts/package-source.ps1",
     "build:firefox:xpi": "npm run build && npm run package:firefox",
     "build:chrome:zip": "npm run build && npm run package:chrome",
-    "release:check": "npm run build && npm run test && npm run package:firefox && npm run package:chrome && npm run lint:firefox"
+    "verify:release-version": "node scripts/verify-release-version.mjs",
+    "release:check": "npm run build && npm run test && npm run package:firefox && npm run package:chrome && npm run lint:firefox",
+    "release:sanity": "npm run release:check && npm run package:source && powershell -ExecutionPolicy Bypass -File scripts/verify-release-artifacts.ps1",
+    "publish:chrome": "node scripts/publish-chrome.mjs",
+    "publish:firefox": "powershell -ExecutionPolicy Bypass -File scripts/publish-firefox.ps1"
   }
 }

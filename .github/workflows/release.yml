@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build, validate, package, and attach release artifacts
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify tag matches package and manifests
+        run: node scripts/verify-release-version.mjs "${{ github.ref_name }}"
+
+      - name: Run release sanity checks
+        run: npm run release:sanity
+
+      - name: Collect release artifacts
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          New-Item -ItemType Directory -Path release-artifacts -Force | Out-Null
+          Copy-Item "build/chrome/ytmmocaptions-chrome-v$version.zip" "release-artifacts/"
+          Copy-Item "build/firefox/ytmmocaptions-firefox-v$version.xpi" "release-artifacts/"
+          Copy-Item "downloads/ytmmocaptions-source-v$version.zip" "release-artifacts/"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ytmmocaptions-${{ github.ref_name }}
+          path: release-artifacts/*
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $artifactPaths = Get-ChildItem release-artifacts -File | ForEach-Object { $_.FullName }
+          if (gh release view $tag 2>$null) {
+            gh release upload $tag @artifactPaths --clobber
+          } else {
+            gh release create $tag @artifactPaths --title "YTMMOCC $tag" --notes "Automated release artifacts for $tag."
+          }
+
+  store-publish:
+    name: Upload or publish to browser stores
+    needs: build-release
+    runs-on: windows-latest
+    environment: store-publish
+    permissions:
+      contents: read
+    env:
+      STORE_PUBLISH_MODE: ${{ vars.STORE_PUBLISH_MODE || 'upload' }}
+      CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+      CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+      CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+      CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+      FIREFOX_EXTENSION_ID: ${{ secrets.FIREFOX_EXTENSION_ID }}
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify tag matches package and manifests
+        run: node scripts/verify-release-version.mjs "${{ github.ref_name }}"
+
+      - name: Build store packages
+        run: npm run release:sanity
+
+      - name: Upload or publish Chrome Web Store package
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          node scripts/publish-chrome.mjs --mode="$env:STORE_PUBLISH_MODE" --zip="build/chrome/ytmmocaptions-chrome-v$version.zip"
+
+      - name: Upload or publish Firefox AMO package
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/publish-firefox.ps1 -Mode "$env:STORE_PUBLISH_MODE"

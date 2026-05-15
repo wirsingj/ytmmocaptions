@@ -120,6 +120,14 @@ To run full pre-submission scan + package for both stores:
 npm run release:check
 ```
 
+To run the local release sanity gate, including package-content checks:
+
+```powershell
+npm run release:sanity
+```
+
+See `RELEASE.md` for tag-based GitHub Release and store publishing automation.
+
 ## Optional Diagnostics
 
 The one-shot browser diagnostic is intentionally not part of `release:check`.
