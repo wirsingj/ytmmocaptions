@@ -942,10 +942,7 @@
         return;
       }
 
-      if (Date.now() < Number(this.liveCaptureSuppressedUntil || 0)) {
-        return;
-      }
-
+      const overlaySuppressed = Date.now() < Number(this.liveCaptureSuppressedUntil || 0);
       const now = Number(this.video.currentTime || 0);
       if (!Number.isFinite(now)) {
         return;
@@ -984,34 +981,38 @@
           anchorTime = now;
         }
         this.updateLiveOverlayAnchorOffset(now, activeSnapshot.startTime);
-        const overlayText = this.readVisibleCaptionText();
-        if (overlayText) {
-          text = this.mergeLiveCaptionText(text, overlayText);
+        if (!overlaySuppressed) {
+          const overlayText = this.readVisibleCaptionText();
+          if (overlayText) {
+            text = this.mergeLiveCaptionText(text, overlayText);
+          }
         }
       } else {
-        usedOverlayOnlyPath = true;
-        text = this.readVisibleCaptionText();
-        const canonical = this.toCaptionCanonical(text);
-        const previousUtterance = this.liveOverlayUtterance;
-        let targetBucketIndex = currentBucketIndex;
+        if (!overlaySuppressed) {
+          usedOverlayOnlyPath = true;
+          text = this.readVisibleCaptionText();
+          const canonical = this.toCaptionCanonical(text);
+          const previousUtterance = this.liveOverlayUtterance;
+          let targetBucketIndex = currentBucketIndex;
 
-        if (
-          previousUtterance &&
-          Number.isFinite(previousUtterance.bucketIndex) &&
-          previousUtterance.bucketIndex >= 0 &&
-          Number.isFinite(previousUtterance.lastSeenAt) &&
-          now - previousUtterance.lastSeenAt <= Math.max(2.2, this.getLiveWindowSeconds() * 0.75) &&
-          this.shouldContinueOverlayUtterance(previousUtterance.canonical, canonical)
-        ) {
-          targetBucketIndex = previousUtterance.bucketIndex;
+          if (
+            previousUtterance &&
+            Number.isFinite(previousUtterance.bucketIndex) &&
+            previousUtterance.bucketIndex >= 0 &&
+            Number.isFinite(previousUtterance.lastSeenAt) &&
+            now - previousUtterance.lastSeenAt <= Math.max(2.2, this.getLiveWindowSeconds() * 0.75) &&
+            this.shouldContinueOverlayUtterance(previousUtterance.canonical, canonical)
+          ) {
+            targetBucketIndex = previousUtterance.bucketIndex;
+          }
+
+          anchorTime = targetBucketIndex * this.getLiveWindowSeconds() + 0.001;
+          this.liveOverlayUtterance = {
+            bucketIndex: targetBucketIndex,
+            canonical: canonical,
+            lastSeenAt: now
+          };
         }
-
-        anchorTime = targetBucketIndex * this.getLiveWindowSeconds() + 0.001;
-        this.liveOverlayUtterance = {
-          bucketIndex: targetBucketIndex,
-          canonical: canonical,
-          lastSeenAt: now
-        };
       }
       if (!text) {
         if (this.liveOverlayUtterance && Number.isFinite(this.liveOverlayUtterance.lastSeenAt)) {

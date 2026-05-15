@@ -1,6 +1,6 @@
 {
   "name": "dialogue-captions",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "description": "Cross-browser YouTube subtitle dialogue panel extension.",
   "scripts": {

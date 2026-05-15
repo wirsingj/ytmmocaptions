@@ -89,6 +89,11 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("liveCaptureSuppressedUntil"));
     assert.ok(source.includes("suppressLiveCaptureForSeek(this.timelineAction.targetTime)"));
     assert.ok(source.includes("Date.now() < Number(this.liveCaptureSuppressedUntil || 0)"));
+    const captureStart = source.indexOf("    captureLiveCaptionLine()");
+    const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
+    assert.ok(captureBody.includes("const overlaySuppressed = Date.now() < Number(this.liveCaptureSuppressedUntil || 0);"));
+    assert.ok(!captureBody.includes("if (Date.now() < Number(this.liveCaptureSuppressedUntil || 0)) {\n        return;\n      }"));
+    assert.ok(captureBody.includes("if (!overlaySuppressed)"));
   });
 
   await runCase("closed pill mode pauses caption polling without wiping bubble state", () => {
