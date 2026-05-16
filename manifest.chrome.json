@@ -4,7 +4,7 @@
   "version": "1.1.0",
   "description": "MMO-style dialogue panel for YouTube subtitles with chunk navigation.",
   "host_permissions": [
-    "https://www.youtube.com/watch*"
+    "https://www.youtube.com/*"
   ],
   "permissions": [
     "storage"

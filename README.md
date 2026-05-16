@@ -175,7 +175,7 @@ For AMO signing/upload, use:
 ## Store Compliance Notes
 
 - Host permissions are kept to YouTube only. Browser host-permission paths may be ignored by Chrome/Firefox, so runtime activation is also route-gated to `/watch?v=...`.
-- Content scripts are loaded on `https://www.youtube.com/*` only for YouTube SPA route detection; page-bridge caption hooks are injected only after the user opens the panel/caption work starts on a valid watch page.
+- Content scripts are loaded on `https://www.youtube.com/*` so YouTube SPA navigation can be detected reliably; runtime activation and page-bridge caption hooks are still gated to valid `/watch?v=...` pages only.
 - Page-bridge work is additionally guarded inside the injected page script so snapshots, caption probes, timedtext captures, and bridge fetches stop after YouTube SPA navigation leaves a valid `/watch?v=...` route.
 - No personal data collection.
 - Only local settings are stored via extension storage.

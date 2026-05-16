@@ -26,6 +26,20 @@ exports.run = async function runComplianceTests(ctx) {
     }
   });
 
+  await runCase("YouTube permissions stay YouTube-only while runtime is watch-page gated", () => {
+    for (const fileName of manifests) {
+      const manifest = readJson(fileName);
+      assert.deepEqual(manifest.host_permissions, ["https://www.youtube.com/*"], fileName);
+      assert.deepEqual(manifest.content_scripts[0].matches, ["https://www.youtube.com/*"], fileName);
+      for (const block of manifest.web_accessible_resources || []) {
+        assert.deepEqual(block.matches, ["https://www.youtube.com/*"], fileName);
+      }
+    }
+    const contentScript = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
+    assert.ok(contentScript.includes("transcript.isWatchPage(url)"));
+    assert.ok(contentScript.includes("transcript.getVideoId(url)"));
+  });
+
   await runCase("content script order loads bubble-state before content-script", () => {
     for (const fileName of manifests) {
       const manifest = readJson(fileName);
@@ -176,6 +190,8 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(source.includes("hasBackslashEntries"), fileName);
       assert.ok(source.includes("Windows-style backslash archive paths"), fileName);
     }
+    const sourcePackage = fs.readFileSync(path.join(ROOT_DIR, "scripts", "package-source.ps1"), "utf8");
+    assert.ok(sourcePackage.includes('StartsWith("artifacts/"'), "source package must exclude local test artifacts");
   });
 
   await runCase("release automation is tag-gated and manually approved before store publishing", () => {

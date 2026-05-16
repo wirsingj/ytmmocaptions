@@ -33,9 +33,22 @@ if (Test-Path -LiteralPath $tempRoot) {
 }
 New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
-$dirs = @("assets", "scripts", "src", "store-assets", "styles", "tests")
+$dirs = @("assets", "scripts", "src", "store-assets", "styles")
 foreach ($dir in $dirs) {
   Copy-Item -LiteralPath (Join-Path $projectRoot $dir) -Destination (Join-Path $tempRoot $dir) -Recurse
+}
+
+$testsSource = Join-Path $projectRoot "tests"
+$testsDestination = Join-Path $tempRoot "tests"
+New-Item -ItemType Directory -Path $testsDestination -Force | Out-Null
+Get-ChildItem -LiteralPath $testsSource -Recurse -File | Where-Object {
+  $relativePath = $_.FullName.Substring($testsSource.Length + 1).Replace("\", "/")
+  -not $relativePath.StartsWith("artifacts/", [System.StringComparison]::OrdinalIgnoreCase)
+} | ForEach-Object {
+  $relativePath = $_.FullName.Substring($testsSource.Length + 1)
+  $destinationPath = Join-Path $testsDestination $relativePath
+  New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
+  Copy-Item -LiteralPath $_.FullName -Destination $destinationPath
 }
 
 $files = @(
