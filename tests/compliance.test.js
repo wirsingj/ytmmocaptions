@@ -210,7 +210,14 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(release.includes("CHROME_PUBLISHER_ID"));
     assert.ok(release.includes("CHROME_EXTENSION_ID"));
     assert.ok(release.includes("AMO_JWT_ISSUER"));
+    assert.ok(release.includes("Check store credentials"));
+    assert.ok(release.includes("chrome_ready"));
+    assert.ok(release.includes("firefox_ready"));
+    assert.ok(release.includes("Skipping Chrome Web Store upload"));
+    assert.ok(release.includes("Skipping Firefox AMO upload"));
     assert.ok(releaseDocs.includes("STORE_PUBLISH_MODE"));
+    assert.ok(releaseDocs.includes("cocgdaogbkknnhdpmojlmodalmblndgf"));
+    assert.ok(releaseDocs.includes("https://www.googleapis.com/auth/chromewebstore"));
     assert.ok(releaseDocs.includes("Recovery If One Store Succeeds And The Other Fails"));
   });
 

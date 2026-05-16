@@ -7,6 +7,11 @@ Normal pushes and pull requests run test/package sanity checks only. Store
 publishing runs only from tags that match `v*` and is gated by the protected
 GitHub Environment named `store-publish`.
 
+If store credentials are not configured yet, the release workflow still builds,
+validates, packages, and attaches GitHub Release artifacts. The store job reports
+which Chrome or Firefox secrets are missing and skips that store instead of
+failing before the other store can be tested.
+
 ## Version Bump
 
 Version changes are explicit. Builds must not mutate version files.
@@ -99,6 +104,17 @@ CHROME_CLIENT_SECRET
 CHROME_REFRESH_TOKEN
 ```
 
+Where to get them:
+
+- `CHROME_EXTENSION_ID`: Chrome Web Store Developer Dashboard item ID. For the
+  current Dialogue Captions listing this is `cocgdaogbkknnhdpmojlmodalmblndgf`.
+- `CHROME_PUBLISHER_ID`: Chrome Web Store Developer Dashboard publisher/account
+  identifier.
+- `CHROME_CLIENT_ID` and `CHROME_CLIENT_SECRET`: Google Cloud Console OAuth
+  desktop client for a project with the Chrome Web Store API enabled.
+- `CHROME_REFRESH_TOKEN`: OAuth 2.0 Playground token created with your OAuth
+  client and the `https://www.googleapis.com/auth/chromewebstore` scope.
+
 Firefox AMO:
 
 ```text
@@ -114,6 +130,12 @@ FIREFOX_EXTENSION_ID
 
 `FIREFOX_EXTENSION_ID` is only needed if AMO/web-ext cannot infer the extension
 ID from `manifest.firefox.json`.
+
+Where to get them:
+
+- `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`: AMO Developer Hub API credentials.
+- `FIREFOX_EXTENSION_ID`: the stable ID in `manifest.firefox.json`, currently
+  `dialogue-captions@wirsingj.github.io`.
 
 ## Local Release Sanity Check
 

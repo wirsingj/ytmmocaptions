@@ -88,12 +88,73 @@ jobs:
       - name: Build store packages
         run: npm run release:sanity
 
+      - name: Check store credentials
+        id: store-credentials
+        shell: pwsh
+        run: |
+          $chromeNames = @(
+            "CHROME_PUBLISHER_ID",
+            "CHROME_EXTENSION_ID",
+            "CHROME_CLIENT_ID",
+            "CHROME_CLIENT_SECRET",
+            "CHROME_REFRESH_TOKEN"
+          )
+          $firefoxNames = @(
+            "AMO_JWT_ISSUER",
+            "AMO_JWT_SECRET"
+          )
+
+          $missingChrome = @()
+          foreach ($name in $chromeNames) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              $missingChrome += $name
+            }
+          }
+
+          $missingFirefox = @()
+          foreach ($name in $firefoxNames) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              $missingFirefox += $name
+            }
+          }
+
+          $chromeReady = $missingChrome.Count -eq 0
+          $firefoxReady = $missingFirefox.Count -eq 0
+          "chrome_ready=$($chromeReady.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "firefox_ready=$($firefoxReady.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          if (-not $chromeReady) {
+            Write-Warning "Skipping Chrome Web Store upload; missing secrets: $($missingChrome -join ', ')"
+          }
+          if (-not $firefoxReady) {
+            Write-Warning "Skipping Firefox AMO upload; missing secrets: $($missingFirefox -join ', ')"
+          }
+          if ($chromeReady) {
+            Write-Output "Chrome Web Store credentials are present."
+          }
+          if ($firefoxReady) {
+            Write-Output "Firefox AMO credentials are present."
+          }
+
       - name: Upload or publish Chrome Web Store package
+        if: steps.store-credentials.outputs.chrome_ready == 'true'
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           node scripts/publish-chrome.mjs --mode="$env:STORE_PUBLISH_MODE" --zip="build/chrome/ytmmocaptions-chrome-v$version.zip"
 
       - name: Upload or publish Firefox AMO package
+        if: steps.store-credentials.outputs.firefox_ready == 'true'
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File scripts/publish-firefox.ps1 -Mode "$env:STORE_PUBLISH_MODE"
+
+      - name: Store publish summary
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Store publish"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Mode: ``$env:STORE_PUBLISH_MODE``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Chrome ready: ``${{ steps.store-credentials.outputs.chrome_ready }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Firefox ready: ``${{ steps.store-credentials.outputs.firefox_ready }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "If a store is not ready, add the missing GitHub Actions secrets and rerun this job after approving the ``store-publish`` environment."
