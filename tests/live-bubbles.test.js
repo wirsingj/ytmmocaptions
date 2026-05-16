@@ -8,8 +8,10 @@ exports.run = async function runLiveBubbleTests(ctx) {
   const source = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
 
   await runCase("live bubble thresholds prevent paragraph-sized unlocked bubbles", () => {
-    assert.ok(source.includes("bucketCount >= 3 || previousLength >= 340 || combined.length >= 430"));
-    assert.ok(source.includes("bucketCount >= 2 || previousLength >= 220 || combined.length >= 320"));
+    assert.ok(source.includes("CONVERSATIONAL_CHUNKING.live"));
+    assert.ok(source.includes("bucketCount >= limits.maxBucketsWithoutSentence"));
+    assert.ok(source.includes("previousLength >= limits.comfortableChars"));
+    assert.ok(source.includes("combined.length >= limits.hardChars"));
   });
 
   await runCase("natural sentence boundaries can start new bubbles earlier", () => {
@@ -27,8 +29,18 @@ exports.run = async function runLiveBubbleTests(ctx) {
       source.indexOf("getLiveChunkBucketIndex(chunk)")
     );
     assert.ok(method.includes("captionText.looksLyricLike"));
-    assert.ok(method.includes("previousLength >= 180"));
-    assert.ok(method.includes("combined.length >= 260"));
+    assert.ok(method.includes("previousLength >= 160"));
+    assert.ok(method.includes("combined.length >= limits.lyricChars"));
+  });
+
+  await runCase("tiny complete live thoughts merge instead of fragmenting into subtitle bubbles", () => {
+    const method = source.slice(
+      source.indexOf("shouldStartNewLiveBubble(previousChunk, nextChunk)"),
+      source.indexOf("getLiveChunkBucketIndex(chunk)")
+    );
+    assert.ok(method.includes("shouldMergeTinyCompleteThought"));
+    assert.ok(method.includes("previousLength < limits.tinyFragmentChars"));
+    assert.ok(method.includes("return false;"));
   });
 
   await runCase("locked display bubbles use bounded natural splits and preserve seek starts", () => {
@@ -37,7 +49,7 @@ exports.run = async function runLiveBubbleTests(ctx) {
       start,
       source.indexOf("    rebuildChunks()", start)
     );
-    assert.ok(method.includes("const maxLiveBubbleChars = 240"));
+    assert.ok(method.includes("const maxLiveBubbleChars = 300"));
     assert.ok(method.includes("splitTextByNaturalBreaks(text, maxLiveBubbleChars, false)"));
     assert.ok(method.includes("seekStart: alignedStart"));
     assert.ok(method.includes("locked: true"));

@@ -1726,10 +1726,21 @@
       if (this.isCaptionStageDirection(previousChunk.text) || this.isCaptionStageDirection(nextChunk.text)) {
         return true;
       }
+      const limits = chunker.CONVERSATIONAL_CHUNKING && chunker.CONVERSATIONAL_CHUNKING.live
+        ? chunker.CONVERSATIONAL_CHUNKING.live
+        : {
+            tinyFragmentChars: 90,
+            comfortableChars: 300,
+            hardChars: 430,
+            lyricChars: 240,
+            hardPauseSeconds: 2.3,
+            maxBucketsWithoutSentence: 3,
+            maxBucketsWithSentence: 3
+          };
       const previousEnd = Number(previousChunk.end || 0);
       const nextStart = Number(nextChunk.start || 0);
       const gap = nextStart - previousEnd;
-      const hasRealPause = Number.isFinite(gap) && gap >= 2.4;
+      const hasRealPause = Number.isFinite(gap) && gap >= limits.hardPauseSeconds;
       if (hasRealPause) {
         return true;
       }
@@ -1742,19 +1753,34 @@
         captionText.looksLyricLike(nextChunk.text) ||
         captionText.looksLyricLike(combined);
 
-      if (lyricLike && (bucketCount >= 2 || previousLength >= 180 || combined.length >= 260)) {
+      if (lyricLike && (bucketCount >= 2 || previousLength >= 160 || combined.length >= limits.lyricChars)) {
         return true;
       }
 
       if (!this.textEndsNaturally(previousChunk.text)) {
-        return bucketCount >= 3 || previousLength >= 340 || combined.length >= 430;
+        return (
+          bucketCount >= limits.maxBucketsWithoutSentence ||
+          previousLength >= limits.comfortableChars ||
+          combined.length >= limits.hardChars
+        );
       }
 
-      if (bucketCount >= 2 || previousLength >= 220 || combined.length >= 320) {
+      const shouldMergeTinyCompleteThought =
+        previousLength < limits.tinyFragmentChars &&
+        combined.length <= limits.comfortableChars;
+      if (shouldMergeTinyCompleteThought) {
+        return false;
+      }
+
+      if (
+        bucketCount >= limits.maxBucketsWithSentence ||
+        previousLength >= limits.comfortableChars ||
+        combined.length >= limits.hardChars
+      ) {
         return true;
       }
 
-      return previousLength >= 150 || combined.length >= 260;
+      return false;
     }
 
     getLiveChunkBucketIndex(chunk) {
@@ -2010,7 +2036,7 @@
 
     createLockedDisplayBubbles(bubble) {
       const records = [];
-      const maxLiveBubbleChars = 240;
+      const maxLiveBubbleChars = 300;
       const sourceId = bubble && bubble.uid ? bubble.uid : "";
       const text = this.cleanCaptionCandidateText(bubble && bubble.text ? bubble.text : "");
       if (!bubble || !text) {
@@ -2117,8 +2143,8 @@
     polishFixedWindowChunks(chunks) {
       const source = Array.isArray(chunks) ? chunks : [];
       const merged = [];
-      const minComfortableChars = 72;
-      const maxComfortableChars = 260;
+      const minComfortableChars = 96;
+      const maxComfortableChars = 340;
 
       for (let index = 0; index < source.length; index += 1) {
         const chunk = source[index];

@@ -104,9 +104,18 @@ async function run() {
       }
     });
 
+    let launcherFound = false;
+    try {
+      await page.waitForSelector("#dc-launcher", { timeout: 30000 });
+      launcherFound = true;
+      await page.click("#dc-launcher");
+    } catch {
+      launcherFound = false;
+    }
+
     let panelFound = true;
     try {
-      await page.waitForSelector("#dc-panel", { timeout: 30000 });
+      await page.waitForSelector("#dc-panel", { timeout: launcherFound ? 12000 : 30000 });
     } catch {
       panelFound = false;
     }
@@ -125,14 +134,17 @@ async function run() {
       }
     }
 
-    const state = await page.evaluate((wasPanelFound) => {
+    const state = await page.evaluate((flags) => {
       const panel = document.querySelector("#dc-panel");
+      const launcher = document.querySelector("#dc-launcher");
       const status = panel ? panel.querySelector(".dc-status") : null;
       const chunks = Array.from(document.querySelectorAll("#dc-panel .dc-chunk")).slice(0, 8);
       return {
         href: location.href,
-        panelFoundByWait: Boolean(wasPanelFound),
+        launcherFoundByWait: Boolean(flags.launcherFound),
+        panelFoundByWait: Boolean(flags.panelFound),
         hasPanel: Boolean(panel),
+        hasLauncher: Boolean(launcher),
         statusText: status ? status.textContent || "" : "",
         chunkCount: document.querySelectorAll("#dc-panel .dc-chunk").length,
         sampleChunks: chunks.map((node) => {
@@ -145,7 +157,7 @@ async function run() {
           };
         })
       };
-    }, panelFound);
+    }, { launcherFound, panelFound });
 
     const report = {
       options: options,

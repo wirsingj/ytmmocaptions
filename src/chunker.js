@@ -6,10 +6,97 @@
     medium: 220,
     long: 360
   });
-  const PAUSE_THRESHOLD_SECONDS = 1.2;
+
+  const CONVERSATIONAL_CHUNKING = Object.freeze({
+    short: Object.freeze({
+      targetChars: 150,
+      softMaxChars: 210,
+      hardMaxChars: 300,
+      preferredDuration: 9,
+      hardMaxDuration: 16,
+      softPauseSeconds: 1.25,
+      hardPauseSeconds: 2.4,
+      tinyFragmentChars: 54
+    }),
+    medium: Object.freeze({
+      targetChars: 240,
+      softMaxChars: 330,
+      hardMaxChars: 460,
+      preferredDuration: 13,
+      hardMaxDuration: 24,
+      softPauseSeconds: 1.35,
+      hardPauseSeconds: 2.7,
+      tinyFragmentChars: 68
+    }),
+    long: Object.freeze({
+      targetChars: 340,
+      softMaxChars: 470,
+      hardMaxChars: 620,
+      preferredDuration: 18,
+      hardMaxDuration: 32,
+      softPauseSeconds: 1.5,
+      hardPauseSeconds: 3.0,
+      tinyFragmentChars: 84
+    }),
+    live: Object.freeze({
+      tinyFragmentChars: 90,
+      comfortableChars: 300,
+      hardChars: 430,
+      lyricChars: 240,
+      hardPauseSeconds: 2.3,
+      maxBucketsWithoutSentence: 3,
+      maxBucketsWithSentence: 3
+    })
+  });
 
   function cueEndsSentence(text) {
-    return /[.!?]["')\]]?$/.test(text.trim());
+    return /[.!?]["')\]]?$/.test(String(text || "").trim());
+  }
+
+  function getProfile(chunkSize) {
+    return CONVERSATIONAL_CHUNKING[chunkSize] || CONVERSATIONAL_CHUNKING.medium;
+  }
+
+  function normalizeCue(cue) {
+    const start = Number(cue && cue.start);
+    const end = Number(cue && cue.end);
+    const text = String(cue && cue.text ? cue.text : "").replace(/\s+/g, " ").trim();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || !text) {
+      return null;
+    }
+    const normalizedStart = Math.max(0, start);
+    const normalizedEnd = Math.max(normalizedStart, end);
+    return {
+      ...cue,
+      start: normalizedStart,
+      end: normalizedEnd,
+      text
+    };
+  }
+
+  function getMetrics(text, start, end) {
+    const normalized = String(text || "").trim();
+    const words = normalized ? normalized.split(/\s+/).filter(Boolean).length : 0;
+    return {
+      chars: normalized.length,
+      duration: Math.max(0, Number(end || 0) - Number(start || 0)),
+      words,
+      endsSentence: cueEndsSentence(normalized)
+    };
+  }
+
+  function shouldRespectPause(bufferText, chunkStart, chunkEnd, pause, profile) {
+    const metrics = getMetrics(bufferText, chunkStart, chunkEnd);
+    if (pause >= profile.hardPauseSeconds) {
+      return true;
+    }
+    if (pause < profile.softPauseSeconds) {
+      return false;
+    }
+    if (metrics.chars <= profile.tinyFragmentChars && metrics.duration < profile.preferredDuration) {
+      return false;
+    }
+    return metrics.endsSentence || metrics.chars >= profile.targetChars || metrics.duration >= profile.preferredDuration;
   }
 
   function chunkCues(cues, chunkSize) {
@@ -17,51 +104,97 @@
       return [];
     }
 
-    const maxChars = CHUNK_LIMITS[chunkSize] || CHUNK_LIMITS.medium;
+    const profile = getProfile(chunkSize);
+    const source = cues
+      .map(normalizeCue)
+      .filter(Boolean)
+      .sort((left, right) => left.start - right.start);
+    if (!source.length) {
+      return [];
+    }
+
     const chunks = [];
     let bufferText = "";
-    let chunkStart = cues[0].start;
-    let chunkEnd = cues[0].end;
+    let chunkStart = source[0].start;
+    let chunkEnd = source[0].end;
+    let cueCount = 0;
 
-    function flush() {
+    function flush(reason) {
       const normalized = bufferText.trim();
       if (!normalized) {
         return;
       }
+      const metrics = getMetrics(normalized, chunkStart, chunkEnd);
       chunks.push({
         id: chunks.length,
         start: chunkStart,
         end: chunkEnd,
-        text: normalized
+        text: normalized,
+        reason: reason || "natural",
+        metrics: {
+          chars: metrics.chars,
+          duration: metrics.duration,
+          cueCount
+        }
       });
       bufferText = "";
+      cueCount = 0;
     }
 
-    for (let index = 0; index < cues.length; index += 1) {
-      const cue = cues[index];
-      const previousCue = cues[index - 1];
+    function appendCue(cue) {
+      bufferText = bufferText ? bufferText + " " + cue.text : cue.text;
+      chunkEnd = cue.end;
+      cueCount += 1;
+    }
+
+    for (let index = 0; index < source.length; index += 1) {
+      const cue = source[index];
+      const previousCue = source[index - 1];
       const pause = previousCue ? cue.start - previousCue.end : 0;
 
       if (!bufferText) {
         chunkStart = cue.start;
       }
 
-      const reachedPauseBoundary = bufferText.length > 0 && pause >= PAUSE_THRESHOLD_SECONDS;
-
-      if (reachedPauseBoundary) {
-        flush();
+      if (bufferText.length > 0 && shouldRespectPause(bufferText, chunkStart, chunkEnd, pause, profile)) {
+        flush(pause >= profile.hardPauseSeconds ? "hard-pause" : "soft-pause");
         chunkStart = cue.start;
       }
 
       const candidate = bufferText ? bufferText + " " + cue.text : cue.text;
-      const reachedHardLimit = candidate.length >= maxChars;
-      const reachedSentenceBoundary = cueEndsSentence(cue.text) && candidate.length >= Math.round(maxChars * 0.55);
-      bufferText = candidate;
-      chunkEnd = cue.end;
+      if (bufferText && candidate.length >= profile.hardMaxChars) {
+        flush("pre-hard-max-chars");
+        chunkStart = cue.start;
+      }
 
-      const isLastCue = index === cues.length - 1;
-      if (isLastCue || reachedHardLimit || reachedSentenceBoundary) {
-        flush();
+      appendCue(cue);
+
+      const nextCue = source[index + 1];
+      const nextPause = nextCue ? nextCue.start - cue.end : 0;
+      const metrics = getMetrics(bufferText, chunkStart, chunkEnd);
+      const isLastCue = index === source.length - 1;
+
+      if (isLastCue) {
+        flush("end");
+      } else if (metrics.chars >= profile.hardMaxChars) {
+        flush("hard-max-chars");
+      } else if (metrics.duration >= profile.hardMaxDuration && (metrics.endsSentence || metrics.chars >= profile.softMaxChars)) {
+        flush("hard-max-duration");
+      } else if (nextPause >= profile.hardPauseSeconds) {
+        flush("upcoming-hard-pause");
+      } else if (
+        nextPause >= profile.softPauseSeconds &&
+        (metrics.endsSentence || metrics.chars >= profile.targetChars || metrics.duration >= profile.preferredDuration)
+      ) {
+        flush("upcoming-soft-pause");
+      } else if (
+        metrics.endsSentence &&
+        metrics.chars >= profile.targetChars &&
+        metrics.duration >= Math.max(1, profile.preferredDuration * 0.65)
+      ) {
+        flush("sentence-target");
+      } else if (metrics.endsSentence && metrics.chars >= profile.softMaxChars) {
+        flush("sentence-soft-max");
       }
     }
 
@@ -143,6 +276,7 @@
 
   app.chunker = {
     CHUNK_LIMITS,
+    CONVERSATIONAL_CHUNKING,
     chunkCues,
     findActiveChunkIndexAtTime,
     findChunkIndexAtTime,
