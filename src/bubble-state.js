@@ -28,6 +28,7 @@
     const end = Math.max(start + 0.25, asNumber(source.end, start + 0.25));
     const seekStart = Math.max(0, asNumber(source.seekStart, start));
     const locked = Boolean(source.locked);
+    const text = cleanWith(cleanText, source.text);
     return {
       id: "",
       sourceId: source.sourceId ? String(source.sourceId) : "",
@@ -37,10 +38,48 @@
       seekStart: seekStart,
       ts_start: start,
       ts_stop: end,
-      text: cleanWith(cleanText, source.text),
+      text: text,
+      tokens: normalizeBubbleTokens(source.tokens, text, start, end),
       locked: locked,
       immutable: locked
     };
+  }
+
+  function normalizeBubbleTokens(tokens, bubbleText, bubbleStart, bubbleEnd) {
+    const source = Array.isArray(tokens) ? tokens : [];
+    const normalized = [];
+    for (let index = 0; index < source.length; index += 1) {
+      const token = source[index];
+      const text = String(token && token.text ? token.text : "").trim();
+      const start = asNumber(token && token.start, NaN);
+      const end = asNumber(token && token.end, NaN);
+      if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        continue;
+      }
+      normalized.push({
+        text,
+        start: Math.max(bubbleStart, start),
+        end: Math.min(Math.max(start + 0.05, end), bubbleEnd)
+      });
+    }
+    if (normalized.length) {
+      return normalized.sort((left, right) => left.start - right.start);
+    }
+    return estimateBubbleTokens(bubbleText, bubbleStart, bubbleEnd);
+  }
+
+  function estimateBubbleTokens(text, start, end) {
+    const words = getWordRanges(text);
+    if (!words.length) {
+      return [];
+    }
+    const duration = Math.max(0.25, end - start);
+    const each = duration / words.length;
+    return words.map((word, index) => ({
+      text: word.text,
+      start: start + each * index,
+      end: index === words.length - 1 ? end : start + each * (index + 1)
+    }));
   }
 
   function withDisplayIds(records) {
@@ -214,6 +253,11 @@
     }
 
     const opts = options && typeof options === "object" ? options : {};
+    const tokenRange = getTokenReadingGlowRange(source, words, now, opts);
+    if (tokenRange) {
+      return tokenRange;
+    }
+
     const rawDuration = Math.max(0.25, end - start);
     const wordCount = words.length;
     const maxStableWordsPerSecond =
@@ -252,6 +296,75 @@
       lastWord,
       progress
     };
+  }
+
+  function getTokenReadingGlowRange(chunk, words, now, opts) {
+    const tokens = Array.isArray(chunk.tokens) ? chunk.tokens : [];
+    if (!tokens.length || !Array.isArray(words) || !words.length) {
+      return null;
+    }
+    const leadSeconds =
+      Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
+        ? Number(opts.leadSeconds)
+        : 0.02;
+    const targetTime = now + leadSeconds;
+    let activeTokenIndex = -1;
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      const start = asNumber(token && token.start, NaN);
+      const end = asNumber(token && token.end, NaN);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) {
+        continue;
+      }
+      if (targetTime >= start && targetTime <= end + 0.08) {
+        activeTokenIndex = index;
+        break;
+      }
+      if (targetTime > end) {
+        activeTokenIndex = index;
+      }
+    }
+    if (activeTokenIndex < 0) {
+      return null;
+    }
+    const firstWord = getWordIndexForToken(words, tokens[activeTokenIndex], activeTokenIndex);
+    const windowWords =
+      Number.isFinite(opts.windowWords) && opts.windowWords > 0
+        ? Math.max(3, Math.min(6, Math.round(opts.windowWords)))
+        : 4;
+    const lastWord = Math.min(words.length - 1, firstWord + windowWords - 1);
+    return {
+      start: words[firstWord].start,
+      end: words[lastWord].end,
+      firstWord,
+      lastWord,
+      progress: clamp(activeTokenIndex / Math.max(1, tokens.length - 1), 0, 0.999)
+    };
+  }
+
+  function getWordIndexForToken(words, token, fallbackIndex) {
+    const normalizedToken = normalizeWordText(token && token.text);
+    const fallback = Math.max(0, Math.min(words.length - 1, Number.isFinite(fallbackIndex) ? Math.floor(fallbackIndex) : 0));
+    if (!normalizedToken) {
+      return fallback;
+    }
+    const searchStart = Math.max(0, fallback - 4);
+    const searchEnd = Math.min(words.length - 1, fallback + 6);
+    for (let index = searchStart; index <= searchEnd; index += 1) {
+      if (normalizeWordText(words[index] && words[index].text) === normalizedToken) {
+        return index;
+      }
+    }
+    for (let index = 0; index < words.length; index += 1) {
+      if (normalizeWordText(words[index] && words[index].text) === normalizedToken) {
+        return index;
+      }
+    }
+    return fallback;
+  }
+
+  function normalizeWordText(word) {
+    return String(word || "").toLowerCase().replace(/[^\w]/g, "");
   }
 
   function splitTextByRange(text, range) {

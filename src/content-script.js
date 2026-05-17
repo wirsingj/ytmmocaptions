@@ -411,6 +411,18 @@
       return captionText.normalizeToken(token);
     }
 
+    normalizeCaptionTokens(tokens) {
+      const source = Array.isArray(tokens) ? tokens : [];
+      return source
+        .map((token) => ({
+          text: String(token && token.text ? token.text : "").trim(),
+          start: Number(token && token.start),
+          end: Number(token && token.end)
+        }))
+        .filter((token) => token.text && Number.isFinite(token.start) && Number.isFinite(token.end) && token.end > token.start)
+        .sort((left, right) => left.start - right.start);
+    }
+
     trimLiveChunkAgainstPrevious(previousText, chunk) {
       return bubbleState.trimChunkAgainstPrevious(previousText, chunk, {
         normalizeText: (value) => this.normalizeLiveCaptionText(value),
@@ -490,6 +502,8 @@
       }
       const fragments = [];
       let earliestStart = Number.POSITIVE_INFINITY;
+      let latestEnd = 0;
+      let tokens = [];
 
       for (let index = 0; index < this.video.textTracks.length; index += 1) {
         const track = this.video.textTracks[index];
@@ -519,6 +533,8 @@
           if (text) {
             fragments.push(text);
             earliestStart = Math.min(earliestStart, start);
+            latestEnd = Math.max(latestEnd, end);
+            tokens = tokens.concat(this.createCueTokensFromText(text, start, end));
           }
         }
       }
@@ -528,8 +544,26 @@
       }
       return {
         text: merged,
-        startTime: Number.isFinite(earliestStart) ? earliestStart : Number.NaN
+        startTime: Number.isFinite(earliestStart) ? earliestStart : Number.NaN,
+        endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : Number.NaN,
+        tokens: tokens
       };
+    }
+
+    createCueTokensFromText(text, start, end) {
+      const words = String(text || "").split(/\s+/).filter(Boolean);
+      const cueStart = Number(start);
+      const cueEnd = Number(end);
+      if (!words.length || !Number.isFinite(cueStart) || !Number.isFinite(cueEnd) || cueEnd <= cueStart) {
+        return [];
+      }
+      const duration = Math.max(0.25, cueEnd - cueStart);
+      const each = duration / words.length;
+      return words.map((word, index) => ({
+        text: word,
+        start: cueStart + each * index,
+        end: index === words.length - 1 ? cueEnd : cueStart + each * (index + 1)
+      }));
     }
 
     readTextTrackWindowSnapshot(bucketIndex) {
@@ -578,7 +612,9 @@
           }
           collected.push({
             start: start,
-            text: text
+            end: end,
+            text: text,
+            tokens: this.createCueTokensFromText(text, start, end)
           });
         }
       }
@@ -589,8 +625,12 @@
 
       collected.sort((left, right) => left.start - right.start);
       let merged = "";
+      let latestEnd = 0;
+      let tokens = [];
       for (let index = 0; index < collected.length; index += 1) {
         merged = this.mergeLiveCaptionText(merged, collected[index].text);
+        latestEnd = Math.max(latestEnd, Number(collected[index].end || 0));
+        tokens = tokens.concat(collected[index].tokens || []);
       }
       const normalized = this.normalizeLiveCaptionText(merged);
       if (!normalized) {
@@ -599,7 +639,9 @@
 
       return {
         text: normalized,
-        startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart
+        startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart,
+        endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : bucketEnd,
+        tokens: tokens
       };
     }
 
@@ -798,8 +840,12 @@
         return false;
       }
       const bucketStart = bucketIndex * this.getLiveWindowSeconds();
-      const bucketEnd = this.getLiveWindowEnd(bucketStart);
+      const explicitEnd = Number(opts.endTime);
+      const bucketEnd = Number.isFinite(explicitEnd) && explicitEnd > sampleTime
+        ? explicitEnd
+        : this.getLiveWindowEnd(bucketStart);
       const sampleAnchor = Number.isFinite(sampleTime) ? Math.max(0, Number(sampleTime)) : bucketStart;
+      const tokens = Array.isArray(opts.tokens) ? opts.tokens : this.createCueTokensFromText(normalized, sampleAnchor, bucketEnd);
       const bucketStartMs = Math.round(bucketStart * 1000);
       const existingIndex = this.cues.findIndex(
         (cue) => Math.round(Math.max(0, Number(cue.start || 0)) * 1000) === bucketStartMs
@@ -817,7 +863,8 @@
           anchorStart: Number.isFinite(existingCue.anchorStart)
             ? Math.min(Number(existingCue.anchorStart), sampleAnchor)
             : sampleAnchor,
-          text: merged
+          text: merged,
+          tokens: this.mergeCueTokens(existingCue.tokens, tokens)
         };
         return true;
       }
@@ -826,7 +873,8 @@
         start: bucketStart,
         end: bucketEnd,
         anchorStart: sampleAnchor,
-        text: normalized
+        text: normalized,
+        tokens: tokens
       });
       this.cues.sort((left, right) => left.start - right.start);
       return true;
@@ -856,8 +904,14 @@
         if (!snapshot || !snapshot.text) {
           continue;
         }
-        const sampleTime = bucketIndex * this.getLiveWindowSeconds();
-        if (this.upsertLiveBucketCue(snapshot.text, sampleTime, { force: true })) {
+        const sampleTime = Number.isFinite(snapshot.startTime)
+          ? Math.max(0, Number(snapshot.startTime))
+          : bucketIndex * this.getLiveWindowSeconds();
+        if (this.upsertLiveBucketCue(snapshot.text, sampleTime, {
+          force: true,
+          endTime: snapshot.endTime,
+          tokens: snapshot.tokens
+        })) {
           changed = true;
         }
       }
@@ -889,16 +943,17 @@
         if (!snapshot || !snapshot.text) {
           continue;
         }
-        const start = bucketIndex * this.getLiveWindowSeconds();
-        const end = this.getLiveWindowEnd(start);
-        const seekStart = Number.isFinite(snapshot.startTime) ? Math.max(0, Number(snapshot.startTime)) : start;
+        const bucketStart = bucketIndex * this.getLiveWindowSeconds();
+        const seekStart = Number.isFinite(snapshot.startTime) ? Math.max(0, Number(snapshot.startTime)) : bucketStart;
+        const end = Number.isFinite(snapshot.endTime) ? Math.max(seekStart + 0.25, Number(snapshot.endTime)) : this.getLiveWindowEnd(bucketStart);
         previews.push(this.createBubbleRecord({
           sourceId: "future-" + bucketIndex,
-          start: start,
+          start: seekStart,
           end: end,
           seekStart: seekStart,
           locked: true,
-          text: snapshot.text
+          text: snapshot.text,
+          tokens: snapshot.tokens
         }));
       }
       this.liveFuturePreviewChunks = previews;
@@ -966,13 +1021,24 @@
       const activeSnapshot = this.readTextTrackSnapshotAtCurrentTime();
       let text = "";
       let anchorTime = currentBucketIndex * this.getLiveWindowSeconds();
+      let endTime = Number.NaN;
+      let timingTokens = [];
       let usedOverlayOnlyPath = false;
 
       if (windowSnapshot && windowSnapshot.text) {
         this.liveOverlayUtterance = null;
         text = windowSnapshot.text;
+        if (Number.isFinite(windowSnapshot.startTime)) {
+          anchorTime = Math.max(0, Number(windowSnapshot.startTime));
+        }
+        endTime = Number(windowSnapshot.endTime);
+        timingTokens = this.normalizeCaptionTokens(windowSnapshot.tokens);
         if (activeSnapshot && activeSnapshot.text) {
           text = this.mergeLiveCaptionText(text, activeSnapshot.text);
+          endTime = Number.isFinite(activeSnapshot.endTime)
+            ? Math.max(Number(endTime || 0), Number(activeSnapshot.endTime))
+            : endTime;
+          timingTokens = this.mergeCueTokens(timingTokens, activeSnapshot.tokens);
           this.updateLiveOverlayAnchorOffset(now, activeSnapshot.startTime);
         }
       } else if (activeSnapshot && activeSnapshot.text) {
@@ -983,6 +1049,8 @@
         } else {
           anchorTime = now;
         }
+        endTime = Number(activeSnapshot.endTime);
+        timingTokens = this.normalizeCaptionTokens(activeSnapshot.tokens);
         this.updateLiveOverlayAnchorOffset(now, activeSnapshot.startTime);
         if (!overlaySuppressed) {
           const overlayText = this.readVisibleCaptionText();
@@ -1043,7 +1111,10 @@
         this.liveOverlayUtterance.lastSeenAt = now;
       }
 
-      const changed = this.upsertLiveBucketCue(normalized, anchorTime);
+      const changed = this.upsertLiveBucketCue(normalized, anchorTime, {
+        endTime: endTime,
+        tokens: timingTokens
+      });
       if (changed || backfilled) {
         this.rebuildChunks();
         this.syncActiveChunk(true);
@@ -1672,18 +1743,22 @@
         const bucketIndex = this.getLiveWindowIndex(cueStart);
         const bucketStart = bucketIndex * stepSeconds;
         const bucketEnd = bucketStart + stepSeconds;
+        const cueEnd = Math.max(cueStart + 0.25, Number(cue && cue.end ? cue.end : bucketEnd));
+        const cueTokens = this.normalizeCaptionTokens(cue && cue.tokens);
         const existing = buckets.get(bucketIndex);
         if (!existing) {
           buckets.set(bucketIndex, {
             start: bucketStart,
-            end: bucketEnd,
+            end: Math.max(bucketEnd, cueEnd),
             seekStart: cueAnchor,
-            text: text
+            text: text,
+            tokens: cueTokens
           });
           continue;
         }
         existing.text = this.mergeLiveCaptionText(existing.text, text);
-        existing.end = Math.max(existing.end, bucketEnd);
+        existing.end = Math.max(existing.end, bucketEnd, cueEnd);
+        existing.tokens = this.mergeCueTokens(existing.tokens, cueTokens);
         if (Number.isFinite(cueAnchor)) {
           existing.seekStart = Math.min(Number(existing.seekStart || cueAnchor), cueAnchor);
         }
@@ -1705,7 +1780,8 @@
           start: bucket.start,
           end: bucket.end,
           seekStart: Number.isFinite(bucket.seekStart) ? bucket.seekStart : bucket.start,
-          text: text
+          text: text,
+          tokens: bucket.tokens || []
         });
       }
       return chunks;
@@ -1783,6 +1859,43 @@
       return false;
     }
 
+    mergeCueTokens(existingTokens, nextTokens) {
+      const combined = []
+        .concat(Array.isArray(existingTokens) ? existingTokens : [])
+        .concat(Array.isArray(nextTokens) ? nextTokens : [])
+        .filter((token) => token && token.text && Number.isFinite(Number(token.start)) && Number.isFinite(Number(token.end)));
+      combined.sort((left, right) => Number(left.start) - Number(right.start));
+      const output = [];
+      for (let index = 0; index < combined.length; index += 1) {
+        const token = combined[index];
+        const previous = output[output.length - 1];
+        if (
+          previous &&
+          this.normalizeCaptionToken(previous.text) === this.normalizeCaptionToken(token.text) &&
+          Math.abs(Number(previous.start) - Number(token.start)) < 0.08
+        ) {
+          previous.end = Math.max(Number(previous.end), Number(token.end));
+          continue;
+        }
+        output.push({
+          text: String(token.text),
+          start: Number(token.start),
+          end: Number(token.end)
+        });
+      }
+      return output;
+    }
+
+    sliceTokensForText(tokens, wordOffset, wordCount) {
+      const source = this.normalizeCaptionTokens(tokens);
+      const offset = Math.max(0, Number.isFinite(Number(wordOffset)) ? Math.floor(Number(wordOffset)) : 0);
+      const count = Math.max(0, Number.isFinite(Number(wordCount)) ? Math.floor(Number(wordCount)) : 0);
+      if (!source.length || count <= 0) {
+        return [];
+      }
+      return source.slice(offset, offset + count);
+    }
+
     getLiveChunkBucketIndex(chunk) {
       return this.getLiveWindowIndex(Number(chunk && chunk.start ? chunk.start : 0));
     }
@@ -1807,6 +1920,7 @@
         bucketTexts: { [bucketIndex]: this.cleanCaptionCandidateText(chunk.text) },
         bucketStarts: { [bucketIndex]: Number(chunk.start || 0) },
         bucketEnds: { [bucketIndex]: Number(chunk.end || 0) },
+        bucketTokens: { [bucketIndex]: this.normalizeCaptionTokens(chunk.tokens) },
         bucketSeekStarts: {
           [bucketIndex]: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0)
         }
@@ -1830,6 +1944,7 @@
       let start = Number.POSITIVE_INFINITY;
       let end = 0;
       let seekStart = Number.POSITIVE_INFINITY;
+      let tokens = [];
       for (let index = 0; index < ordered.length; index += 1) {
         const bucketIndex = ordered[index];
         const bucketText = this.cleanCaptionCandidateText(bubble.bucketTexts ? bubble.bucketTexts[bucketIndex] : "");
@@ -1837,11 +1952,13 @@
         start = Math.min(start, Number(bubble.bucketStarts && bubble.bucketStarts[bucketIndex]));
         end = Math.max(end, Number(bubble.bucketEnds && bubble.bucketEnds[bucketIndex]));
         seekStart = Math.min(seekStart, Number(bubble.bucketSeekStarts && bubble.bucketSeekStarts[bucketIndex]));
+        tokens = this.mergeCueTokens(tokens, bubble.bucketTokens ? bubble.bucketTokens[bucketIndex] : []);
       }
       bubble.text = this.cleanCaptionCandidateText(text);
       bubble.start = Number.isFinite(seekStart) ? seekStart : Number.isFinite(start) ? start : 0;
       bubble.seekStart = bubble.start;
       bubble.end = Math.max(bubble.start + 0.25, Number.isFinite(end) ? end : bubble.start + 0.25);
+      bubble.tokens = this.normalizeCaptionTokens(tokens);
     }
 
     appendBucketToLiveBubble(bubble, chunk) {
@@ -1855,6 +1972,7 @@
       bubble.bucketTexts[bucketIndex] = this.cleanCaptionCandidateText(chunk.text);
       bubble.bucketStarts[bucketIndex] = Number(chunk.start || 0);
       bubble.bucketEnds[bucketIndex] = Number(chunk.end || 0);
+      bubble.bucketTokens[bucketIndex] = this.normalizeCaptionTokens(chunk.tokens);
       bubble.bucketSeekStarts[bucketIndex] = Number.isFinite(chunk.seekStart)
         ? Number(chunk.seekStart)
         : Number(chunk.start || 0);
@@ -1997,7 +2115,8 @@
             end: end,
             seekStart: alignedStart,
             locked: false,
-            text: text
+            text: text,
+            tokens: bubble.tokens
           }));
           minNextStart = alignedStart + 0.05;
           continue;
@@ -2055,7 +2174,8 @@
           end: Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25)),
           seekStart: alignedStart,
           locked: true,
-          text: text
+          text: text,
+          tokens: this.sliceTokensForText(bubble.tokens, 0, text.split(/\s+/).filter(Boolean).length)
         }));
         return records;
       }
@@ -2075,7 +2195,8 @@
           end: Math.max(alignedStart + 0.25, partEnd),
           seekStart: alignedStart,
           locked: true,
-          text: parts[partIndex]
+          text: parts[partIndex],
+          tokens: this.sliceTokensForText(bubble.tokens, wordsBefore, partWords)
         }));
         wordsBefore += partWords;
       }

@@ -211,4 +211,40 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.deepEqual(result.cues.map((cue) => cue.text), ["first", "second"]);
     assert.deepEqual(result.cues.map((cue) => cue.start), [2, 5]);
   });
+
+  await runCase("transcript cues include estimated word timing tokens", async () => {
+    const playerResponse = readFixture("player-response.json");
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        ytInitialPlayerResponse: playerResponse,
+        location: { href: "https://www.youtube.com/watch?v=abc123" }
+      },
+      fetch: async (url) => {
+        const value = String(url);
+        if (value.includes("fmt=json3")) {
+          return makeJsonResponse({
+            events: [
+              {
+                tStartMs: 1000,
+                dDurationMs: 2000,
+                segs: [{ utf8: "alpha beta gamma" }]
+              }
+            ]
+          });
+        }
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.cues[0].tokens.length, 3);
+    assert.equal(result.cues[0].tokens[0].text, "alpha");
+    assert.equal(result.cues[0].tokens[0].start, 1);
+    assert.equal(result.cues[0].tokens[2].end, 3);
+  });
 };

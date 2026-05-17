@@ -83,4 +83,33 @@ exports.run = async function runChunkerTests(ctx) {
     assert.equal(chunks[0].end, 12.3);
     assert.ok(chunks[0].metrics.cueCount >= 5);
   });
+
+  await runCase("chunker preserves word timing tokens through conversational groups", () => {
+    const cues = [
+      {
+        start: 0,
+        end: 1,
+        text: "alpha beta",
+        tokens: [
+          { text: "alpha", start: 0, end: 0.5 },
+          { text: "beta", start: 0.5, end: 1 }
+        ]
+      },
+      {
+        start: 1.1,
+        end: 2,
+        text: "gamma delta.",
+        tokens: [
+          { text: "gamma", start: 1.1, end: 1.5 },
+          { text: "delta.", start: 1.5, end: 2 }
+        ]
+      }
+    ];
+    const chunks = chunker.chunkCues(cues, "short");
+
+    assert.equal(chunks.length, 1);
+    assert.equal(chunks[0].tokens.length, 4);
+    assert.equal(chunks[0].tokens[2].text, "gamma");
+    assert.equal(chunks[0].tokens[2].start, 1.1);
+  });
 };

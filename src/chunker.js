@@ -70,8 +70,46 @@
       ...cue,
       start: normalizedStart,
       end: normalizedEnd,
-      text
+      text,
+      tokens: normalizeTokens(cue && cue.tokens, text, normalizedStart, normalizedEnd)
     };
+  }
+
+  function normalizeTokens(tokens, cueText, cueStart, cueEnd) {
+    const source = Array.isArray(tokens) ? tokens : [];
+    const output = [];
+    for (let index = 0; index < source.length; index += 1) {
+      const token = source[index];
+      const text = String(token && token.text ? token.text : "").replace(/\s+/g, " ").trim();
+      const start = Number(token && token.start);
+      const end = Number(token && token.end);
+      if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        continue;
+      }
+      output.push({
+        text,
+        start: Math.max(cueStart, start),
+        end: Math.min(Math.max(start + 0.05, end), cueEnd)
+      });
+    }
+    if (output.length) {
+      return output.sort((left, right) => left.start - right.start);
+    }
+    return estimateTokens(cueText, cueStart, cueEnd);
+  }
+
+  function estimateTokens(text, start, end) {
+    const words = String(text || "").split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      return [];
+    }
+    const duration = Math.max(0.25, Number(end || 0) - Number(start || 0));
+    const each = duration / words.length;
+    return words.map((word, index) => ({
+      text: word,
+      start: Number(start || 0) + each * index,
+      end: index === words.length - 1 ? Number(end || 0) : Number(start || 0) + each * (index + 1)
+    }));
   }
 
   function getMetrics(text, start, end) {
@@ -118,6 +156,7 @@
     let chunkStart = source[0].start;
     let chunkEnd = source[0].end;
     let cueCount = 0;
+    let tokenBuffer = [];
 
     function flush(reason) {
       const normalized = bufferText.trim();
@@ -130,6 +169,7 @@
         start: chunkStart,
         end: chunkEnd,
         text: normalized,
+        tokens: tokenBuffer.slice(),
         reason: reason || "natural",
         metrics: {
           chars: metrics.chars,
@@ -139,12 +179,16 @@
       });
       bufferText = "";
       cueCount = 0;
+      tokenBuffer = [];
     }
 
     function appendCue(cue) {
       bufferText = bufferText ? bufferText + " " + cue.text : cue.text;
       chunkEnd = cue.end;
       cueCount += 1;
+      if (Array.isArray(cue.tokens) && cue.tokens.length) {
+        tokenBuffer = tokenBuffer.concat(cue.tokens);
+      }
     }
 
     for (let index = 0; index < source.length; index += 1) {

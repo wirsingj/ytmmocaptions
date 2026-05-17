@@ -269,16 +269,82 @@
         if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
           return null;
         }
+        const normalizedStart = Math.max(0, start);
+        const normalizedEnd = Math.max(normalizedStart + 0.25, end);
+        const tokens = normalizeCueTokens(cue && cue.tokens, text, normalizedStart, normalizedEnd);
         return {
-          start: Math.max(0, start),
-          end: Math.max(Math.max(0, start) + 0.25, end),
-          text: text
+          start: normalizedStart,
+          end: normalizedEnd,
+          text: text,
+          tokens: tokens
         };
       })
       .filter(Boolean)
       .sort(function (left, right) {
         return left.start - right.start;
       });
+  }
+
+  function normalizeCueTokens(tokens, cueText, cueStart, cueEnd) {
+    const source = Array.isArray(tokens) ? tokens : [];
+    const text = normalizeCueText(cueText);
+    const normalized = [];
+    for (let index = 0; index < source.length; index += 1) {
+      const token = source[index];
+      const tokenText = normalizeCueText(token && token.text ? token.text : "");
+      const start = Number(token && token.start);
+      const end = Number(token && token.end);
+      if (!tokenText || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        continue;
+      }
+      normalized.push({
+        text: tokenText,
+        start: Math.max(cueStart, start),
+        end: Math.min(Math.max(start + 0.05, end), cueEnd)
+      });
+    }
+    if (normalized.length) {
+      return normalized.sort(function (left, right) {
+        return left.start - right.start;
+      });
+    }
+    return estimateWordTokens(text, cueStart, cueEnd);
+  }
+
+  function estimateWordTokens(text, start, end) {
+    const words = String(text || "").split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      return [];
+    }
+    const duration = Math.max(0.25, Number(end || 0) - Number(start || 0));
+    const weightSum = words.reduce(function (sum, word) {
+      return sum + getTokenWeight(word);
+    }, 0);
+    let cursor = Number(start || 0);
+    return words.map(function (word, index) {
+      const weight = getTokenWeight(word);
+      const tokenDuration = duration * (weight / Math.max(1, weightSum));
+      const tokenStart = cursor;
+      const tokenEnd = index === words.length - 1 ? Number(end || tokenStart + tokenDuration) : tokenStart + tokenDuration;
+      cursor = tokenEnd;
+      return {
+        text: word,
+        start: tokenStart,
+        end: Math.max(tokenStart + 0.05, tokenEnd)
+      };
+    });
+  }
+
+  function getTokenWeight(word) {
+    const source = String(word || "");
+    const coreLength = source.replace(/[^\w]/g, "").length;
+    const lengthWeight = Math.min(0.65, Math.max(0, coreLength - 4) * 0.08);
+    const pauseWeight = /[.!?]["')\]]*$/.test(source)
+      ? 0.7
+      : /[,;:]["')\]]*$/.test(source)
+        ? 0.3
+        : 0;
+    return 1 + lengthWeight + pauseWeight;
   }
 
   function extractJsonObjectFromOpenBrace(source, openBraceIndex) {

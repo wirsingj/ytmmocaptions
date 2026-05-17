@@ -222,4 +222,44 @@ exports.run = async function runBubbleStateTests(ctx) {
     const punctuatedRange = bubbleState.getReadingGlowRange(punctuated, 4, { leadSeconds: 0 });
     assert.ok(punctuatedRange.firstWord <= plainRange.firstWord);
   });
+
+  await runCase("reading glow uses explicit token timestamps when available", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 10,
+      end: 14,
+      seekStart: 10,
+      text: "alpha beta gamma delta",
+      tokens: [
+        { text: "alpha", start: 10, end: 11 },
+        { text: "beta", start: 11, end: 12 },
+        { text: "gamma", start: 12, end: 13 },
+        { text: "delta", start: 13, end: 14 }
+      ]
+    };
+    const early = bubbleState.getReadingGlowRange(bubble, 10.2, { leadSeconds: 0, windowWords: 3 });
+    const late = bubbleState.getReadingGlowRange(bubble, 12.2, { leadSeconds: 0, windowWords: 3 });
+
+    assert.equal(early.firstWord, 0);
+    assert.equal(late.firstWord, 2);
+  });
+
+  await runCase("reading glow matches token text to rendered words after small drift", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 4,
+      seekStart: 0,
+      text: "well alpha beta gamma delta",
+      tokens: [
+        { text: "alpha", start: 0, end: 1 },
+        { text: "beta", start: 1, end: 2 },
+        { text: "gamma", start: 2, end: 3 },
+        { text: "delta", start: 3, end: 4 }
+      ]
+    };
+    const range = bubbleState.getReadingGlowRange(bubble, 2.2, { leadSeconds: 0, windowWords: 3 });
+
+    assert.equal(range.firstWord, 3);
+  });
 };
