@@ -1,20 +1,51 @@
 (function initDialogueCaptionsPageBridge(scope) {
-  if (scope.__dialogueCaptionsPageBridgeLoaded) {
-    return;
-  }
-  scope.__dialogueCaptionsPageBridgeLoaded = true;
-
   const MESSAGE_TYPE = "DIALOGUE_CAPTIONS_PAGE_CONTEXT";
   const FETCH_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_REQUEST";
   const FETCH_RESPONSE_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_RESPONSE";
   const CAPTION_PROBE_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_CAPTION_PROBE_REQUEST";
   const TIMEDTEXT_CAPTURE_TYPE = "DIALOGUE_CAPTIONS_PAGE_TIMEDTEXT_CAPTURE";
+  const BRIDGE_STATE_KEY = "__dialogueCaptionsPageBridgeState";
   const BRIDGE_TOKEN =
     document.currentScript &&
     document.currentScript.dataset &&
     typeof document.currentScript.dataset.dcBridgeToken === "string"
       ? document.currentScript.dataset.dcBridgeToken
       : "";
+  const bridgeState =
+    scope[BRIDGE_STATE_KEY] && typeof scope[BRIDGE_STATE_KEY] === "object"
+      ? scope[BRIDGE_STATE_KEY]
+      : {
+          installed: false,
+          tokens: [],
+          latestToken: ""
+        };
+  scope[BRIDGE_STATE_KEY] = bridgeState;
+  scope.__dialogueCaptionsPageBridgeLoaded = true;
+
+  function rememberBridgeToken(token) {
+    const value = String(token || "");
+    if (!value) {
+      return;
+    }
+    if (!bridgeState.tokens.includes(value)) {
+      bridgeState.tokens.push(value);
+      while (bridgeState.tokens.length > 8) {
+        bridgeState.tokens.shift();
+      }
+    }
+    bridgeState.latestToken = value;
+  }
+
+  rememberBridgeToken(BRIDGE_TOKEN);
+
+  if (bridgeState.installed) {
+    if (typeof bridgeState.postPayload === "function") {
+      bridgeState.postPayload();
+    }
+    return;
+  }
+  bridgeState.installed = true;
+
   const timedtextProbe = {
     lastRichUrl: "",
     lastVideoId: "",
@@ -42,7 +73,16 @@
   }
 
   function hasValidBridgeToken(data) {
-    return Boolean(BRIDGE_TOKEN && data && data.bridgeToken === BRIDGE_TOKEN);
+    const value = String(data && data.bridgeToken ? data.bridgeToken : "");
+    if (!value || !bridgeState.tokens.includes(value)) {
+      return false;
+    }
+    bridgeState.latestToken = value;
+    return true;
+  }
+
+  function getPostBridgeToken(fallbackToken) {
+    return String(fallbackToken || bridgeState.latestToken || BRIDGE_TOKEN || "");
   }
 
   function walkObjects(root, visit, seen) {
@@ -161,6 +201,10 @@
     if (!isCurrentWatchPageWithVideo()) {
       return;
     }
+    const token = getPostBridgeToken();
+    if (!token) {
+      return;
+    }
     const timedtextUrl = String(url || "");
     if (!isTimedtextUrl(timedtextUrl)) {
       return;
@@ -184,7 +228,7 @@
       scope.postMessage(
         {
           type: TIMEDTEXT_CAPTURE_TYPE,
-          bridgeToken: BRIDGE_TOKEN,
+          bridgeToken: token,
           payload: payload
         },
         scope.location.origin
@@ -330,11 +374,15 @@
     if (!isCurrentWatchPageWithVideo()) {
       return;
     }
+    const token = getPostBridgeToken();
+    if (!token) {
+      return;
+    }
     try {
       scope.postMessage(
         {
           type: MESSAGE_TYPE,
-          bridgeToken: BRIDGE_TOKEN,
+          bridgeToken: token,
           payload: buildPayload()
         },
         scope.location.origin
@@ -377,15 +425,19 @@
     }
   }
 
-  function postFetchResponse(requestId, payload) {
+  function postFetchResponse(requestId, payload, responseToken) {
     if (!isCurrentWatchPageWithVideo()) {
+      return;
+    }
+    const token = getPostBridgeToken(responseToken);
+    if (!token) {
       return;
     }
     try {
       scope.postMessage(
         {
           type: FETCH_RESPONSE_TYPE,
-          bridgeToken: BRIDGE_TOKEN,
+          bridgeToken: token,
           requestId: requestId,
           payload: payload
         },
@@ -474,6 +526,7 @@
     if (!isCurrentWatchPageWithVideo()) {
       return;
     }
+    const responseToken = String(data && data.bridgeToken ? data.bridgeToken : "");
     const requestId = typeof data.requestId === "number" ? data.requestId : NaN;
     const payload = data.payload;
     const url = payload && typeof payload.url === "string" ? payload.url : "";
@@ -495,7 +548,7 @@
         contentType: "",
         body: "",
         error: "blocked_request"
-      });
+      }, responseToken);
       return;
     }
 
@@ -515,7 +568,7 @@
         url: response.url || "",
         contentType: response.headers.get("content-type") || "",
         body: text
-      });
+      }, responseToken);
     } catch (error) {
       postFetchResponse(requestId, {
         ok: false,
@@ -525,7 +578,7 @@
         contentType: "",
         body: "",
         error: String(error && error.message ? error.message : error)
-      });
+      }, responseToken);
     }
   }
 
@@ -569,6 +622,7 @@
   });
 
   installTimedtextProbeHooks();
+  bridgeState.postPayload = postPayload;
   postPayload();
   scope.setTimeout(postPayload, 300);
   scope.setTimeout(postPayload, 1200);

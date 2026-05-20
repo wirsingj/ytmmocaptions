@@ -11,7 +11,8 @@ function loadPageBridge(url) {
   let fetchCalls = 0;
   let cloneReads = 0;
   let href = url;
-  const bridgeToken = "test-bridge-token";
+  let bridgeToken = "test-bridge-token";
+  const source = fs.readFileSync(path.join(ROOT_DIR, "src", "page-bridge.js"), "utf8");
   function makeLocation(nextUrl) {
     const parsed = new URL(nextUrl);
     return {
@@ -88,17 +89,16 @@ function loadPageBridge(url) {
   sandbox.window = sandbox;
   sandbox.XMLHttpRequest.prototype = {};
 
-  const source = fs.readFileSync(path.join(ROOT_DIR, "src", "page-bridge.js"), "utf8");
   vm.runInNewContext(source, sandbox, { filename: "page-bridge.js" });
 
-  async function request(urlToFetch, init) {
+  async function request(urlToFetch, init, tokenOverride) {
     posted.length = 0;
     listeners.message({
       source: null,
       origin: sandbox.location.origin,
       data: {
         type: "DIALOGUE_CAPTIONS_PAGE_FETCH_REQUEST",
-        bridgeToken,
+        bridgeToken: tokenOverride || bridgeToken,
         requestId: 7,
         payload: {
           url: urlToFetch,
@@ -134,6 +134,13 @@ function loadPageBridge(url) {
 
   return {
     bridgeToken,
+    reloadWithToken(nextToken) {
+      bridgeToken = nextToken;
+      sandbox.document.currentScript.dataset.dcBridgeToken = nextToken;
+      posted.length = 0;
+      vm.runInNewContext(source, sandbox, { filename: "page-bridge.js" });
+      return posted.slice();
+    },
     posted,
     request,
     requestWithoutToken,
@@ -215,6 +222,23 @@ exports.run = async function runPageBridgeTests(ctx) {
       type: "DIALOGUE_CAPTIONS_PAGE_CAPTION_PROBE_REQUEST"
     });
     assert.equal(bridge.posted.length, 0);
+  });
+
+  await runCase("page bridge accepts a fresh token after extension reload", async () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
+    const reloadPosts = bridge.reloadWithToken("fresh-token-after-reload");
+    assert.ok(
+      reloadPosts.some((message) => message.bridgeToken === "fresh-token-after-reload"),
+      "reloaded bridge should post a snapshot with the fresh token"
+    );
+
+    const response = await bridge.request(
+      "https://www.youtube.com/api/timedtext?v=abc123",
+      { method: "GET" },
+      "fresh-token-after-reload"
+    );
+    assert.equal(response.bridgeToken, "fresh-token-after-reload");
+    assert.equal(response.payload.ok, true);
   });
 
   await runCase("page bridge does not post recurring snapshots off watch pages", () => {
