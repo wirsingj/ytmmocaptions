@@ -287,16 +287,17 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.launcherDragState = null;"));
   });
 
-  await runCase("future preview UI is collapsible and visually ghosted", () => {
+  await runCase("future preview UI uses a static divider and visually ghosted rows", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
-    assert.ok(panelSource.includes("futureCollapsed"));
     assert.ok(panelSource.includes("dc-future-divider"));
     assert.ok(panelSource.includes("dc-chunk-future"));
-    assert.ok(panelSource.includes("aria-expanded"));
+    assert.ok(panelSource.includes('role", "separator"'));
+    assert.ok(!panelSource.includes('divider.addEventListener("click"'));
     assert.ok(css.includes(".dc-chunk-future"));
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes("border-style: dashed"));
+    assert.ok(css.includes("pointer-events: none"));
   });
 
   await runCase("panel exposes basic accessibility labels and reduced-motion CSS", () => {

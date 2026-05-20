@@ -1511,25 +1511,17 @@
       }
 
       if (futureCount) {
-        const divider = document.createElement("button");
-        divider.type = "button";
+        const divider = document.createElement("div");
         divider.className = "dc-future-divider";
-        divider.setAttribute("aria-expanded", this.futureCollapsed ? "false" : "true");
-        divider.textContent = this.futureCollapsed ? "Next up +" : "Next up -";
-        divider.addEventListener("click", () => {
-          this.futureCollapsed = !this.futureCollapsed;
-          this.currentWindowStart = -1;
-          this.currentWindowEnd = -1;
-          this.scheduleWindowRender();
-        });
+        divider.setAttribute("role", "separator");
+        divider.setAttribute("aria-label", "Next up captions");
+        divider.textContent = "Next up";
         fragment.append(divider);
 
-        if (!this.futureCollapsed) {
-          for (let index = 0; index < futureCount; index += 1) {
-            const preview = this.futureChunks[index];
-            const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
-            fragment.append(this.createChunkButton(preview, actualIndex, true));
-          }
+        for (let index = 0; index < futureCount; index += 1) {
+          const preview = this.futureChunks[index];
+          const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
+          fragment.append(this.createChunkButton(preview, actualIndex, true));
         }
       }
 

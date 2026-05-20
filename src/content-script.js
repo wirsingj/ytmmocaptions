@@ -82,6 +82,7 @@
       this.liveDisplayBubbleCache = new Map();
       this.liveNextBubbleUid = 1;
       this.liveFuturePreviewChunks = [];
+      this.transcriptPreviewChunks = [];
     }
 
     async init() {
@@ -1365,6 +1366,9 @@
       this.liveLastFutureBackfillAt = 0;
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveFuturePreviewChunks = [];
+      if (!Array.isArray(this.transcriptPreviewChunks)) {
+        this.transcriptPreviewChunks = [];
+      }
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
@@ -1389,6 +1393,7 @@
       this.liveLastFutureBackfillAt = 0;
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveFuturePreviewChunks = [];
+      this.transcriptPreviewChunks = [];
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.liveBubbles = [];
@@ -1455,6 +1460,9 @@
     }
 
     canShowFuturePreviewChunks() {
+      if (Array.isArray(this.transcriptPreviewChunks) && this.transcriptPreviewChunks.length) {
+        return true;
+      }
       if (this.liveCaptureEnabled) {
         return Array.isArray(this.liveFuturePreviewChunks) && this.liveFuturePreviewChunks.length > 0;
       }
@@ -1471,6 +1479,19 @@
     getFuturePreviewChunks() {
       if (!this.canShowFuturePreviewChunks()) {
         return [];
+      }
+      const transcriptSource = Array.isArray(this.transcriptPreviewChunks) && this.transcriptPreviewChunks.length
+        ? this.transcriptPreviewChunks
+        : [];
+      if (transcriptSource.length) {
+        const currentTime = this.video ? Number(this.video.currentTime || 0) : 0;
+        const currentIndex = this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
+        const previewStart = Math.max(0, currentIndex + 1);
+        return transcriptSource.slice(previewStart, previewStart + 4).map((chunk, offset) => ({
+          ...chunk,
+          actualIndex: previewStart + offset,
+          futurePreviewOnly: true
+        }));
       }
       if (this.liveCaptureEnabled) {
         const previews = Array.isArray(this.liveFuturePreviewChunks) ? this.liveFuturePreviewChunks : [];
@@ -1490,6 +1511,37 @@
         });
       }
       return previews;
+    }
+
+    findTimelineChunkIndex(chunks, currentTime, toleranceSeconds) {
+      const source = Array.isArray(chunks) ? chunks : [];
+      if (!source.length) {
+        return -1;
+      }
+      const now = Number(currentTime);
+      if (!Number.isFinite(now)) {
+        return -1;
+      }
+      const tolerance = Math.max(0, Number.isFinite(Number(toleranceSeconds)) ? Number(toleranceSeconds) : 0.35);
+      let previousIndex = -1;
+      for (let index = 0; index < source.length; index += 1) {
+        const chunk = source[index];
+        const start = Number(chunk && chunk.start);
+        const end = Number(chunk && chunk.end);
+        if (!Number.isFinite(start)) {
+          continue;
+        }
+        if (now + tolerance < start) {
+          return previousIndex;
+        }
+        if (Number.isFinite(end) && now >= start - tolerance && now < end + tolerance) {
+          return index;
+        }
+        if (now >= start - tolerance) {
+          previousIndex = index;
+        }
+      }
+      return previousIndex;
     }
 
     updateFuturePreviewChunks() {
@@ -1615,6 +1667,7 @@
         this.cues = response.cues;
         this.revealedChunkCount = 0;
         this.rebuildChunks();
+        this.transcriptPreviewChunks = this.allChunks.slice();
         this.syncActiveChunk(true);
         if (this.panel) {
           this.panel.setStatus("Full transcript loaded. Next up previews are available.", true);
@@ -1703,6 +1756,7 @@
       this.cues = response.cues;
       this.revealedChunkCount = 0;
       this.rebuildChunks();
+      this.transcriptPreviewChunks = this.allChunks.slice();
       diagnostics.record("captions:transcript-loaded", {
         cueCount: response.cues.length,
         mode: response.mode || "direct transcript mode"

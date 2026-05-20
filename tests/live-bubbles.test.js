@@ -180,10 +180,11 @@ exports.run = async function runLiveBubbleTests(ctx) {
 
   await runCase("future caption previews are limited, honest, and clickable", () => {
     assert.ok(source.includes("getFuturePreviewChunks()"));
+    assert.ok(source.includes("findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)"));
     assert.ok(source.includes("readFuturePreviewChunksFromTextTracks(currentBucketIndex)"));
     assert.ok(source.includes("offset <= 4"));
     assert.ok(source.includes("futurePreviewOnly"));
-    assert.ok(source.includes("previewStart + 4"));
+    assert.ok(source.includes("currentIndex + 1"));
     assert.ok(source.includes("actualIndex: index"));
     assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks())"));
   });
