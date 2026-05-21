@@ -411,7 +411,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("timelineDataKey"));
     assert.ok(panelSource.includes("this.timelineHoverIndex = -1;"));
     assert.ok(panelSource.includes("this.timelineHoverTime = Number.NaN;"));
-    assert.ok(panelSource.includes("--dc-lens-progress"));
+    assert.ok(panelSource.includes("const lensTime = Number.isFinite(this.timelineHoverTime)"));
+    assert.ok(panelSource.includes("dc-timeline-lens-text dc-chunk-text"));
+    assert.ok(panelSource.includes("this.renderChunkText(text, focusChunk, true, clampedLensTime)"));
     assert.ok(panelSource.includes('this.timelineLayer.style.setProperty("--dc-text-scale"'));
     assert.ok(panelSource.includes('this.timelineLayer.style.setProperty("--dc-accent"'));
     assert.ok(panelSource.includes('this.timelineTooltip.classList.add("is-visible")'));
@@ -423,7 +425,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(scrubSource.includes("findChunkIndexAtTime"));
     assert.ok(css.includes(".dc-timeline-layer"));
     assert.ok(css.includes(".dc-timeline-lens"));
-    assert.ok(css.includes(".dc-timeline-lens::after"));
+    assert.equal(css.includes(".dc-timeline-lens::after"), false);
+    assert.ok(css.includes(".dc-timeline-lens-time"));
+    assert.ok(css.includes(".dc-timeline-lens-text"));
     assert.ok(css.includes("background: transparent;"));
     assert.ok(css.includes("radial-gradient("));
     assert.ok(css.includes('font-family: "Trebuchet MS", "Segoe UI", sans-serif;'));

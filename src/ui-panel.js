@@ -1255,22 +1255,27 @@
       const layerWidth = Math.max(120, layerRect.width || 120);
       if (this.timelineTooltip) {
         const focusChunk = chunks[focusIndex];
-        const focusPercent = timelineScrub.chunkToPercent(focusChunk, duration);
         const focusStart = timelineScrub.getChunkStart(focusChunk);
-        const focusText = timelineScrub.getChunkText(focusChunk);
-        const lensWidth = Math.min(760, Math.max(420, layerWidth * 0.54));
-        const lensCenter = Number.isFinite(this.timelineHoverTime)
-          ? (this.timelineHoverTime / duration) * layerWidth
-          : (Number.isFinite(focusPercent) ? (focusPercent / 100) * layerWidth : layerWidth / 2);
+        const lensTime = Number.isFinite(this.timelineHoverTime)
+          ? this.timelineHoverTime
+          : (Number.isFinite(this.playbackTime) ? this.playbackTime : focusStart);
+        const clampedLensTime = Number.isFinite(lensTime)
+          ? Math.max(0, Math.min(duration, lensTime))
+          : 0;
+        const lensWidth = Math.min(820, Math.max(460, layerWidth * 0.6));
+        const lensCenter = (clampedLensTime / duration) * layerWidth;
         const lensLeft = timelineScrub.clampBubbleLeft(lensCenter, lensWidth, layerWidth, 8);
-        const progressPercent = Number.isFinite(this.timelineHoverTime)
-          ? Math.max(0, Math.min(100, (this.timelineHoverTime / duration) * 100))
-          : Math.max(0, Math.min(100, Number.isFinite(focusPercent) ? focusPercent : 0));
         this.timelineTooltip.style.left = Math.round(lensLeft) + "px";
         this.timelineTooltip.style.width = Math.round(lensWidth) + "px";
-        this.timelineTooltip.style.setProperty("--dc-lens-progress", progressPercent.toFixed(2) + "%");
         this.timelineTooltip.dataset.index = String(focusIndex);
-        this.timelineTooltip.textContent = (Number.isFinite(focusStart) ? chunker.formatTimestamp(focusStart) + "  " : "") + focusText;
+        this.timelineTooltip.replaceChildren();
+        const timestamp = document.createElement("span");
+        timestamp.className = "dc-timeline-lens-time";
+        timestamp.textContent = Number.isFinite(focusStart) ? chunker.formatTimestamp(focusStart) : "";
+        const text = document.createElement("span");
+        text.className = "dc-timeline-lens-text dc-chunk-text";
+        this.renderChunkText(text, focusChunk, true, clampedLensTime);
+        this.timelineTooltip.append(timestamp, text);
         this.timelineTooltip.classList.add("is-visible");
         this.timelineTooltip.classList.toggle("is-hover", this.timelineHoverIndex >= 0);
       }
@@ -1979,7 +1984,7 @@
       return item;
     }
 
-    renderChunkText(textElement, chunk, isActive) {
+    renderChunkText(textElement, chunk, isActive, playbackTimeOverride) {
       if (!textElement) {
         return;
       }
@@ -1989,7 +1994,10 @@
         return;
       }
 
-      const range = bubbleState.getReadingGlowRange(chunk, this.playbackTime);
+      const glowTime = Number.isFinite(Number(playbackTimeOverride))
+        ? Number(playbackTimeOverride)
+        : this.playbackTime;
+      const range = bubbleState.getReadingGlowRange(chunk, glowTime);
       if (!range || typeof bubbleState.splitTextByRange !== "function") {
         textElement.textContent = text;
         return;
