@@ -420,7 +420,6 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(scrubSource.includes("hoverXToTime"));
     assert.ok(scrubSource.includes("findChunkIndexAtTime"));
     assert.ok(css.includes(".dc-timeline-layer"));
-    assert.ok(css.includes(".dc-timeline-bubble"));
     assert.ok(css.includes(".dc-timeline-lens"));
     assert.ok(css.includes(".dc-timeline-lens::after"));
     assert.ok(css.includes("background: transparent;"));

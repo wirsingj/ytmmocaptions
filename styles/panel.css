@@ -386,30 +386,6 @@
   cursor: crosshair;
 }
 
-.dc-timeline-marker {
-  position: absolute;
-  top: 1px;
-  width: 3px;
-  height: 12px;
-  border-radius: 999px;
-  transform: translateX(-50%);
-  background: rgba(var(--dc-accent-rgb), 0.1);
-  box-shadow: none;
-  pointer-events: none;
-}
-
-.dc-timeline-marker.is-clustered {
-  width: 4px;
-  background: rgba(var(--dc-accent-rgb), 0.08);
-}
-
-.dc-timeline-bubbles {
-  position: absolute;
-  inset: 0 0 24px 0;
-  pointer-events: none;
-}
-
-.dc-timeline-bubble,
 .dc-timeline-lens {
   position: absolute;
   bottom: 38px;
@@ -430,30 +406,6 @@
   white-space: normal;
   pointer-events: auto;
   cursor: pointer;
-}
-
-.dc-timeline-bubble {
-  max-height: 98px;
-  border-style: solid;
-  transition: opacity 150ms ease, transform 150ms ease, border-color 150ms ease;
-}
-
-.dc-timeline-bubble.is-current {
-  opacity: 0.96;
-  transform: translateY(0) scale(1);
-  border-color: rgba(var(--dc-accent-rgb), 0.58);
-}
-
-.dc-timeline-bubble.is-previous,
-.dc-timeline-bubble.is-next {
-  opacity: 0.42;
-  transform: translateY(9px) scale(0.88);
-}
-
-.dc-timeline-bubble:hover,
-.dc-timeline-bubble:focus-visible {
-  opacity: 1;
-  border-color: rgba(var(--dc-accent-rgb), 0.78);
 }
 
 .dc-timeline-lens {
@@ -507,7 +459,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dc-timeline-bubble,
   .dc-timeline-lens {
     transition: none;
   }

@@ -63,12 +63,9 @@ exports.run = async function runTimelineScrubTests(ctx) {
     assert.equal(scrub.clampBubbleLeft(495, 200, 500, 8), 292);
   });
 
-  await runCase("timeline scrub samples dense chunks instead of rendering all bubbles", () => {
+  await runCase("timeline scrub helper stays focused on lens lookup, not marker buckets", () => {
     const scrub = loadTimelineScrub();
-    const dense = Array.from({ length: 400 }, (_, index) => ({ start: index, end: index + 1, text: "cue " + index }));
-    const sampled = scrub.sampleMarkerChunks(dense, 100);
-    assert.ok(sampled.length <= 100);
-    assert.equal(sampled[1].index, 4);
-    assert.equal(sampled[1].clustered, true);
+    assert.equal(typeof scrub.sampleMarkerChunks, "undefined");
+    assert.equal(scrub.findChunkIndexAtTime(chunks, 36, 0.35), 2);
   });
 };

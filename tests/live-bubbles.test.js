@@ -210,6 +210,19 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks())"));
   });
 
+  await runCase("full transcript timelines use conversational chunks instead of keyboard skip buckets", () => {
+    const rebuildStart = source.indexOf("    rebuildChunks()");
+    const rebuildBody = source.slice(
+      rebuildStart,
+      source.indexOf("    onSettingsChanged(nextSettings, patch)", rebuildStart)
+    );
+    assert.ok(source.includes("buildTranscriptChunksFromCues(cues)"));
+    assert.ok(rebuildBody.includes("? this.buildFixedWindowChunksFromCues(this.cues)"));
+    assert.ok(rebuildBody.includes(": this.buildTranscriptChunksFromCues(this.cues);"));
+    assert.ok(rebuildBody.includes(": rawChunks;"));
+    assert.ok(!rebuildBody.includes(": this.polishFixedWindowChunks(rawChunks);"));
+  });
+
   await runCase("live fallback periodically upgrades to full transcript for future previews", () => {
     assert.ok(source.includes("maybeUpgradeLiveCaptureToTranscript()"));
     assert.ok(source.includes("tryUpgradeLiveCaptureToTranscript()"));

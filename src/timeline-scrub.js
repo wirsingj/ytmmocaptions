@@ -112,17 +112,6 @@
     return Math.max(safeMargin, Math.min(layer - width - safeMargin, center - width / 2));
   }
 
-  function sampleMarkerChunks(chunks, maxMarkers) {
-    const safeChunks = Array.isArray(chunks) ? chunks : [];
-    const max = Math.max(1, Number(maxMarkers) || 140);
-    const step = Math.max(1, Math.ceil(safeChunks.length / max));
-    const sampled = [];
-    for (let index = 0; index < safeChunks.length; index += step) {
-      sampled.push({ chunk: safeChunks[index], index, clustered: step > 1 });
-    }
-    return sampled;
-  }
-
   app.timelineScrub = {
     getChunkStart,
     getChunkEnd,
@@ -132,7 +121,6 @@
     hoverXToTime,
     findChunkIndexAtTime,
     getContextIndices,
-    clampBubbleLeft,
-    sampleMarkerChunks
+    clampBubbleLeft
   };
 })(window);

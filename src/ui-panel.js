@@ -103,7 +103,6 @@
       this.timelineLayer = null;
       this.timelineTrack = null;
       this.timelineTooltip = null;
-      this.timelineBubbleStage = null;
       this.header = null;
       this.resetButton = null;
       this.closeButton = null;
@@ -325,12 +324,10 @@
       this.timelineLayer.dataset.dcInstanceId = this.instanceId || "youtube";
       this.timelineTrack = document.createElement("div");
       this.timelineTrack.className = "dc-timeline-track";
-      this.timelineBubbleStage = document.createElement("div");
-      this.timelineBubbleStage.className = "dc-timeline-bubbles";
       this.timelineTooltip = document.createElement("div");
       this.timelineTooltip.className = "dc-timeline-lens";
       this.timelineTooltip.setAttribute("role", "tooltip");
-      this.timelineLayer.append(this.timelineBubbleStage, this.timelineTrack, this.timelineTooltip);
+      this.timelineLayer.append(this.timelineTrack, this.timelineTooltip);
       document.body.append(this.timelineLayer);
 
       this.launcherButton = document.createElement("button");
@@ -378,7 +375,6 @@
         this.timelineLayer.remove();
         this.timelineLayer = null;
         this.timelineTrack = null;
-        this.timelineBubbleStage = null;
         this.timelineTooltip = null;
       }
       this.removeExistingUiNodes();
@@ -548,7 +544,6 @@
       this.addListener(this.timelineLayer, "pointermove", onTimelineMove);
       this.addListener(this.timelineLayer, "pointerleave", onTimelineLeave);
       this.addListener(this.timelineTrack, "pointerleave", onTimelineLeave);
-      this.addListener(this.timelineBubbleStage, "pointerleave", onTimelineLeave);
 
       const onListPointerDown = (event) => {
         const target = event.target;
@@ -1148,7 +1143,7 @@
     }
 
     updateTimelineLayer() {
-      if (!this.timelineLayer || !this.timelineTrack || !this.timelineTooltip || !this.timelineBubbleStage) {
+      if (!this.timelineLayer || !this.timelineTrack || !this.timelineTooltip) {
         return;
       }
       const enabled = Boolean(this.settings.timelineModeEnabled);
@@ -1161,7 +1156,6 @@
         this.timelineLayerVisible = false;
         this.hideTimelineTooltip();
         this.timelineTrack.replaceChildren();
-        this.timelineBubbleStage.replaceChildren();
         return;
       }
 
@@ -1175,25 +1169,10 @@
       this.timelineLayer.classList.add("is-scrub-mode");
       this.timelineLayerVisible = true;
 
-      const helpers = timelineScrub || {};
-      const sampled = typeof helpers.sampleMarkerChunks === "function"
-        ? helpers.sampleMarkerChunks(chunks, 180)
-        : chunks.map((chunk, index) => ({ chunk, index, clustered: false }));
-      const fragment = document.createDocumentFragment();
-      for (let itemIndex = 0; itemIndex < sampled.length; itemIndex += 1) {
-        const item = sampled[itemIndex];
-        const chunk = item.chunk;
-        const percent = helpers.chunkToPercent ? helpers.chunkToPercent(chunk, duration) : Number.NaN;
-        if (!Number.isFinite(percent)) {
-          continue;
-        }
-        const marker = document.createElement("span");
-        marker.className = item.clustered ? "dc-timeline-marker is-clustered" : "dc-timeline-marker";
-        marker.style.left = percent.toFixed(3) + "%";
-        marker.dataset.index = String(item.index);
-        fragment.append(marker);
-      }
-      this.timelineTrack.replaceChildren(fragment);
+      // The full-width track is an invisible hit target only. The visible progress
+      // affordance lives on the MMOCC lens bubble so Timeline mode does not look
+      // like a separate random marker bar.
+      this.timelineTrack.replaceChildren();
       this.renderTimelineScrub();
     }
 
@@ -1260,7 +1239,7 @@
       }
       const target = event.target;
       if (target instanceof Element) {
-        const explicit = target.closest(".dc-timeline-bubble[data-index]");
+        const explicit = target.closest(".dc-timeline-lens[data-index]");
         if (explicit) {
           const explicitIndex = Number(explicit.getAttribute("data-index"));
           if (Number.isInteger(explicitIndex) && explicitIndex >= 0 && explicitIndex < this.timelineChunks.length) {
@@ -1274,13 +1253,12 @@
     }
 
     renderTimelineScrub() {
-      if (!this.timelineLayerVisible || !this.timelineLayer || !this.timelineBubbleStage || !timelineScrub) {
+      if (!this.timelineLayerVisible || !this.timelineLayer || !timelineScrub) {
         return;
       }
       const chunks = Array.isArray(this.timelineChunks) ? this.timelineChunks : [];
       const duration = Number(this.timelineDuration);
       if (!chunks.length || !Number.isFinite(duration) || duration <= 0) {
-        this.timelineBubbleStage.replaceChildren();
         return;
       }
       let focusIndex = this.timelineHoverIndex >= 0
@@ -1290,12 +1268,10 @@
         focusIndex = 0;
       }
       if (focusIndex < 0 || focusIndex >= chunks.length) {
-        this.timelineBubbleStage.replaceChildren();
         return;
       }
       const layerRect = this.timelineLayer.getBoundingClientRect();
       const layerWidth = Math.max(120, layerRect.width || 120);
-      this.timelineBubbleStage.replaceChildren();
       if (this.timelineTooltip) {
         const focusChunk = chunks[focusIndex];
         const focusPercent = timelineScrub.chunkToPercent(focusChunk, duration);
@@ -1312,29 +1288,11 @@
         this.timelineTooltip.style.left = Math.round(lensLeft) + "px";
         this.timelineTooltip.style.width = Math.round(lensWidth) + "px";
         this.timelineTooltip.style.setProperty("--dc-lens-progress", progressPercent.toFixed(2) + "%");
+        this.timelineTooltip.dataset.index = String(focusIndex);
         this.timelineTooltip.textContent = (Number.isFinite(focusStart) ? chunker.formatTimestamp(focusStart) + "  " : "") + focusText;
         this.timelineTooltip.classList.add("is-visible");
         this.timelineTooltip.classList.toggle("is-hover", this.timelineHoverIndex >= 0);
       }
-    }
-
-    createTimelineBubble(chunk, index, role, percent, layerWidth) {
-      const bubble = document.createElement("button");
-      bubble.type = "button";
-      bubble.className = "dc-timeline-bubble is-" + role;
-      bubble.dataset.index = String(index);
-      const start = timelineScrub.getChunkStart(chunk);
-      const text = timelineScrub.getChunkText(chunk);
-      bubble.textContent = (Number.isFinite(start) ? chunker.formatTimestamp(start) + "  " : "") + text;
-      bubble.setAttribute("aria-label", "Seek to caption at " + (Number.isFinite(start) ? chunker.formatTimestamp(start) : "this moment"));
-      const bubbleWidth = role === "current"
-        ? Math.min(580, Math.max(340, layerWidth * 0.46))
-        : Math.min(300, Math.max(190, layerWidth * 0.28));
-      const centerX = (percent / 100) * layerWidth;
-      const left = timelineScrub.clampBubbleLeft(centerX, bubbleWidth, layerWidth, 8);
-      bubble.style.left = Math.round(left) + "px";
-      bubble.style.width = Math.round(bubbleWidth) + "px";
-      return bubble;
     }
 
     closeToNearestCorner() {
