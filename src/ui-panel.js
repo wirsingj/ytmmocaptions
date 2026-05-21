@@ -753,15 +753,15 @@
         this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
       };
       const eased = Math.pow(blend, 0.72);
-      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.32);
-      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.5);
-      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.54);
-      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.5);
-      setAlpha("--dc-panel-fade-light", 0.002 + eased * 0.022);
-      setAlpha("--dc-panel-fade-shadow", 0.014 + eased * 0.24);
-      setAlpha("--dc-panel-fade-shadow-soft", (0.014 + eased * 0.24) * 0.62);
-      setAlpha("--dc-card-alpha", 0.2 + eased * 0.5);
-      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.54);
+      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.58);
+      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.78);
+      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.78);
+      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.82);
+      setAlpha("--dc-panel-fade-light", 0.002 + eased * 0.026);
+      setAlpha("--dc-panel-fade-shadow", 0.014 + eased * 0.28);
+      setAlpha("--dc-panel-fade-shadow-soft", (0.014 + eased * 0.28) * 0.62);
+      setAlpha("--dc-card-alpha", 0.2 + eased * 0.72);
+      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.68);
       this.root.style.opacity = "1";
     }
 
@@ -1006,8 +1006,8 @@
       return {
         left: 0,
         top: 0,
-        right: window.innerWidth,
-        bottom: window.innerHeight
+        right: 0,
+        bottom: 0
       };
     }
 
@@ -1262,9 +1262,12 @@
         this.timelineBubbleStage.replaceChildren();
         return;
       }
-      const focusIndex = this.timelineHoverIndex >= 0
+      let focusIndex = this.timelineHoverIndex >= 0
         ? this.timelineHoverIndex
         : timelineScrub.findChunkIndexAtTime(chunks, this.playbackTime, 0.35);
+      if (focusIndex < 0) {
+        focusIndex = 0;
+      }
       if (focusIndex < 0 || focusIndex >= chunks.length) {
         this.timelineBubbleStage.replaceChildren();
         return;
@@ -1277,7 +1280,7 @@
         const focusPercent = timelineScrub.chunkToPercent(focusChunk, duration);
         const focusStart = timelineScrub.getChunkStart(focusChunk);
         const focusText = timelineScrub.getChunkText(focusChunk);
-        const lensWidth = Math.min(620, Math.max(360, layerWidth * 0.48));
+        const lensWidth = Math.min(760, Math.max(420, layerWidth * 0.54));
         const lensCenter = Number.isFinite(this.timelineHoverTime)
           ? (this.timelineHoverTime / duration) * layerWidth
           : (Number.isFinite(focusPercent) ? (focusPercent / 100) * layerWidth : layerWidth / 2);
@@ -1285,17 +1288,8 @@
         this.timelineTooltip.style.left = Math.round(lensLeft) + "px";
         this.timelineTooltip.style.width = Math.round(lensWidth) + "px";
         this.timelineTooltip.textContent = (Number.isFinite(focusStart) ? chunker.formatTimestamp(focusStart) + "  " : "") + focusText;
-        this.timelineTooltip.classList.toggle("is-visible", this.timelineHoverIndex >= 0);
-      }
-
-      if (this.timelineHoverIndex < 0) {
-        const focusChunk = chunks[focusIndex];
-        const focusPercent = timelineScrub.chunkToPercent(focusChunk, duration);
-        if (Number.isFinite(focusPercent)) {
-          const fragment = document.createDocumentFragment();
-          fragment.append(this.createTimelineBubble(focusChunk, focusIndex, "current", focusPercent, layerWidth));
-          this.timelineBubbleStage.replaceChildren(fragment);
-        }
+        this.timelineTooltip.classList.add("is-visible");
+        this.timelineTooltip.classList.toggle("is-hover", this.timelineHoverIndex >= 0);
       }
     }
 
