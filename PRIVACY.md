@@ -22,6 +22,7 @@ The extension stores only local preference settings in extension storage:
 - text size;
 - panel theme preset and custom theme color;
 - panel position and size;
+- next-up preview height;
 - launcher/pill position;
 - panel open/closed state.
 

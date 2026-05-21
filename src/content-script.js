@@ -8,9 +8,10 @@
   const platform = app.platform;
   const pageContext = app.pageContext;
   const diagnostics = app.diagnostics || { record() {} };
+  const captionTimeline = app.captionTimeline;
   const DialoguePanel = app.DialoguePanel;
 
-  if (!transcript || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
+  if (!transcript || !captionTimeline || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
     console.warn("[Dialogue Captions] Missing required modules.");
     return;
   }
@@ -82,6 +83,7 @@
       this.liveDisplayBubbleCache = new Map();
       this.liveNextBubbleUid = 1;
       this.liveFuturePreviewChunks = [];
+      this.transcriptPreviewChunks = [];
     }
 
     async init() {
@@ -258,6 +260,9 @@
         if (isTypingContext(event.target)) {
           return false;
         }
+        if (!this.canRunShortcutSeek(liveVideo)) {
+          return false;
+        }
         return this.panel.isPointerInside();
       };
 
@@ -340,6 +345,10 @@
           this.captureLiveCaptionLine();
         }
       };
+      const onSeeking = () => {
+        this.handleDiscontinuousTimeMove("seeking");
+        this.scheduleSync();
+      };
       const onSeeked = () => {
         this.handleDiscontinuousTimeMove("seeked");
         this.scheduleSync();
@@ -355,10 +364,12 @@
       };
 
       boundVideo.addEventListener("timeupdate", onTimeUpdate);
+      boundVideo.addEventListener("seeking", onSeeking);
       boundVideo.addEventListener("seeked", onSeeked);
       boundVideo.addEventListener("loadedmetadata", onLoadedMetadata);
 
       this.videoCleanupFns.push(() => boundVideo.removeEventListener("timeupdate", onTimeUpdate));
+      this.videoCleanupFns.push(() => boundVideo.removeEventListener("seeking", onSeeking));
       this.videoCleanupFns.push(() => boundVideo.removeEventListener("seeked", onSeeked));
       this.videoCleanupFns.push(() => boundVideo.removeEventListener("loadedmetadata", onLoadedMetadata));
     }
@@ -409,6 +420,18 @@
 
     normalizeCaptionToken(token) {
       return captionText.normalizeToken(token);
+    }
+
+    normalizeCaptionTokens(tokens) {
+      const source = Array.isArray(tokens) ? tokens : [];
+      return source
+        .map((token) => ({
+          text: String(token && token.text ? token.text : "").trim(),
+          start: Number(token && token.start),
+          end: Number(token && token.end)
+        }))
+        .filter((token) => token.text && Number.isFinite(token.start) && Number.isFinite(token.end) && token.end > token.start)
+        .sort((left, right) => left.start - right.start);
     }
 
     trimLiveChunkAgainstPrevious(previousText, chunk) {
@@ -490,6 +513,8 @@
       }
       const fragments = [];
       let earliestStart = Number.POSITIVE_INFINITY;
+      let latestEnd = 0;
+      let tokens = [];
 
       for (let index = 0; index < this.video.textTracks.length; index += 1) {
         const track = this.video.textTracks[index];
@@ -519,6 +544,8 @@
           if (text) {
             fragments.push(text);
             earliestStart = Math.min(earliestStart, start);
+            latestEnd = Math.max(latestEnd, end);
+            tokens = tokens.concat(this.createCueTokensFromText(text, start, end));
           }
         }
       }
@@ -528,8 +555,26 @@
       }
       return {
         text: merged,
-        startTime: Number.isFinite(earliestStart) ? earliestStart : Number.NaN
+        startTime: Number.isFinite(earliestStart) ? earliestStart : Number.NaN,
+        endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : Number.NaN,
+        tokens: tokens
       };
+    }
+
+    createCueTokensFromText(text, start, end) {
+      const words = String(text || "").split(/\s+/).filter(Boolean);
+      const cueStart = Number(start);
+      const cueEnd = Number(end);
+      if (!words.length || !Number.isFinite(cueStart) || !Number.isFinite(cueEnd) || cueEnd <= cueStart) {
+        return [];
+      }
+      const duration = Math.max(0.25, cueEnd - cueStart);
+      const each = duration / words.length;
+      return words.map((word, index) => ({
+        text: word,
+        start: cueStart + each * index,
+        end: index === words.length - 1 ? cueEnd : cueStart + each * (index + 1)
+      }));
     }
 
     readTextTrackWindowSnapshot(bucketIndex) {
@@ -578,7 +623,9 @@
           }
           collected.push({
             start: start,
-            text: text
+            end: end,
+            text: text,
+            tokens: this.createCueTokensFromText(text, start, end)
           });
         }
       }
@@ -589,8 +636,12 @@
 
       collected.sort((left, right) => left.start - right.start);
       let merged = "";
+      let latestEnd = 0;
+      let tokens = [];
       for (let index = 0; index < collected.length; index += 1) {
         merged = this.mergeLiveCaptionText(merged, collected[index].text);
+        latestEnd = Math.max(latestEnd, Number(collected[index].end || 0));
+        tokens = tokens.concat(collected[index].tokens || []);
       }
       const normalized = this.normalizeLiveCaptionText(merged);
       if (!normalized) {
@@ -599,7 +650,9 @@
 
       return {
         text: normalized,
-        startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart
+        startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart,
+        endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : bucketEnd,
+        tokens: tokens
       };
     }
 
@@ -658,6 +711,39 @@
       }
       this.liveLastObservedTime = currentTime;
       this.liveOverlayUtterance = null;
+    }
+
+    isYouTubeAdPlaybackActive() {
+      const player = document.getElementById("movie_player");
+      if (player && player.classList) {
+        const adClasses = ["ad-showing", "ad-interrupting", "ytp-ad-player-overlay"];
+        for (let index = 0; index < adClasses.length; index += 1) {
+          if (player.classList.contains(adClasses[index])) {
+            return true;
+          }
+        }
+      }
+      return Boolean(
+        document.querySelector(
+          ".ytp-ad-module, .ytp-ad-player-overlay, .ytp-ad-skip-button, .ytp-ad-preview-container"
+        )
+      );
+    }
+
+    canRunShortcutSeek(video) {
+      const targetVideo = video || this.refreshVideoReference();
+      if (!targetVideo || this.destroyed) {
+        return false;
+      }
+      if (this.isYouTubeAdPlaybackActive()) {
+        return false;
+      }
+      const readyState = Number(targetVideo.readyState || 0);
+      const duration = Number(targetVideo.duration);
+      if (readyState < 1 || !Number.isFinite(duration) || duration <= 0) {
+        return false;
+      }
+      return true;
     }
 
     suppressLiveCaptureForSeek(targetTime) {
@@ -735,12 +821,10 @@
       this.ensureChunkVisible(action.index);
       this.pendingSeekFocus = {
         index: action.index,
-        minTime: Math.max(0, Math.min(action.targetTime, Number(chunk.start || 0) - 0.55)),
-        maxTime: Math.max(Number(chunk.end || 0), Number(chunk.start || 0) + this.getKeyboardStepSeconds()),
+        minTime: Math.max(0, Math.min(action.targetTime, seekStart - 0.55)),
+        maxTime: Math.max(seekStart + 0.25, Number(chunk.end || seekStart + 0.25)),
         expiresAt: Date.now() + 2600
       };
-      this.activeIndex = action.index;
-      this.panel.setActiveIndex(action.index, { ensureVisible: action.forceScroll });
       if (typeof this.panel.setPlaybackTime === "function") {
         this.panel.setPlaybackTime(action.targetTime, { forceGlowReset: action.forceGlowReset });
       }
@@ -798,8 +882,12 @@
         return false;
       }
       const bucketStart = bucketIndex * this.getLiveWindowSeconds();
-      const bucketEnd = this.getLiveWindowEnd(bucketStart);
+      const explicitEnd = Number(opts.endTime);
+      const bucketEnd = Number.isFinite(explicitEnd) && explicitEnd > sampleTime
+        ? explicitEnd
+        : this.getLiveWindowEnd(bucketStart);
       const sampleAnchor = Number.isFinite(sampleTime) ? Math.max(0, Number(sampleTime)) : bucketStart;
+      const tokens = Array.isArray(opts.tokens) ? opts.tokens : this.createCueTokensFromText(normalized, sampleAnchor, bucketEnd);
       const bucketStartMs = Math.round(bucketStart * 1000);
       const existingIndex = this.cues.findIndex(
         (cue) => Math.round(Math.max(0, Number(cue.start || 0)) * 1000) === bucketStartMs
@@ -817,7 +905,8 @@
           anchorStart: Number.isFinite(existingCue.anchorStart)
             ? Math.min(Number(existingCue.anchorStart), sampleAnchor)
             : sampleAnchor,
-          text: merged
+          text: merged,
+          tokens: this.mergeCueTokens(existingCue.tokens, tokens)
         };
         return true;
       }
@@ -826,7 +915,8 @@
         start: bucketStart,
         end: bucketEnd,
         anchorStart: sampleAnchor,
-        text: normalized
+        text: normalized,
+        tokens: tokens
       });
       this.cues.sort((left, right) => left.start - right.start);
       return true;
@@ -856,8 +946,14 @@
         if (!snapshot || !snapshot.text) {
           continue;
         }
-        const sampleTime = bucketIndex * this.getLiveWindowSeconds();
-        if (this.upsertLiveBucketCue(snapshot.text, sampleTime, { force: true })) {
+        const sampleTime = Number.isFinite(snapshot.startTime)
+          ? Math.max(0, Number(snapshot.startTime))
+          : bucketIndex * this.getLiveWindowSeconds();
+        if (this.upsertLiveBucketCue(snapshot.text, sampleTime, {
+          force: true,
+          endTime: snapshot.endTime,
+          tokens: snapshot.tokens
+        })) {
           changed = true;
         }
       }
@@ -889,16 +985,17 @@
         if (!snapshot || !snapshot.text) {
           continue;
         }
-        const start = bucketIndex * this.getLiveWindowSeconds();
-        const end = this.getLiveWindowEnd(start);
-        const seekStart = Number.isFinite(snapshot.startTime) ? Math.max(0, Number(snapshot.startTime)) : start;
+        const bucketStart = bucketIndex * this.getLiveWindowSeconds();
+        const seekStart = Number.isFinite(snapshot.startTime) ? Math.max(0, Number(snapshot.startTime)) : bucketStart;
+        const end = Number.isFinite(snapshot.endTime) ? Math.max(seekStart + 0.25, Number(snapshot.endTime)) : this.getLiveWindowEnd(bucketStart);
         previews.push(this.createBubbleRecord({
           sourceId: "future-" + bucketIndex,
-          start: start,
+          start: seekStart,
           end: end,
           seekStart: seekStart,
           locked: true,
-          text: snapshot.text
+          text: snapshot.text,
+          tokens: snapshot.tokens
         }));
       }
       this.liveFuturePreviewChunks = previews;
@@ -966,13 +1063,24 @@
       const activeSnapshot = this.readTextTrackSnapshotAtCurrentTime();
       let text = "";
       let anchorTime = currentBucketIndex * this.getLiveWindowSeconds();
+      let endTime = Number.NaN;
+      let timingTokens = [];
       let usedOverlayOnlyPath = false;
 
       if (windowSnapshot && windowSnapshot.text) {
         this.liveOverlayUtterance = null;
         text = windowSnapshot.text;
+        if (Number.isFinite(windowSnapshot.startTime)) {
+          anchorTime = Math.max(0, Number(windowSnapshot.startTime));
+        }
+        endTime = Number(windowSnapshot.endTime);
+        timingTokens = this.normalizeCaptionTokens(windowSnapshot.tokens);
         if (activeSnapshot && activeSnapshot.text) {
           text = this.mergeLiveCaptionText(text, activeSnapshot.text);
+          endTime = Number.isFinite(activeSnapshot.endTime)
+            ? Math.max(Number(endTime || 0), Number(activeSnapshot.endTime))
+            : endTime;
+          timingTokens = this.mergeCueTokens(timingTokens, activeSnapshot.tokens);
           this.updateLiveOverlayAnchorOffset(now, activeSnapshot.startTime);
         }
       } else if (activeSnapshot && activeSnapshot.text) {
@@ -983,6 +1091,8 @@
         } else {
           anchorTime = now;
         }
+        endTime = Number(activeSnapshot.endTime);
+        timingTokens = this.normalizeCaptionTokens(activeSnapshot.tokens);
         this.updateLiveOverlayAnchorOffset(now, activeSnapshot.startTime);
         if (!overlaySuppressed) {
           const overlayText = this.readVisibleCaptionText();
@@ -1043,7 +1153,10 @@
         this.liveOverlayUtterance.lastSeenAt = now;
       }
 
-      const changed = this.upsertLiveBucketCue(normalized, anchorTime);
+      const changed = this.upsertLiveBucketCue(normalized, anchorTime, {
+        endTime: endTime,
+        tokens: timingTokens
+      });
       if (changed || backfilled) {
         this.rebuildChunks();
         this.syncActiveChunk(true);
@@ -1294,6 +1407,9 @@
       this.liveLastFutureBackfillAt = 0;
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveFuturePreviewChunks = [];
+      if (!Array.isArray(this.transcriptPreviewChunks)) {
+        this.transcriptPreviewChunks = [];
+      }
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
@@ -1318,6 +1434,7 @@
       this.liveLastFutureBackfillAt = 0;
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveFuturePreviewChunks = [];
+      this.transcriptPreviewChunks = [];
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.liveBubbles = [];
@@ -1384,6 +1501,9 @@
     }
 
     canShowFuturePreviewChunks() {
+      if (Array.isArray(this.transcriptPreviewChunks) && this.transcriptPreviewChunks.length) {
+        return true;
+      }
       if (this.liveCaptureEnabled) {
         return Array.isArray(this.liveFuturePreviewChunks) && this.liveFuturePreviewChunks.length > 0;
       }
@@ -1400,6 +1520,19 @@
     getFuturePreviewChunks() {
       if (!this.canShowFuturePreviewChunks()) {
         return [];
+      }
+      const transcriptSource = Array.isArray(this.transcriptPreviewChunks) && this.transcriptPreviewChunks.length
+        ? this.transcriptPreviewChunks
+        : [];
+      if (transcriptSource.length) {
+        const currentTime = this.video ? Number(this.video.currentTime || 0) : 0;
+        const currentIndex = this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
+        const previewStart = Math.max(0, currentIndex + 1);
+        return transcriptSource.slice(previewStart, previewStart + 4).map((chunk, offset) => ({
+          ...chunk,
+          actualIndex: previewStart + offset,
+          futurePreviewOnly: true
+        }));
       }
       if (this.liveCaptureEnabled) {
         const previews = Array.isArray(this.liveFuturePreviewChunks) ? this.liveFuturePreviewChunks : [];
@@ -1421,6 +1554,70 @@
       return previews;
     }
 
+    findTimelineChunkIndex(chunks, currentTime, toleranceSeconds) {
+      const source = Array.isArray(chunks) ? chunks : [];
+      if (!source.length) {
+        return -1;
+      }
+      const now = Number(currentTime);
+      if (!Number.isFinite(now)) {
+        return -1;
+      }
+      const tolerance = Math.max(0, Number.isFinite(Number(toleranceSeconds)) ? Number(toleranceSeconds) : 0.35);
+      let previousIndex = -1;
+      for (let index = 0; index < source.length; index += 1) {
+        const chunk = source[index];
+        const start = this.getChunkActiveStart(chunk);
+        const end = Number(chunk && chunk.end);
+        if (!Number.isFinite(start)) {
+          continue;
+        }
+        if (now + tolerance < start) {
+          return previousIndex;
+        }
+        if (Number.isFinite(end) && now >= start - tolerance && now < end + tolerance) {
+          return index;
+        }
+        if (now >= start - tolerance) {
+          previousIndex = index;
+        }
+      }
+      return previousIndex;
+    }
+
+    findPlaybackActiveIndex(chunks, currentTime) {
+      const source = Array.isArray(chunks) ? chunks : [];
+      const now = Number(currentTime);
+      if (!source.length || !Number.isFinite(now)) {
+        return -1;
+      }
+      const startTolerance = 0.08;
+      let index = -1;
+      for (let candidate = 0; candidate < source.length; candidate += 1) {
+        const start = this.getChunkActiveStart(source[candidate]);
+        if (!Number.isFinite(start)) {
+          continue;
+        }
+        if (start <= now + startTolerance) {
+          index = candidate;
+          continue;
+        }
+        break;
+      }
+      if (index < 0) {
+        return -1;
+      }
+      const chunk = source[index];
+      const start = this.getChunkActiveStart(chunk);
+      const end = Math.max(start + 0.25, Number(chunk && chunk.end ? chunk.end : start + 0.25));
+      const nextStart =
+        index < source.length - 1
+          ? this.getChunkActiveStart(source[index + 1])
+          : Number.POSITIVE_INFINITY;
+      const activeUntil = Number.isFinite(nextStart) ? nextStart : end + 0.75;
+      return now >= start - startTolerance && now <= activeUntil + 0.25 ? index : -1;
+    }
+
     updateFuturePreviewChunks() {
       if (this.panel && typeof this.panel.setFutureChunks === "function") {
         this.panel.setFutureChunks(this.getFuturePreviewChunks());
@@ -1438,28 +1635,18 @@
       }
       const currentTime = this.video.currentTime || 0;
       const pending = this.pendingSeekFocus;
-      if (
-        pending &&
-        Date.now() <= pending.expiresAt &&
-        pending.index >= 0 &&
-        pending.index < sourceChunks.length &&
-        currentTime >= pending.minTime &&
-        currentTime <= pending.maxTime
-      ) {
+      if (pending && Date.now() <= pending.expiresAt && pending.index >= 0 && pending.index < sourceChunks.length) {
         this.ensureChunkVisible(pending.index);
-        this.activeIndex = Math.max(0, Math.min(pending.index, this.chunks.length - 1));
-        this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
-        if (typeof this.panel.setPlaybackTime === "function") {
-          this.panel.setPlaybackTime(this.getTimelineDisplayTime(currentTime, sourceChunks[pending.index], pending.index));
-        }
-        this.triggerBubbleStartFlashIfReady(sourceChunks[pending.index], this.activeIndex, currentTime);
-        return;
+      } else {
+        this.pendingSeekFocus = null;
       }
-      this.pendingSeekFocus = null;
-      const nextIndex = chunker.findActiveChunkIndexAtTime(sourceChunks, currentTime, 0.9);
+      const nextIndex = this.findPlaybackActiveIndex(sourceChunks, currentTime);
       if (nextIndex < 0) {
         this.activeIndex = -1;
         this.panel.setActiveIndex(-1);
+        if (typeof this.panel.setPlaybackTime === "function") {
+          this.panel.setPlaybackTime(currentTime, { forceGlowReset: true });
+        }
         this.updateFuturePreviewChunks();
         return;
       }
@@ -1524,7 +1711,7 @@
         if (signal.aborted || this.destroyed || this.settings.panelClosed || !this.liveCaptureEnabled) {
           return;
         }
-        const response = await transcript.loadTranscript(window.location.href, signal, {
+        const response = await captionTimeline.acquireFullTimeline(window.location.href, signal, {
           videoElement: this.video
         });
         if (
@@ -1544,9 +1731,10 @@
         this.cues = response.cues;
         this.revealedChunkCount = 0;
         this.rebuildChunks();
+        this.transcriptPreviewChunks = this.allChunks.slice();
         this.syncActiveChunk(true);
         if (this.panel) {
-          this.panel.setStatus("Full transcript loaded. Next up previews are available.", true);
+          this.panel.setStatus("Full caption timeline loaded. Next up previews are available.", true);
         }
       } catch (error) {
         if (!error || error.name !== "AbortError") {
@@ -1576,7 +1764,7 @@
         return;
       }
       const response = await Promise.race([
-        transcript.loadTranscript(url, signal, {
+        captionTimeline.acquireFullTimeline(url, signal, {
           videoElement: this.video
         }),
         new Promise((resolve) => {
@@ -1632,9 +1820,11 @@
       this.cues = response.cues;
       this.revealedChunkCount = 0;
       this.rebuildChunks();
+      this.transcriptPreviewChunks = this.allChunks.slice();
       diagnostics.record("captions:transcript-loaded", {
         cueCount: response.cues.length,
-        mode: response.mode || "direct transcript mode"
+        mode: response.mode || response.sourceType || "direct transcript mode",
+        futureCueCount: response.futureCueCount || 0
       });
       if (this.panel) {
         const stepSeconds = this.getKeyboardStepSeconds();
@@ -1642,7 +1832,7 @@
           "Loaded " +
             this.chunks.length +
             " chunks (" +
-            (response.mode || "direct transcript mode") +
+            (response.mode || response.sourceType || "caption timeline") +
             "). Hover panel + Space=+" +
             stepSeconds +
             "s, Shift+Space=-" +
@@ -1672,18 +1862,22 @@
         const bucketIndex = this.getLiveWindowIndex(cueStart);
         const bucketStart = bucketIndex * stepSeconds;
         const bucketEnd = bucketStart + stepSeconds;
+        const cueEnd = Math.max(cueStart + 0.25, Number(cue && cue.end ? cue.end : bucketEnd));
+        const cueTokens = this.normalizeCaptionTokens(cue && cue.tokens);
         const existing = buckets.get(bucketIndex);
         if (!existing) {
           buckets.set(bucketIndex, {
             start: bucketStart,
-            end: bucketEnd,
+            end: Math.max(bucketEnd, cueEnd),
             seekStart: cueAnchor,
-            text: text
+            text: text,
+            tokens: cueTokens
           });
           continue;
         }
         existing.text = this.mergeLiveCaptionText(existing.text, text);
-        existing.end = Math.max(existing.end, bucketEnd);
+        existing.end = Math.max(existing.end, bucketEnd, cueEnd);
+        existing.tokens = this.mergeCueTokens(existing.tokens, cueTokens);
         if (Number.isFinite(cueAnchor)) {
           existing.seekStart = Math.min(Number(existing.seekStart || cueAnchor), cueAnchor);
         }
@@ -1705,7 +1899,8 @@
           start: bucket.start,
           end: bucket.end,
           seekStart: Number.isFinite(bucket.seekStart) ? bucket.seekStart : bucket.start,
-          text: text
+          text: text,
+          tokens: bucket.tokens || []
         });
       }
       return chunks;
@@ -1726,10 +1921,21 @@
       if (this.isCaptionStageDirection(previousChunk.text) || this.isCaptionStageDirection(nextChunk.text)) {
         return true;
       }
+      const limits = chunker.CONVERSATIONAL_CHUNKING && chunker.CONVERSATIONAL_CHUNKING.live
+        ? chunker.CONVERSATIONAL_CHUNKING.live
+        : {
+            tinyFragmentChars: 90,
+            comfortableChars: 300,
+            hardChars: 430,
+            lyricChars: 240,
+            hardPauseSeconds: 2.3,
+            maxBucketsWithoutSentence: 3,
+            maxBucketsWithSentence: 3
+          };
       const previousEnd = Number(previousChunk.end || 0);
       const nextStart = Number(nextChunk.start || 0);
       const gap = nextStart - previousEnd;
-      const hasRealPause = Number.isFinite(gap) && gap >= 2.4;
+      const hasRealPause = Number.isFinite(gap) && gap >= limits.hardPauseSeconds;
       if (hasRealPause) {
         return true;
       }
@@ -1742,19 +1948,71 @@
         captionText.looksLyricLike(nextChunk.text) ||
         captionText.looksLyricLike(combined);
 
-      if (lyricLike && (bucketCount >= 2 || previousLength >= 180 || combined.length >= 260)) {
+      if (lyricLike && (bucketCount >= 2 || previousLength >= 160 || combined.length >= limits.lyricChars)) {
         return true;
       }
 
       if (!this.textEndsNaturally(previousChunk.text)) {
-        return bucketCount >= 3 || previousLength >= 340 || combined.length >= 430;
+        return (
+          bucketCount >= limits.maxBucketsWithoutSentence ||
+          previousLength >= limits.comfortableChars ||
+          combined.length >= limits.hardChars
+        );
       }
 
-      if (bucketCount >= 2 || previousLength >= 220 || combined.length >= 320) {
+      const shouldMergeTinyCompleteThought =
+        previousLength < limits.tinyFragmentChars &&
+        combined.length <= limits.comfortableChars;
+      if (shouldMergeTinyCompleteThought) {
+        return false;
+      }
+
+      if (
+        bucketCount >= limits.maxBucketsWithSentence ||
+        previousLength >= limits.comfortableChars ||
+        combined.length >= limits.hardChars
+      ) {
         return true;
       }
 
-      return previousLength >= 150 || combined.length >= 260;
+      return false;
+    }
+
+    mergeCueTokens(existingTokens, nextTokens) {
+      const combined = []
+        .concat(Array.isArray(existingTokens) ? existingTokens : [])
+        .concat(Array.isArray(nextTokens) ? nextTokens : [])
+        .filter((token) => token && token.text && Number.isFinite(Number(token.start)) && Number.isFinite(Number(token.end)));
+      combined.sort((left, right) => Number(left.start) - Number(right.start));
+      const output = [];
+      for (let index = 0; index < combined.length; index += 1) {
+        const token = combined[index];
+        const previous = output[output.length - 1];
+        if (
+          previous &&
+          this.normalizeCaptionToken(previous.text) === this.normalizeCaptionToken(token.text) &&
+          Math.abs(Number(previous.start) - Number(token.start)) < 0.08
+        ) {
+          previous.end = Math.max(Number(previous.end), Number(token.end));
+          continue;
+        }
+        output.push({
+          text: String(token.text),
+          start: Number(token.start),
+          end: Number(token.end)
+        });
+      }
+      return output;
+    }
+
+    sliceTokensForText(tokens, wordOffset, wordCount) {
+      const source = this.normalizeCaptionTokens(tokens);
+      const offset = Math.max(0, Number.isFinite(Number(wordOffset)) ? Math.floor(Number(wordOffset)) : 0);
+      const count = Math.max(0, Number.isFinite(Number(wordCount)) ? Math.floor(Number(wordCount)) : 0);
+      if (!source.length || count <= 0) {
+        return [];
+      }
+      return source.slice(offset, offset + count);
     }
 
     getLiveChunkBucketIndex(chunk) {
@@ -1781,6 +2039,7 @@
         bucketTexts: { [bucketIndex]: this.cleanCaptionCandidateText(chunk.text) },
         bucketStarts: { [bucketIndex]: Number(chunk.start || 0) },
         bucketEnds: { [bucketIndex]: Number(chunk.end || 0) },
+        bucketTokens: { [bucketIndex]: this.normalizeCaptionTokens(chunk.tokens) },
         bucketSeekStarts: {
           [bucketIndex]: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0)
         }
@@ -1804,6 +2063,7 @@
       let start = Number.POSITIVE_INFINITY;
       let end = 0;
       let seekStart = Number.POSITIVE_INFINITY;
+      let tokens = [];
       for (let index = 0; index < ordered.length; index += 1) {
         const bucketIndex = ordered[index];
         const bucketText = this.cleanCaptionCandidateText(bubble.bucketTexts ? bubble.bucketTexts[bucketIndex] : "");
@@ -1811,11 +2071,13 @@
         start = Math.min(start, Number(bubble.bucketStarts && bubble.bucketStarts[bucketIndex]));
         end = Math.max(end, Number(bubble.bucketEnds && bubble.bucketEnds[bucketIndex]));
         seekStart = Math.min(seekStart, Number(bubble.bucketSeekStarts && bubble.bucketSeekStarts[bucketIndex]));
+        tokens = this.mergeCueTokens(tokens, bubble.bucketTokens ? bubble.bucketTokens[bucketIndex] : []);
       }
       bubble.text = this.cleanCaptionCandidateText(text);
       bubble.start = Number.isFinite(seekStart) ? seekStart : Number.isFinite(start) ? start : 0;
       bubble.seekStart = bubble.start;
       bubble.end = Math.max(bubble.start + 0.25, Number.isFinite(end) ? end : bubble.start + 0.25);
+      bubble.tokens = this.normalizeCaptionTokens(tokens);
     }
 
     appendBucketToLiveBubble(bubble, chunk) {
@@ -1829,6 +2091,7 @@
       bubble.bucketTexts[bucketIndex] = this.cleanCaptionCandidateText(chunk.text);
       bubble.bucketStarts[bucketIndex] = Number(chunk.start || 0);
       bubble.bucketEnds[bucketIndex] = Number(chunk.end || 0);
+      bubble.bucketTokens[bucketIndex] = this.normalizeCaptionTokens(chunk.tokens);
       bubble.bucketSeekStarts[bucketIndex] = Number.isFinite(chunk.seekStart)
         ? Number(chunk.seekStart)
         : Number(chunk.start || 0);
@@ -1971,7 +2234,8 @@
             end: end,
             seekStart: alignedStart,
             locked: false,
-            text: text
+            text: text,
+            tokens: bubble.tokens
           }));
           minNextStart = alignedStart + 0.05;
           continue;
@@ -2010,7 +2274,7 @@
 
     createLockedDisplayBubbles(bubble) {
       const records = [];
-      const maxLiveBubbleChars = 240;
+      const maxLiveBubbleChars = 300;
       const sourceId = bubble && bubble.uid ? bubble.uid : "";
       const text = this.cleanCaptionCandidateText(bubble && bubble.text ? bubble.text : "");
       if (!bubble || !text) {
@@ -2029,7 +2293,8 @@
           end: Math.max(alignedStart + 0.25, Number(bubble.end || alignedStart + 0.25)),
           seekStart: alignedStart,
           locked: true,
-          text: text
+          text: text,
+          tokens: this.sliceTokensForText(bubble.tokens, 0, text.split(/\s+/).filter(Boolean).length)
         }));
         return records;
       }
@@ -2049,7 +2314,8 @@
           end: Math.max(alignedStart + 0.25, partEnd),
           seekStart: alignedStart,
           locked: true,
-          text: parts[partIndex]
+          text: parts[partIndex],
+          tokens: this.sliceTokensForText(bubble.tokens, wordsBefore, partWords)
         }));
         wordsBefore += partWords;
       }
@@ -2117,8 +2383,8 @@
     polishFixedWindowChunks(chunks) {
       const source = Array.isArray(chunks) ? chunks : [];
       const merged = [];
-      const minComfortableChars = 72;
-      const maxComfortableChars = 260;
+      const minComfortableChars = 96;
+      const maxComfortableChars = 340;
 
       for (let index = 0; index < source.length; index += 1) {
         const chunk = source[index];
@@ -2187,6 +2453,10 @@
       return Math.max(0, Number(chunk.start || 0));
     }
 
+    getChunkActiveStart(chunk) {
+      return this.getChunkSeekStart(chunk);
+    }
+
     getCurrentVideoElement() {
       const direct = document.querySelector("video.html5-main-video");
       if (direct instanceof HTMLVideoElement) {
@@ -2216,15 +2486,15 @@
         return false;
       }
       const chunk = chunks[index];
-      const chunkStart = Math.max(0, Number(chunk && chunk.start ? chunk.start : 0));
+      const chunkStart = this.getChunkActiveStart(chunk);
       const chunkEnd = Math.max(chunkStart + 0.25, Number(chunk && chunk.end ? chunk.end : chunkStart + 0.25));
       const nextStart =
         index < chunks.length - 1
-          ? Math.max(chunkStart + 0.001, Number(chunks[index + 1] && chunks[index + 1].start ? chunks[index + 1].start : chunkEnd))
+          ? Math.max(chunkStart + 0.001, this.getChunkActiveStart(chunks[index + 1]))
           : Number.POSITIVE_INFINITY;
       const effectiveEnd = Math.max(chunkEnd, nextStart === Number.POSITIVE_INFINITY ? chunkEnd : nextStart);
-      const leadTolerance = 0.45;
-      const trailTolerance = Math.max(1.2, this.getKeyboardStepSeconds() * 0.55);
+      const leadTolerance = 0.08;
+      const trailTolerance = 0.75;
       return now >= chunkStart - leadTolerance && now <= effectiveEnd + trailTolerance;
     }
 
@@ -2236,7 +2506,7 @@
       if (!Number.isFinite(target)) {
         return -1;
       }
-      const active = chunker.findActiveChunkIndexAtTime(chunks, target, 0.9);
+      const active = this.findPlaybackActiveIndex(chunks, target);
       if (active >= 0) {
         return active;
       }
@@ -2256,7 +2526,7 @@
 
     handleSpaceShortcut(isBackward) {
       const video = this.refreshVideoReference();
-      if (!video) {
+      if (!this.canRunShortcutSeek(video)) {
         return;
       }
 
@@ -2299,7 +2569,7 @@
       target = Math.max(0, Math.min(upperBound, target));
       if (flashIndex >= 0) {
         const action = this.beginTimelineAction({
-          source: "rewind",
+          source: isBackward ? "rewind" : "forward",
           targetTime: target,
           index: flashIndex,
           seekStart: flashAt,

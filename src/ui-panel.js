@@ -104,12 +104,14 @@
       this.playbackTime = Number.NaN;
       this.lastGlowIndex = -1;
       this.lastGlowWordStart = -1;
+      this.lastGlowWordEnd = -1;
       this.currentWindowStart = -1;
       this.currentWindowEnd = -1;
       this.currentFutureCount = -1;
       this.currentFutureCollapsed = false;
       this.dragState = null;
       this.resizeState = null;
+      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.launcherSuppressClickUntil = 0;
       this.resizeHandles = [];
@@ -121,6 +123,8 @@
       this.activePointerCleanupFns = [];
       this.layoutRefreshTimers = [];
       this.rafRenderId = 0;
+      this.resizeMoveRafId = 0;
+      this.futureDividerRafId = 0;
       this.statusTimer = 0;
     }
 
@@ -307,6 +311,7 @@
       }
       this.cleanupFns.length = 0;
       this.cleanupActivePointerListeners();
+      this.cancelResizeFrames();
       if (this.root) {
         this.root.remove();
         this.root = null;
@@ -355,7 +360,20 @@
       }
       this.dragState = null;
       this.resizeState = null;
+      this.futureDividerDragState = null;
       this.launcherDragState = null;
+      this.cancelResizeFrames();
+    }
+
+    cancelResizeFrames() {
+      if (this.resizeMoveRafId) {
+        platform.cancelFrame(this.resizeMoveRafId);
+        this.resizeMoveRafId = 0;
+      }
+      if (this.futureDividerRafId) {
+        platform.cancelFrame(this.futureDividerRafId);
+        this.futureDividerRafId = 0;
+      }
     }
 
     bindEvents() {
@@ -451,6 +469,18 @@
         }
       };
       this.addListener(this.listViewport, "click", onListClick);
+
+      const onListPointerDown = (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const divider = target.closest(".dc-future-divider");
+        if (divider) {
+          this.handleFutureDividerPointerDown(event, divider);
+        }
+      };
+      this.addListener(this.listViewport, "pointerdown", onListPointerDown);
 
       const onJumpBottom = () => {
         if (this.chunks.length > 0) {
@@ -589,6 +619,7 @@
         }
         this.themeColorInput.disabled = this.getThemeName() !== "custom";
       }
+      this.applyFuturePreviewHeight();
       if (this.stickToBottom) {
         this.scrollToBottom();
       }
@@ -816,9 +847,22 @@
         customThemeColor: defaults.customThemeColor || "#ded6c3",
         panelPosition: null,
         panelSize: null,
+        futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : 150,
         launcherPosition: null,
         panelClosed: false
       });
+    }
+
+    applyFuturePreviewHeight() {
+      if (!this.root) {
+        return;
+      }
+      const savedHeight = Number(this.settings.futurePreviewHeight);
+      const defaultHeight = settingsStore && settingsStore.DEFAULTS ? Number(settingsStore.DEFAULTS.futurePreviewHeight) : 150;
+      const panelHeight = this.root.getBoundingClientRect().height || 0;
+      const maxByPanel = panelHeight ? Math.max(78, Math.min(360, Math.round(panelHeight * 0.46))) : 360;
+      const nextHeight = Math.max(52, Math.min(maxByPanel, Number.isFinite(savedHeight) ? savedHeight : defaultHeight || 150));
+      this.root.style.setProperty("--dc-future-preview-height", Math.round(nextHeight) + "px");
     }
 
     getYouTubeFrameRect() {
@@ -1089,10 +1133,13 @@
         corner: corner,
         startX: event.clientX,
         startY: event.clientY,
+        latestX: event.clientX,
+        latestY: event.clientY,
         startLeft: rect.left,
         startTop: rect.top,
         startWidth: rect.width,
-        startHeight: rect.height
+        startHeight: rect.height,
+        frameBounds: this.getPanelFrameRect()
       };
 
       const onMove = (moveEvent) => this.handleResizeMove(moveEvent);
@@ -1114,13 +1161,106 @@
       event.stopPropagation();
     }
 
+    handleFutureDividerPointerDown(event, divider) {
+      if (!this.root || !divider) {
+        return;
+      }
+      const section = divider.closest(".dc-future-section");
+      if (!(section instanceof HTMLElement)) {
+        return;
+      }
+      const sectionRect = section.getBoundingClientRect();
+      const panelRect = this.root.getBoundingClientRect();
+      this.futureDividerDragState = {
+        startY: event.clientY,
+        startHeight: sectionRect.height,
+        maxHeight: Math.max(78, Math.min(360, Math.round(panelRect.height * 0.5))),
+        latestY: event.clientY
+      };
+
+      const onMove = (moveEvent) => this.handleFutureDividerMove(moveEvent);
+      let cleanupPointerListeners = null;
+      const onUp = () => {
+        if (cleanupPointerListeners) {
+          cleanupPointerListeners();
+        }
+        this.finishFutureDividerDrag();
+      };
+      cleanupPointerListeners = this.trackActivePointerListeners(() => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      });
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    handleFutureDividerMove(event) {
+      if (!this.root || !this.futureDividerDragState) {
+        return;
+      }
+      this.futureDividerDragState.latestY = event.clientY;
+      if (this.futureDividerRafId) {
+        return;
+      }
+      this.futureDividerRafId = platform.requestFrame(() => {
+        this.futureDividerRafId = 0;
+        this.applyFutureDividerMoveFrame();
+      });
+    }
+
+    applyFutureDividerMoveFrame() {
+      if (!this.root || !this.futureDividerDragState) {
+        return;
+      }
+      const state = this.futureDividerDragState;
+      const deltaY = state.latestY - state.startY;
+      const nextHeight = Math.max(52, Math.min(state.maxHeight, state.startHeight - deltaY));
+      this.root.style.setProperty("--dc-future-preview-height", Math.round(nextHeight) + "px");
+    }
+
+    finishFutureDividerDrag() {
+      if (!this.root || !this.futureDividerDragState) {
+        this.futureDividerDragState = null;
+        return;
+      }
+      if (this.futureDividerRafId) {
+        platform.cancelFrame(this.futureDividerRafId);
+        this.futureDividerRafId = 0;
+        this.applyFutureDividerMoveFrame();
+      }
+      const rawValue = this.root.style.getPropertyValue("--dc-future-preview-height");
+      const height = Number.parseInt(rawValue || "", 10);
+      this.futureDividerDragState = null;
+      if (Number.isFinite(height)) {
+        this.updateSettings({ futurePreviewHeight: height });
+      }
+    }
+
     handleResizeMove(event) {
       if (!this.root || !this.resizeState) {
         return;
       }
+      this.resizeState.latestX = event.clientX;
+      this.resizeState.latestY = event.clientY;
+      if (this.resizeMoveRafId) {
+        return;
+      }
+      this.resizeMoveRafId = platform.requestFrame(() => {
+        this.resizeMoveRafId = 0;
+        this.applyResizeMoveFrame();
+      });
+    }
+
+    applyResizeMoveFrame() {
+      if (!this.root || !this.resizeState) {
+        return;
+      }
       const state = this.resizeState;
-      const deltaX = event.clientX - state.startX;
-      const deltaY = event.clientY - state.startY;
+      const deltaX = state.latestX - state.startX;
+      const deltaY = state.latestY - state.startY;
       const rightEdge = state.startLeft + state.startWidth;
       const bottomEdge = state.startTop + state.startHeight;
       const resizesLeft = state.corner.indexOf("left") >= 0;
@@ -1129,7 +1269,7 @@
       let nextWidth = resizesLeft ? state.startWidth - deltaX : state.startWidth + deltaX;
       let nextHeight = resizesTop ? state.startHeight - deltaY : state.startHeight + deltaY;
 
-      const panelFrame = this.getPanelFrameRect();
+      const panelFrame = state.frameBounds || this.getPanelFrameRect();
       const maxWidth = Math.max(MIN_PANEL_WIDTH, panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2);
       const maxHeight = Math.max(MIN_PANEL_HEIGHT, panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2);
       nextWidth = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, nextWidth));
@@ -1137,7 +1277,7 @@
 
       let nextLeft = resizesLeft ? rightEdge - nextWidth : state.startLeft;
       let nextTop = resizesTop ? bottomEdge - nextHeight : state.startTop;
-      const clamped = this.clampPanelPosition(nextLeft, nextTop, nextWidth, nextHeight);
+      const clamped = this.clampPositionToRect(nextLeft, nextTop, nextWidth, nextHeight, panelFrame, DEFAULT_PANEL_MARGIN);
       nextLeft = clamped.left;
       nextTop = clamped.top;
 
@@ -1145,14 +1285,19 @@
       this.root.style.top = Math.round(nextTop) + "px";
       this.root.style.width = Math.round(nextWidth) + "px";
       this.root.style.height = Math.round(nextHeight) + "px";
+      this.applyFuturePreviewHeight();
       this.updatePanelFade();
-      this.scheduleWindowRender();
     }
 
     finishResize() {
       if (!this.root || !this.resizeState) {
         this.resizeState = null;
         return;
+      }
+      if (this.resizeMoveRafId) {
+        platform.cancelFrame(this.resizeMoveRafId);
+        this.resizeMoveRafId = 0;
+        this.applyResizeMoveFrame();
       }
       const left = Number.parseInt(this.root.style.left || "0", 10);
       const top = Number.parseInt(this.root.style.top || "0", 10);
@@ -1309,6 +1454,7 @@
         this.clearReadingGlowExcept(-1);
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
+        this.lastGlowWordEnd = -1;
         this.updateJumpBottomVisibility();
         this.scheduleWindowRender(!hadActive);
         return;
@@ -1321,6 +1467,7 @@
         this.clearReadingGlowExcept(bounded);
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
+        this.lastGlowWordEnd = -1;
       }
       if (hasChanged && options && options.ensureVisible) {
         if (bounded >= Math.max(0, this.chunks.length - 2)) {
@@ -1341,6 +1488,7 @@
         this.clearReadingGlowExcept(this.activeIndex);
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
+        this.lastGlowWordEnd = -1;
       }
       this.playbackTime = time;
       this.updateActiveReadingGlow();
@@ -1511,26 +1659,28 @@
       }
 
       if (futureCount) {
-        const divider = document.createElement("button");
-        divider.type = "button";
-        divider.className = "dc-future-divider";
-        divider.setAttribute("aria-expanded", this.futureCollapsed ? "false" : "true");
-        divider.textContent = this.futureCollapsed ? "Next up +" : "Next up -";
-        divider.addEventListener("click", () => {
-          this.futureCollapsed = !this.futureCollapsed;
-          this.currentWindowStart = -1;
-          this.currentWindowEnd = -1;
-          this.scheduleWindowRender();
-        });
-        fragment.append(divider);
+        const section = document.createElement("div");
+        section.className = "dc-future-section";
 
-        if (!this.futureCollapsed) {
-          for (let index = 0; index < futureCount; index += 1) {
-            const preview = this.futureChunks[index];
-            const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
-            fragment.append(this.createChunkButton(preview, actualIndex, true));
-          }
+        const divider = document.createElement("div");
+        divider.className = "dc-future-divider";
+        divider.setAttribute("role", "separator");
+        divider.setAttribute("aria-label", "Next up captions");
+        divider.setAttribute("aria-orientation", "horizontal");
+        divider.setAttribute("title", "Drag to resize the next-up preview");
+        divider.textContent = "Next up";
+
+        const futureList = document.createElement("div");
+        futureList.className = "dc-future-list";
+
+        for (let index = 0; index < futureCount; index += 1) {
+          const preview = this.futureChunks[index];
+          const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
+          futureList.append(this.createChunkButton(preview, actualIndex, true));
         }
+
+        section.append(divider, futureList);
+        fragment.append(section);
       }
 
       this.windowContainer.replaceChildren(fragment);
@@ -1652,7 +1802,12 @@
       }
       const range = bubbleState.getReadingGlowRange(chunk, this.playbackTime);
       const nextGlowWordStart = range ? range.firstWord : -1;
-      if (this.lastGlowIndex === this.activeIndex && this.lastGlowWordStart === nextGlowWordStart) {
+      const nextGlowWordEnd = range ? range.lastWord : -1;
+      if (
+        this.lastGlowIndex === this.activeIndex &&
+        this.lastGlowWordStart === nextGlowWordStart &&
+        this.lastGlowWordEnd === nextGlowWordEnd
+      ) {
         return;
       }
 
@@ -1666,9 +1821,10 @@
 
       const textElement = this.windowContainer.querySelector("[data-index='" + this.activeIndex + "'] .dc-chunk-text");
       if (textElement) {
-        this.renderChunkText(textElement, chunk, true);
+        this.renderChunkText(textElement, chunk, Boolean(range));
         this.lastGlowIndex = this.activeIndex;
         this.lastGlowWordStart = nextGlowWordStart;
+        this.lastGlowWordEnd = nextGlowWordEnd;
       }
     }
   }

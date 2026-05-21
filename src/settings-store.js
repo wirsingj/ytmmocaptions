@@ -12,6 +12,7 @@
     customThemeColor: "#ded6c3",
     panelPosition: null,
     panelSize: null,
+    futurePreviewHeight: 150,
     launcherPosition: null,
     panelClosed: true
   });
@@ -73,6 +74,14 @@
     };
   }
 
+  function normalizeFuturePreviewHeight(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return DEFAULTS.futurePreviewHeight;
+    }
+    return Math.max(52, Math.min(360, Math.round(number)));
+  }
+
   function normalizeLauncherPosition(value) {
     if (!value || typeof value !== "object") {
       return null;
@@ -98,6 +107,7 @@
       customThemeColor: normalizeCustomThemeColor(source.customThemeColor),
       panelPosition: normalizePanelPosition(source.panelPosition),
       panelSize: normalizePanelSize(source.panelSize),
+      futurePreviewHeight: normalizeFuturePreviewHeight(source.futurePreviewHeight),
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),
       panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed
     };

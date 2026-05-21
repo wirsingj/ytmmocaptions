@@ -2,15 +2,19 @@
 
 Dialogue Captions is a Chrome/Firefox extension that turns YouTube subtitles into an MMO-style dialogue panel.
 
-## Downloads
+## Build Outputs
 
-Latest packaged builds are checked into `downloads/`:
-- `downloads/ytmmocaptions-chrome-v<version>.zip`
-- `downloads/ytmmocaptions-firefox-v<version>.xpi`
+Fresh local browser packages are always generated in the same active build
+folders:
+- `build/chrome/ytmmocaptions-chrome-v<version>.zip`
+- `build/firefox/ytmmocaptions-firefox-v<version>.xpi`
+
+Packaging also copies the browser artifacts into a versioned folder:
+- `build/releases/v<version>/ytmmocaptions-chrome-v<version>.zip`
+- `build/releases/v<version>/ytmmocaptions-firefox-v<version>.xpi`
+
+AMO source-code packages are generated separately in `downloads/`:
 - `downloads/ytmmocaptions-source-v<version>.zip`
-
-Older local test packages are intentionally pruned so the repo points people at
-the current release candidate instead of stale builds.
 
 ## Store Listing Assets
 
@@ -23,8 +27,8 @@ policy, and license. Store listing assets are not included in release packages.
 
 ## Firefox Marketplace Submission
 
-Use the Firefox XPI from `downloads/` for AMO upload. For each release:
-- upload `downloads/ytmmocaptions-firefox-v<version>.xpi`;
+Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
+- upload `build/firefox/ytmmocaptions-firefox-v<version>.xpi`;
 - if AMO asks for source code, upload `downloads/ytmmocaptions-source-v<version>.zip`;
 - target desktop Firefox only;
 - select no data collection;
@@ -41,7 +45,7 @@ Use the Firefox XPI from `downloads/` for AMO upload. For each release:
 - Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
-- Panel preferences persist across YouTube videos: open/closed state, panel size/position, pill position, opacity, text size, and local-only theme/color choice.
+- Panel preferences persist across YouTube videos: open/closed state, panel size/position, next-up preview height, pill position, opacity, text size, and local-only theme/color choice.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.
 
 ## Project Structure
@@ -57,6 +61,7 @@ ytmmocaptions/
     chunker.js
     bubble-state.js
     transcript.js
+    caption-timeline.js
     ui-panel.js
     content-script.js
     page-bridge.js
@@ -135,16 +140,31 @@ It is useful while debugging YouTube behavior, but it requires Playwright to be
 installed locally and may be affected by network/player changes.
 
 ```powershell
-npm install --save-dev playwright
-npx playwright install
-npm run diagnostic:e2e -- --url=https://www.youtube.com/watch?v=VIDEO_ID
+npm install
+npx playwright install chromium firefox
+npm run diagnostic:e2e -- --browser=both --url=https://www.youtube.com/watch?v=VIDEO_ID
+npm run diagnostic:e2e -- --browser=both --url=https://www.youtube.com/watch?v=VIDEO_ID --headed
 ```
+
+Useful flags:
+- `--browser=firefox`, `--browser=chrome`, or `--browser=both`
+- `--headed`
+- `--leave-open`
+- `--artifacts-dir=tests/artifacts/my-run`
+
 For local debugging, add `dcdebug=1` to a YouTube watch URL to enable concise
 console diagnostics. The in-memory report is available from DevTools as
 `window.DialogueCaptions.diagnostics.getReport()`. It stores no raw captions,
 video titles, account data, cookies, tokens, or remote telemetry.
-The optional Playwright diagnostic writes a local ignored report with counts,
-status, and caption text lengths only; it avoids raw caption text by default.
+The optional Playwright diagnostic writes `tests/artifacts/e2e-report.json`
+plus screenshots with per-check health results. By default, both browsers run
+headless in a clearly labeled shared-source injected diagnostic mode so the
+checks stay quiet and comparable. Use `--headed` when you specifically want
+Chrome to run as a real unpacked extension for closer manual smoke testing.
+Firefox remains shared-source diagnostic mode because Playwright does not
+provide equivalent Firefox WebExtension install control. It still provides
+useful Firefox engine, layout, caption-source, console, and interaction health
+signal without becoming a release blocker.
 
 ## Load Unpacked
 

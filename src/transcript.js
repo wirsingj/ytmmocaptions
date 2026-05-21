@@ -127,6 +127,26 @@
     return "unknown";
   }
 
+  function encodeBase64UrlFromBytes(bytes) {
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 1) {
+      binary += String.fromCharCode(bytes[index]);
+    }
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function makeTranscriptPanelParams(videoId) {
+    const id = String(videoId || "");
+    if (!/^[A-Za-z0-9_-]{6,}$/.test(id)) {
+      return "";
+    }
+    const idBytes = Array.from(id).map(function (character) {
+      return character.charCodeAt(0);
+    });
+    const inner = [0x0a, idBytes.length].concat(idBytes, [0x18, 0x02]);
+    return encodeBase64UrlFromBytes([0xaa, 0x09, inner.length].concat(inner));
+  }
+
   function looksLikeWatchPagePayload(body, finalUrl) {
     const text = String(body || "");
     const lowered = text.toLowerCase();
@@ -169,6 +189,37 @@
     });
   }
 
+  async function fetchTextDirect(sourcePath, requestedUrl, signal, init) {
+    const safeInit = init && typeof init === "object" ? init : {};
+    try {
+      const response = await fetch(requestedUrl, {
+        ...safeInit,
+        credentials: "include",
+        signal: signal
+      });
+      const body = await response.text();
+      return {
+        ok: response.ok,
+        status: response.status,
+        url: response.url || "",
+        contentType: response.headers.get("content-type") || "",
+        body: body,
+        error: "",
+        transport: "content-script"
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 0,
+        url: "",
+        contentType: "",
+        body: "",
+        error: String(error && error.message ? error.message : error),
+        transport: "content-script"
+      };
+    }
+  }
+
   async function fetchTextWithContext(sourcePath, requestedUrl, signal, init) {
     const safeInit = init && typeof init === "object" ? init : {};
     const pageContext = app.pageContext;
@@ -201,33 +252,7 @@
       }
     }
 
-    try {
-      const response = await fetch(requestedUrl, {
-        ...safeInit,
-        credentials: "include",
-        signal: signal
-      });
-      const body = await response.text();
-      return {
-        ok: response.ok,
-        status: response.status,
-        url: response.url || "",
-        contentType: response.headers.get("content-type") || "",
-        body: body,
-        error: "",
-        transport: "content-script"
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        status: 0,
-        url: "",
-        contentType: "",
-        body: "",
-        error: String(error && error.message ? error.message : error),
-        transport: "content-script"
-      };
-    }
+    return fetchTextDirect(sourcePath, requestedUrl, signal, safeInit);
   }
 
   function getVideoId(url) {
@@ -247,9 +272,30 @@
   }
 
   function decodeHtmlEntities(input) {
-    const parser = new DOMParser();
-    const xml = parser.parseFromString("<body>" + String(input || "") + "</body>", "text/html");
-    return xml && xml.body ? xml.body.textContent || "" : "";
+    return String(input || "").replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);/g, function (match, entity) {
+      const value = String(entity || "");
+      if (value[0] === "#") {
+        const isHex = value[1] && value[1].toLowerCase() === "x";
+        const codePoint = Number.parseInt(isHex ? value.slice(2) : value.slice(1), isHex ? 16 : 10);
+        if (Number.isFinite(codePoint) && codePoint > 0) {
+          try {
+            return String.fromCodePoint(codePoint);
+          } catch {
+            return match;
+          }
+        }
+        return match;
+      }
+      const named = {
+        amp: "&",
+        apos: "'",
+        gt: ">",
+        lt: "<",
+        nbsp: " ",
+        quot: "\""
+      };
+      return Object.prototype.hasOwnProperty.call(named, value) ? named[value] : match;
+    });
   }
 
   function normalizeCueText(text) {
@@ -269,16 +315,82 @@
         if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
           return null;
         }
+        const normalizedStart = Math.max(0, start);
+        const normalizedEnd = Math.max(normalizedStart + 0.25, end);
+        const tokens = normalizeCueTokens(cue && cue.tokens, text, normalizedStart, normalizedEnd);
         return {
-          start: Math.max(0, start),
-          end: Math.max(Math.max(0, start) + 0.25, end),
-          text: text
+          start: normalizedStart,
+          end: normalizedEnd,
+          text: text,
+          tokens: tokens
         };
       })
       .filter(Boolean)
       .sort(function (left, right) {
         return left.start - right.start;
       });
+  }
+
+  function normalizeCueTokens(tokens, cueText, cueStart, cueEnd) {
+    const source = Array.isArray(tokens) ? tokens : [];
+    const text = normalizeCueText(cueText);
+    const normalized = [];
+    for (let index = 0; index < source.length; index += 1) {
+      const token = source[index];
+      const tokenText = normalizeCueText(token && token.text ? token.text : "");
+      const start = Number(token && token.start);
+      const end = Number(token && token.end);
+      if (!tokenText || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        continue;
+      }
+      normalized.push({
+        text: tokenText,
+        start: Math.max(cueStart, start),
+        end: Math.min(Math.max(start + 0.05, end), cueEnd)
+      });
+    }
+    if (normalized.length) {
+      return normalized.sort(function (left, right) {
+        return left.start - right.start;
+      });
+    }
+    return estimateWordTokens(text, cueStart, cueEnd);
+  }
+
+  function estimateWordTokens(text, start, end) {
+    const words = String(text || "").split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      return [];
+    }
+    const duration = Math.max(0.25, Number(end || 0) - Number(start || 0));
+    const weightSum = words.reduce(function (sum, word) {
+      return sum + getTokenWeight(word);
+    }, 0);
+    let cursor = Number(start || 0);
+    return words.map(function (word, index) {
+      const weight = getTokenWeight(word);
+      const tokenDuration = duration * (weight / Math.max(1, weightSum));
+      const tokenStart = cursor;
+      const tokenEnd = index === words.length - 1 ? Number(end || tokenStart + tokenDuration) : tokenStart + tokenDuration;
+      cursor = tokenEnd;
+      return {
+        text: word,
+        start: tokenStart,
+        end: Math.max(tokenStart + 0.05, tokenEnd)
+      };
+    });
+  }
+
+  function getTokenWeight(word) {
+    const source = String(word || "");
+    const coreLength = source.replace(/[^\w]/g, "").length;
+    const lengthWeight = Math.min(0.65, Math.max(0, coreLength - 4) * 0.08);
+    const pauseWeight = /[.!?]["')\]]*$/.test(source)
+      ? 0.7
+      : /[,;:]["')\]]*$/.test(source)
+        ? 0.3
+        : 0;
+    return 1 + lengthWeight + pauseWeight;
   }
 
   function extractJsonObjectFromOpenBrace(source, openBraceIndex) {
@@ -423,10 +535,18 @@
 
   function getInitialDataFromWindow() {
     const pageSnapshot = getPageContextSnapshot();
-    if (pageSnapshot && typeof pageSnapshot.transcriptParams === "string" && pageSnapshot.transcriptParams) {
+    if (
+      pageSnapshot &&
+      ((typeof pageSnapshot.transcriptParams === "string" && pageSnapshot.transcriptParams) ||
+        (typeof pageSnapshot.transcriptPanelParams === "string" && pageSnapshot.transcriptPanelParams))
+    ) {
       return {
         getTranscriptEndpoint: {
-          params: pageSnapshot.transcriptParams
+          params: pageSnapshot.transcriptParams || ""
+        },
+        getPanelEndpoint: {
+          panelId: "PAmodern_transcript_view",
+          params: pageSnapshot.transcriptPanelParams || ""
         }
       };
     }
@@ -1096,6 +1216,56 @@
     return params;
   }
 
+  function findTranscriptPanelParams(initialData) {
+    if (
+      initialData &&
+      typeof initialData === "object" &&
+      initialData.getPanelEndpoint &&
+      typeof initialData.getPanelEndpoint.params === "string"
+    ) {
+      return initialData.getPanelEndpoint.params;
+    }
+
+    let params = "";
+    walkObjects(initialData, function (node) {
+      if (params || !node || typeof node !== "object") {
+        return;
+      }
+
+      const endpoint = node.getPanelEndpoint;
+      if (
+        endpoint &&
+        typeof endpoint.params === "string" &&
+        (String(endpoint.panelId || "").toLowerCase().includes("transcript") ||
+          endpoint.panelId === "PAmodern_transcript_view")
+      ) {
+        params = endpoint.params;
+        return;
+      }
+
+      const panel = node.engagementPanelSectionListRenderer;
+      if (!panel || typeof panel !== "object") {
+        return;
+      }
+      const targetId = String(panel.targetId || panel.panelIdentifier || "").toLowerCase();
+      if (!targetId.includes("transcript")) {
+        return;
+      }
+      walkObjects(panel, function (child) {
+        if (
+          !params &&
+          child &&
+          typeof child === "object" &&
+          child.getPanelEndpoint &&
+          typeof child.getPanelEndpoint.params === "string"
+        ) {
+          params = child.getPanelEndpoint.params;
+        }
+      });
+    });
+    return params;
+  }
+
   function getYtcfgValue(key) {
     const pageSnapshot = getPageContextSnapshot();
     if (pageSnapshot && pageSnapshot.ytcfg && Object.prototype.hasOwnProperty.call(pageSnapshot.ytcfg, key)) {
@@ -1241,6 +1411,14 @@
             .join(" ");
           pushCue(start, 0, groupText);
         }
+        if (node && typeof node === "object" && node.transcriptSegmentViewModel) {
+          const viewModel = node.transcriptSegmentViewModel;
+          const start = parseTimestampLabel(viewModel.timestamp || viewModel.startTimeText || "");
+          const text = readSimpleOrRunsText(viewModel);
+          if (Number.isFinite(start) && text) {
+            pushCue(start, 0, text);
+          }
+        }
         return;
       }
       const renderer = node.transcriptSegmentRenderer;
@@ -1381,6 +1559,102 @@
     }
     const cues = mapGetTranscriptResponseToCues(payload);
     logDebug("youtubei/get_transcript parsed", {
+      cues: cues.length,
+      rejectionReason: cues.length ? "" : "parser_rejected_no_cues"
+    });
+    return cues.length ? cues : null;
+  }
+
+  async function fetchCuesFromGetPanel(pageUrl, signal) {
+    const videoId = getVideoId(pageUrl);
+    const initialData = getInitialDataFromWindow() || getInitialDataFromScripts();
+    const params = findTranscriptPanelParams(initialData) || makeTranscriptPanelParams(videoId);
+    if (!params) {
+      logDebug("youtubei/get_panel skipped: missing transcript panel params");
+      return null;
+    }
+
+    const innertube = await resolveInnertubeConfig(pageUrl, signal);
+    if (!innertube || !innertube.context) {
+      logDebug("youtubei/get_panel skipped: missing innertube config (context)");
+      return null;
+    }
+
+    const endpoint = "https://www.youtube.com/youtubei/v1/get_panel?prettyPrint=false";
+    const headers = {
+      "content-type": "application/json",
+      "x-youtube-client-name": innertube.clientNameNumber || "1",
+      "x-youtube-client-version":
+        innertube.clientVersion ||
+        (innertube.context.client && innertube.context.client.clientVersion) ||
+        "",
+      "x-origin": "https://www.youtube.com"
+    };
+    if (innertube.visitorData) {
+      headers["x-goog-visitor-id"] = innertube.visitorData;
+    }
+
+    const requestInit = {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({
+        context: innertube.context,
+        panelId: "PAmodern_transcript_view",
+        params: params
+      })
+    };
+    let endpointResult = await fetchTextDirect("youtubei/get_panel", endpoint, signal, requestInit);
+    const directKind = endpointResult ? detectPayloadKind(endpointResult.contentType, endpointResult.body) : "unknown";
+    if (!endpointResult || endpointResult.error || !endpointResult.ok || directKind !== "json") {
+      const bridgedResult = await fetchTextWithContext("youtubei/get_panel", endpoint, signal, requestInit);
+      if (bridgedResult && !bridgedResult.error) {
+        endpointResult = bridgedResult;
+      }
+    }
+    if (!endpointResult || endpointResult.error) {
+      logFetchInspection(
+        "youtubei/get_panel",
+        endpoint,
+        endpointResult,
+        endpointResult && endpointResult.body ? endpointResult.body : "",
+        "json",
+        endpointResult && endpointResult.error ? classifyFetchError(endpointResult.error) : "request_error",
+        endpointResult ? detectPayloadKind(endpointResult.contentType, endpointResult.body) : "unknown",
+        endpointResult && endpointResult.transport ? endpointResult.transport : ""
+      );
+      return null;
+    }
+
+    const responseKind = detectPayloadKind(endpointResult.contentType, endpointResult.body);
+    const responseRejectReason =
+      !endpointResult.ok
+        ? "http_" + endpointResult.status
+        : responseKind !== "json"
+          ? "unexpected_" + responseKind
+          : "";
+    logFetchInspection(
+      "youtubei/get_panel",
+      endpoint,
+      endpointResult,
+      endpointResult.body,
+      "json",
+      responseRejectReason,
+      responseKind,
+      endpointResult.transport
+    );
+    if (!endpointResult.ok || responseKind !== "json") {
+      return null;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(endpointResult.body);
+    } catch {
+      logDebug("youtubei/get_panel rejected after parse", { reason: "invalid_json" });
+      return null;
+    }
+    const cues = mapGetTranscriptResponseToCues(payload);
+    logDebug("youtubei/get_panel parsed", {
       cues: cues.length,
       rejectionReason: cues.length ? "" : "parser_rejected_no_cues"
     });
@@ -1805,17 +2079,28 @@
         logDebug("page-context snapshot unavailable (content-script context only)");
       }
 
+      const getPanelResult = async () => {
+        const panelCues = await fetchCuesFromGetPanel(pageUrl, signal);
+        if (!panelCues || !panelCues.length) {
+          return null;
+        }
+        logDebug("accepted source: youtubei/get_panel", { cues: panelCues.length });
+        return {
+          ok: true,
+          videoId: videoId,
+          cues: panelCues,
+          track: {
+            languageCode: "",
+            kind: "get_panel"
+          }
+        };
+      };
+
       const runFallbacks = async () => {
         const videoElement = options && options.videoElement;
-        const trackFallback = await loadFromTextTracks(videoElement, signal);
-        if (trackFallback && trackFallback.cues.length) {
-          logDebug("accepted source: textTracks", { cues: trackFallback.cues.length });
-          return {
-            ok: true,
-            videoId: videoId,
-            cues: trackFallback.cues,
-            track: trackFallback.track
-          };
+        const panelResult = await getPanelResult();
+        if (panelResult) {
+          return panelResult;
         }
 
         const transcriptApiCues = await fetchCuesFromGetTranscript(pageUrl, signal);
@@ -1829,6 +2114,29 @@
               languageCode: "",
               kind: "get_transcript"
             }
+          };
+        }
+
+        const trackFallback = await loadFromTextTracks(videoElement, signal);
+        if (trackFallback && trackFallback.cues.length) {
+          logDebug("accepted source: textTracks", { cues: trackFallback.cues.length });
+          return {
+            ok: true,
+            videoId: videoId,
+            cues: trackFallback.cues,
+            track: trackFallback.track
+          };
+        }
+
+        const interceptedResult = await loadFromInterceptedTimedtext(videoId, signal, 900);
+        if (interceptedResult && interceptedResult.cues && interceptedResult.cues.length) {
+          logDebug("accepted source: intercepted player captions", { cues: interceptedResult.cues.length });
+          return {
+            ok: true,
+            videoId: videoId,
+            cues: interceptedResult.cues,
+            track: interceptedResult.track,
+            mode: "intercepted player-caption mode"
           };
         }
 
@@ -1848,22 +2156,17 @@
         return null;
       };
 
-      const interceptedResult = await loadFromInterceptedTimedtext(videoId, signal, 900);
-      if (interceptedResult && interceptedResult.cues && interceptedResult.cues.length) {
-        return {
-          ok: true,
-          videoId: videoId,
-          cues: interceptedResult.cues,
-          track: interceptedResult.track,
-          mode: "intercepted player-caption mode"
-        };
+      const panelResult = await getPanelResult();
+      if (panelResult) {
+        panelResult.mode = "direct transcript mode";
+        return panelResult;
       }
 
       const playerResponse = await resolvePlayerResponse(pageUrl, signal);
       if (!playerResponse) {
         const fallbackResult = await runFallbacks();
         if (fallbackResult) {
-          fallbackResult.mode = "direct transcript mode";
+          fallbackResult.mode = fallbackResult.mode || "direct transcript mode";
           return fallbackResult;
         }
         return { ok: false, reason: "Transcript metadata is unavailable." };
@@ -1915,7 +2218,7 @@
       if (!selectedTrack || !cues.length) {
         const fallbackResult = await runFallbacks();
         if (fallbackResult) {
-          fallbackResult.mode = "direct transcript mode";
+          fallbackResult.mode = fallbackResult.mode || "direct transcript mode";
           return fallbackResult;
         }
 

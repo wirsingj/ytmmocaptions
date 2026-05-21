@@ -41,6 +41,9 @@ function loadModule(fileName, options = {}) {
     console,
     URL,
     AbortController,
+    btoa(input) {
+      return Buffer.from(String(input), "binary").toString("base64");
+    },
     setTimeout,
     clearTimeout,
     fetch:
@@ -99,6 +102,7 @@ async function main() {
   const preferredOrder = [
     "compliance.test.js",
     "caption-text.test.js",
+    "caption-timeline.test.js",
     "chunker.test.js",
     "chunker-regression.test.js",
     "bubble-state.test.js",

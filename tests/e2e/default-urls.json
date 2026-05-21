@@ -1,0 +1,16 @@
+{
+  "notes": [
+    "Replace these with videos you actively care about before a focused diagnostic run.",
+    "The harness does not assert exact transcript text because YouTube captions and availability change over time."
+  ],
+  "urls": [
+    {
+      "label": "talking-head captions",
+      "url": "https://www.youtube.com/watch?v=U0H9MaMPsuo"
+    },
+    {
+      "label": "short comedy/news captions",
+      "url": "https://www.youtube.com/watch?v=KU8mb8xiFvQ"
+    }
+  ]
+}
