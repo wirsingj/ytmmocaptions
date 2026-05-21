@@ -217,4 +217,14 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("Full caption timeline loaded. Next up previews are available."));
     assert.ok(source.includes("this.disableLiveCaptureMode();"));
   });
+
+  await runCase("unavailable transcript clears stale current future and timeline state", () => {
+    const failureStart = source.indexOf("if (!response || !response.ok)");
+    const failureBody = source.slice(failureStart, source.indexOf("if (response.videoId !== this.videoId)", failureStart));
+    assert.ok(failureBody.includes("this.panel.setChunks([]);"));
+    assert.ok(failureBody.includes("this.panel.setFutureChunks([]);"));
+    assert.ok(failureBody.includes("this.panel.setTimelineData([], Number.NaN);"));
+    assert.ok(failureBody.includes("this.panel.setActiveIndex(-1);"));
+    assert.ok(failureBody.includes("this.panel.setPlaybackTime(0, { forceGlowReset: true });"));
+  });
 };

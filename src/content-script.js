@@ -1806,6 +1806,16 @@
         if (this.panel) {
           if (!this.cues.length) {
             this.panel.setChunks([]);
+            if (typeof this.panel.setFutureChunks === "function") {
+              this.panel.setFutureChunks([]);
+            }
+            if (typeof this.panel.setTimelineData === "function") {
+              this.panel.setTimelineData([], Number.NaN);
+            }
+            this.panel.setActiveIndex(-1);
+            if (typeof this.panel.setPlaybackTime === "function") {
+              this.panel.setPlaybackTime(0, { forceGlowReset: true });
+            }
           }
           this.panel.setStatus(
             shouldEnableLiveCapture

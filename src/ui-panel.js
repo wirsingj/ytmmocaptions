@@ -114,6 +114,7 @@
       this.futureChunks = [];
       this.timelineChunks = [];
       this.timelineDuration = Number.NaN;
+      this.timelineDataKey = "";
       this.timelineHoverIndex = -1;
       this.timelineHoverTime = Number.NaN;
       this.futureCollapsed = false;
@@ -1219,6 +1220,7 @@
     hideTimelineTooltip() {
       if (this.timelineTooltip) {
         this.timelineTooltip.classList.remove("is-visible");
+        this.timelineTooltip.classList.remove("is-hover");
       }
       this.timelineHoverIndex = -1;
       this.timelineHoverTime = Number.NaN;
@@ -1789,11 +1791,28 @@
     }
 
     setTimelineData(chunks, durationSeconds) {
-      this.timelineChunks = timelineScrub && typeof timelineScrub.sortChunks === "function"
+      const normalized = timelineScrub && typeof timelineScrub.sortChunks === "function"
         ? timelineScrub.sortChunks(chunks)
         : Array.isArray(chunks) ? chunks : [];
       const duration = Number(durationSeconds);
       this.timelineDuration = Number.isFinite(duration) && duration > 0 ? duration : Number.NaN;
+      const nextKey = [
+        Number.isFinite(this.timelineDuration) ? this.timelineDuration.toFixed(3) : "none",
+        normalized.length,
+        normalized[0] ? [normalized[0].start, normalized[0].end, normalized[0].text].join(":") : "",
+        normalized[normalized.length - 1]
+          ? [normalized[normalized.length - 1].start, normalized[normalized.length - 1].end, normalized[normalized.length - 1].text].join(":")
+          : ""
+      ].join("|");
+      if (nextKey !== this.timelineDataKey) {
+        this.timelineHoverIndex = -1;
+        this.timelineHoverTime = Number.NaN;
+        if (this.timelineTooltip) {
+          this.timelineTooltip.classList.remove("is-hover");
+        }
+      }
+      this.timelineDataKey = nextKey;
+      this.timelineChunks = normalized;
       this.updateTimelineLayer();
     }
 

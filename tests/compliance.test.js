@@ -406,6 +406,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("handleTimelineClick"));
     assert.ok(panelSource.includes('this.body.style.display = timelineActive ? "none" : "flex"'));
     assert.ok(panelSource.includes("this.body.hidden = timelineActive"));
+    assert.ok(panelSource.includes("timelineDataKey"));
+    assert.ok(panelSource.includes("this.timelineHoverIndex = -1;"));
+    assert.ok(panelSource.includes("this.timelineHoverTime = Number.NaN;"));
     assert.ok(panelSource.includes('this.timelineTooltip.classList.add("is-visible")'));
     assert.ok(panelSource.includes('this.timelineTooltip.classList.toggle("is-hover"'));
     assert.ok(panelSource.includes("Math.pow(blend, 0.72)"));
@@ -421,5 +424,16 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-panel.is-timeline-scrub:hover .dc-controls"));
     assert.ok(css.includes(".dc-panel-open .ytp-caption-window-rollup"));
     assert.ok(css.includes(".dc-panel-open .ytp-caption-segment"));
+  });
+
+  await runCase("video-anchored panel hides instead of floating over comments when player is offscreen", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes("isAnchorUsablyVisible()"));
+    assert.ok(panelSource.includes("is-anchor-offscreen"));
+    assert.ok(panelSource.includes("right: 0,"));
+    assert.ok(panelSource.includes("bottom: 0"));
+    assert.ok(css.includes(".dc-panel.is-anchor-offscreen"));
+    assert.ok(css.includes(".dc-launcher.is-anchor-offscreen"));
   });
 };

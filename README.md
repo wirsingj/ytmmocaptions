@@ -136,6 +136,8 @@ npm run release:sanity
 
 See `RELEASE.md` for tag-based GitHub Release and store publishing automation.
 
+For manual pre-upload smoke testing, use `QA_CHECKLIST.md`.
+
 ## Optional Diagnostics
 
 The one-shot browser diagnostic is intentionally not part of `release:check`.
