@@ -371,12 +371,15 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("autoScroll"));
     assert.ok(source.includes("futurePreviewHeight"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
+    assert.ok(source.includes("timelineModeEnabled"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
     assert.ok(privacy.includes("next-up preview height"));
+    assert.ok(privacy.includes("timeline marker mode"));
+    assert.ok(privacy.includes("whether the panel fades toward the center"));
   });
 
   await runCase("V2 universal layer remains local-only and standards-based", () => {
@@ -387,5 +390,16 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("getUserMedia"));
     assert.ok(!source.includes("MediaRecorder"));
     assert.ok(!source.includes("fetch("));
+  });
+
+  await runCase("timeline marker mode reuses panel chunks and stays optional", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes("setTimelineData"));
+    assert.ok(panelSource.includes("dc-timeline-marker"));
+    assert.ok(panelSource.includes("timelineModeEnabled"));
+    assert.ok(panelSource.includes("handleTimelineClick"));
+    assert.ok(css.includes(".dc-timeline-layer"));
+    assert.ok(css.includes(".dc-timeline-marker"));
   });
 };

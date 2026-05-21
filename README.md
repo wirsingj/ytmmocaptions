@@ -42,11 +42,12 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 - Subtitle cues grouped into readable chunks.
 - On non-YouTube pages, eligible HTML5 videos with existing captions/subtitles can get their own anchored MMOCC panel.
 - Music/lyric-like captions split a little sooner so song lines do not become paragraph blobs.
+- Optional Timeline Mode shows compact SoundCloud-style caption markers above the associated video timeline.
 - Hover the panel and press `Space` to go to the next chunk.
 - Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
-- Panel preferences persist across videos: open/closed state, panel size/position, next-up preview height, pill position, opacity, center fade, text size, and local-only theme/color choice.
+- Panel preferences persist across videos: open/closed state, panel size/position, next-up preview height, pill position, opacity, center fade, timeline marker mode, text size, and local-only theme/color choice.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.
 
 ## Project Structure
@@ -167,6 +168,14 @@ Firefox remains shared-source diagnostic mode because Playwright does not
 provide equivalent Firefox WebExtension install control. It still provides
 useful Firefox engine, layout, caption-source, console, and interaction health
 signal without becoming a release blocker.
+
+## Local HTML5 Fixture Notes
+
+The V2 test bed includes replaceable WebVTT fixture files under
+`tests/fixtures/`. Later, generated videos from the separate local video
+generator app can be copied into that fixture area as matching `.mp4` + `.vtt`
+or `.srt` pairs for manual scenarios. The extension will only use caption data
+that the page exposes through normal browser media/text-track APIs.
 
 ## Load Unpacked
 

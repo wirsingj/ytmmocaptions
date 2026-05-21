@@ -200,6 +200,9 @@
             "customThemeColor",
             "fadeTowardVideoCenter",
             "videoCenterFadeStrength",
+            "videoCenterFadeMidpoint",
+            "videoCenterFadeMinOpacity",
+            "timelineModeEnabled",
             "futurePreviewHeight"
           ].forEach((key) => {
             if (Object.prototype.hasOwnProperty.call(source, key)) {
@@ -302,6 +305,9 @@
         futurePreviewOnly: true
       }));
       this.panel.setFutureChunks(future);
+      if (typeof this.panel.setTimelineData === "function") {
+        this.panel.setTimelineData(this.allChunks, Number(this.video.duration));
+      }
       const visibleActive = currentIndex >= 0 && currentIndex < this.chunks.length ? currentIndex : -1;
       this.panel.setActiveIndex(visibleActive, { ensureVisible: forceScroll });
       this.panel.setPlaybackTime(now);

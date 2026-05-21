@@ -27,7 +27,9 @@
   --dc-panel-fade-light: 0.018;
   --dc-panel-fade-shadow: 0.24;
   --dc-panel-fade-shadow-soft: 0.15;
-  --dc-center-mask-alpha: 0.8;
+  --dc-center-mask-alpha: 0.22;
+  --dc-center-mask-mid-alpha: 0.52;
+  --dc-center-mask-midpoint: 50%;
   --dc-card-alpha: 0.62;
   --dc-card-current-alpha: 0.7;
   position: fixed;
@@ -55,8 +57,15 @@
   flex-direction: column;
   overflow: hidden;
   isolation: isolate;
-  -webkit-mask-image: radial-gradient(circle at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, 0.94) 46%, #000 100%);
-  mask-image: radial-gradient(circle at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, 0.94) 46%, #000 100%);
+  -webkit-mask-image: radial-gradient(circle at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) var(--dc-center-mask-midpoint), #000 100%);
+  mask-image: radial-gradient(circle at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) var(--dc-center-mask-midpoint), #000 100%);
+}
+
+.dc-panel.is-anchor-offscreen,
+.dc-launcher.is-anchor-offscreen,
+.dc-timeline-layer:not(.is-visible) {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .dc-panel::before {
@@ -287,6 +296,89 @@
   width: 13px;
   height: 13px;
   accent-color: var(--dc-accent);
+}
+
+.dc-btn-timeline.is-active {
+  border-color: rgba(var(--dc-accent-rgb), 0.62);
+  color: var(--dc-text);
+  background: rgba(var(--dc-accent-rgb), 0.18);
+}
+
+.dc-timeline-layer {
+  position: fixed;
+  z-index: 2147483645;
+  height: 26px;
+  display: block;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.dc-timeline-layer.is-visible {
+  visibility: visible;
+}
+
+.dc-timeline-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(var(--dc-bg-rgb), 0.08), rgba(var(--dc-bg-rgb), 0.2));
+  box-shadow: inset 0 0 0 1px rgba(var(--dc-text-rgb), 0.14);
+}
+
+.dc-timeline-marker {
+  appearance: none;
+  -moz-appearance: none;
+  position: absolute;
+  top: 1px;
+  width: 5px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background: rgba(var(--dc-accent-rgb), 0.68);
+  box-shadow: 0 0 8px rgba(var(--dc-accent-rgb), 0.28);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.dc-timeline-marker.is-clustered {
+  width: 7px;
+  background: rgba(var(--dc-accent-rgb), 0.52);
+}
+
+.dc-timeline-marker:hover,
+.dc-timeline-marker:focus-visible {
+  background: rgba(var(--dc-accent-rgb), 0.95);
+  box-shadow: 0 0 10px rgba(var(--dc-accent-rgb), 0.5);
+}
+
+.dc-timeline-tooltip {
+  position: absolute;
+  bottom: 24px;
+  width: min(320px, 78vw);
+  max-height: 92px;
+  overflow: hidden;
+  padding: 7px 9px;
+  border: 1px solid rgba(var(--dc-accent-rgb), 0.38);
+  border-radius: 8px;
+  color: var(--dc-text);
+  background: rgba(var(--dc-bg-rgb), 0.86);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(8px);
+  font: 12px/1.35 "Segoe UI", sans-serif;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+}
+
+.dc-timeline-tooltip.is-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .dc-opacity-input,

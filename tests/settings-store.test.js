@@ -56,13 +56,19 @@ exports.run = async function runSettingsStoreTests(ctx) {
       futurePreviewHeight: 999,
       fadeTowardVideoCenter: false,
       videoCenterFadeStrength: 999,
+      videoCenterFadeMidpoint: 999,
+      videoCenterFadeMinOpacity: -10,
+      timelineModeEnabled: true,
       launcherPosition: { left: 12.6, top: -3 }
     });
     assert.deepEqual(result.panelPosition, { left: 0, top: 20 });
     assert.deepEqual(result.panelSize, { width: 280, height: 220 });
     assert.equal(result.futurePreviewHeight, 360);
     assert.equal(result.fadeTowardVideoCenter, false);
-    assert.equal(result.videoCenterFadeStrength, 60);
+    assert.equal(result.videoCenterFadeStrength, 90);
+    assert.equal(result.videoCenterFadeMidpoint, 80);
+    assert.equal(result.videoCenterFadeMinOpacity, 8);
+    assert.equal(result.timelineModeEnabled, true);
     assert.deepEqual(result.launcherPosition, { left: 13, top: 0 });
   });
 
@@ -75,7 +81,10 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.customThemeColor, "#ded6c3");
     assert.equal(result.futurePreviewHeight, 150);
     assert.equal(result.fadeTowardVideoCenter, true);
-    assert.equal(result.videoCenterFadeStrength, 20);
+    assert.equal(result.videoCenterFadeStrength, 72);
+    assert.equal(result.videoCenterFadeMidpoint, 50);
+    assert.equal(result.videoCenterFadeMinOpacity, 22);
+    assert.equal(result.timelineModeEnabled, false);
     assert.equal(result.schemaVersion, 1);
   });
 
@@ -106,6 +115,9 @@ exports.run = async function runSettingsStoreTests(ctx) {
       futurePreviewHeight: 42,
       fadeTowardVideoCenter: false,
       videoCenterFadeStrength: -5,
+      videoCenterFadeMidpoint: 10,
+      videoCenterFadeMinOpacity: 99,
+      timelineModeEnabled: true,
       plan: "legacy-ignored",
       featureOverrides: { oldGate: true },
       globalKeyboardEnabled: true,
@@ -120,6 +132,9 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.futurePreviewHeight, 52);
     assert.equal(persisted.fadeTowardVideoCenter, false);
     assert.equal(persisted.videoCenterFadeStrength, 0);
+    assert.equal(persisted.videoCenterFadeMidpoint, 20);
+    assert.equal(persisted.videoCenterFadeMinOpacity, 70);
+    assert.equal(persisted.timelineModeEnabled, true);
     assert.equal(persisted.schemaVersion, 1);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "plan"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "featureOverrides"), false);
@@ -140,6 +155,11 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelPosition: { left: 45, top: 80 },
       panelSize: { width: 640, height: 420 },
       futurePreviewHeight: 205,
+      fadeTowardVideoCenter: false,
+      videoCenterFadeStrength: 77,
+      videoCenterFadeMidpoint: 52,
+      videoCenterFadeMinOpacity: 18,
+      timelineModeEnabled: true,
       launcherPosition: { left: 15, top: 300 },
       chunkSize: "short",
       keyboardStepSeconds: 12,
@@ -158,6 +178,11 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(loaded.panelPosition, { left: 45, top: 80 });
     assert.deepEqual(loaded.panelSize, { width: 640, height: 420 });
     assert.equal(loaded.futurePreviewHeight, 205);
+    assert.equal(loaded.fadeTowardVideoCenter, false);
+    assert.equal(loaded.videoCenterFadeStrength, 77);
+    assert.equal(loaded.videoCenterFadeMidpoint, 52);
+    assert.equal(loaded.videoCenterFadeMinOpacity, 18);
+    assert.equal(loaded.timelineModeEnabled, true);
     assert.deepEqual(loaded.launcherPosition, { left: 15, top: 300 });
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "chunkSize"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "keyboardStepSeconds"), false);

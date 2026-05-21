@@ -79,6 +79,7 @@
       this.instanceId = String(this.options.instanceId || "").replace(/[^a-z0-9_-]/gi, "");
       this.panelId = this.instanceId ? PANEL_ID + "-" + this.instanceId : PANEL_ID;
       this.launcherId = this.instanceId ? LAUNCHER_ID + "-" + this.instanceId : LAUNCHER_ID;
+      this.timelineId = this.instanceId ? "dc-timeline-" + this.instanceId : "dc-timeline";
       this.anchorElement = this.options.anchorElement instanceof Element ? this.options.anchorElement : null;
       this.persistLayout = this.options.persistLayout !== false;
 
@@ -97,6 +98,10 @@
       this.themeSelect = null;
       this.themeColorInput = null;
       this.centerFadeInput = null;
+      this.timelineModeButton = null;
+      this.timelineLayer = null;
+      this.timelineTrack = null;
+      this.timelineTooltip = null;
       this.header = null;
       this.resetButton = null;
       this.closeButton = null;
@@ -105,6 +110,8 @@
 
       this.chunks = [];
       this.futureChunks = [];
+      this.timelineChunks = [];
+      this.timelineDuration = Number.NaN;
       this.futureCollapsed = false;
       this.activeIndex = -1;
       this.playbackTime = Number.NaN;
@@ -132,6 +139,7 @@
       this.resizeMoveRafId = 0;
       this.futureDividerRafId = 0;
       this.statusTimer = 0;
+      this.timelineLayerVisible = false;
     }
 
     mount() {
@@ -246,12 +254,20 @@
       this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
       centerFadeWrap.append(this.centerFadeInput);
 
+      this.timelineModeButton = document.createElement("button");
+      this.timelineModeButton.type = "button";
+      this.timelineModeButton.className = "dc-btn dc-btn-timeline";
+      this.timelineModeButton.textContent = "Timeline";
+      this.timelineModeButton.title = "Toggle caption markers above the video timeline";
+      this.timelineModeButton.setAttribute("aria-pressed", this.settings.timelineModeEnabled ? "true" : "false");
+
       controls.append(
         this.themeSelect,
         this.themeColorInput,
         opacityWrap,
         textScaleWrap,
         centerFadeWrap,
+        this.timelineModeButton,
         this.resetButton,
         this.closeButton
       );
@@ -298,6 +314,18 @@
       }
       document.body.append(this.root);
 
+      this.timelineLayer = document.createElement("div");
+      this.timelineLayer.id = this.timelineId;
+      this.timelineLayer.className = "dc-timeline-layer";
+      this.timelineLayer.dataset.dcInstanceId = this.instanceId || "youtube";
+      this.timelineTrack = document.createElement("div");
+      this.timelineTrack.className = "dc-timeline-track";
+      this.timelineTooltip = document.createElement("div");
+      this.timelineTooltip.className = "dc-timeline-tooltip";
+      this.timelineTooltip.setAttribute("role", "tooltip");
+      this.timelineLayer.append(this.timelineTrack, this.timelineTooltip);
+      document.body.append(this.timelineLayer);
+
       this.launcherButton = document.createElement("button");
       this.launcherButton.type = "button";
       this.launcherButton.id = this.launcherId;
@@ -339,12 +367,18 @@
         this.launcherButton.remove();
         this.launcherButton = null;
       }
+      if (this.timelineLayer) {
+        this.timelineLayer.remove();
+        this.timelineLayer = null;
+        this.timelineTrack = null;
+        this.timelineTooltip = null;
+      }
       this.removeExistingUiNodes();
       document.documentElement.classList.remove(ACTIVE_PAGE_CLASS);
     }
 
     removeExistingUiNodes() {
-      const knownNodes = document.querySelectorAll("#" + this.panelId + ", #" + this.launcherId);
+      const knownNodes = document.querySelectorAll("#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId);
       knownNodes.forEach((node) => {
         if (node instanceof Element) {
           node.remove();
@@ -455,6 +489,11 @@
       };
       this.addListener(this.centerFadeInput, "change", onCenterFadeChange);
 
+      const onTimelineToggle = () => {
+        this.updateSettings({ timelineModeEnabled: !this.settings.timelineModeEnabled });
+      };
+      this.addListener(this.timelineModeButton, "click", onTimelineToggle);
+
       const onLauncherClick = () => {
         if (Date.now() < this.launcherSuppressClickUntil) {
           return;
@@ -493,6 +532,13 @@
         }
       };
       this.addListener(this.listViewport, "click", onListClick);
+
+      const onTimelineClick = (event) => this.handleTimelineClick(event);
+      const onTimelineMove = (event) => this.handleTimelinePointerMove(event);
+      const onTimelineLeave = () => this.hideTimelineTooltip();
+      this.addListener(this.timelineLayer, "click", onTimelineClick);
+      this.addListener(this.timelineLayer, "pointermove", onTimelineMove);
+      this.addListener(this.timelineLayer, "pointerleave", onTimelineLeave);
 
       const onListPointerDown = (event) => {
         const target = event.target;
@@ -539,11 +585,12 @@
       this.addListener(window, "resize", onResize);
 
       const onWindowScroll = () => {
-        if (this.launcherButton && this.launcherButton.style.display !== "none") {
-          this.applyLauncherPosition();
-        }
+        this.refreshAnchorLayout();
       };
       this.addListener(window, "scroll", onWindowScroll, { passive: true });
+
+      const onFullscreenChange = () => this.refreshAnchorLayout();
+      this.addListener(document, "fullscreenchange", onFullscreenChange);
     }
 
     updateSettings(patch) {
@@ -633,6 +680,10 @@
       if (this.centerFadeInput) {
         this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
       }
+      if (this.timelineModeButton) {
+        this.timelineModeButton.classList.toggle("is-active", Boolean(this.settings.timelineModeEnabled));
+        this.timelineModeButton.setAttribute("aria-pressed", this.settings.timelineModeEnabled ? "true" : "false");
+      }
       if (this.themeSelect) {
         const themeName = this.getThemeName();
         if (this.themeSelect.value !== themeName) {
@@ -672,6 +723,7 @@
       this.applyLauncherPosition();
       this.normalizeSavedPanelPosition();
       this.updatePanelFade();
+      this.updateTimelineLayer();
       this.updateJumpBottomVisibility();
     }
 
@@ -832,10 +884,15 @@
       const fadeY = Math.max(0, Math.min(100, ((centerY - rect.top) / rect.height) * 100));
       this.root.style.setProperty("--dc-fade-x", fadeX.toFixed(1) + "%");
       this.root.style.setProperty("--dc-fade-y", fadeY.toFixed(1) + "%");
-      const strength = this.settings.fadeTowardVideoCenter === false
-        ? 0
-        : Math.max(0, Math.min(60, Number(this.settings.videoCenterFadeStrength || 20)));
-      this.root.style.setProperty("--dc-center-mask-alpha", (1 - strength / 100).toFixed(3));
+      const enabled = this.settings.fadeTowardVideoCenter !== false;
+      const strength = enabled ? Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 72))) / 100 : 0;
+      const midpoint = Math.max(20, Math.min(80, Number(this.settings.videoCenterFadeMidpoint || 50)));
+      const minimum = Math.max(0.08, Math.min(0.7, Number(this.settings.videoCenterFadeMinOpacity || 22) / 100));
+      const centerAlpha = enabled ? minimum + (1 - minimum) * (1 - strength) : 1;
+      const midAlpha = enabled ? Math.min(1, centerAlpha + (1 - centerAlpha) * 0.38) : 1;
+      this.root.style.setProperty("--dc-center-mask-alpha", centerAlpha.toFixed(3));
+      this.root.style.setProperty("--dc-center-mask-mid-alpha", midAlpha.toFixed(3));
+      this.root.style.setProperty("--dc-center-mask-midpoint", midpoint.toFixed(0) + "%");
     }
 
     getDefaultPanelRect() {
@@ -880,7 +937,10 @@
         panelSize: null,
         futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : 150,
         fadeTowardVideoCenter: defaults.fadeTowardVideoCenter !== false,
-        videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 20,
+        videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 72,
+        videoCenterFadeMidpoint: Number.isFinite(defaults.videoCenterFadeMidpoint) ? defaults.videoCenterFadeMidpoint : 50,
+        videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 22,
+        timelineModeEnabled: Boolean(defaults.timelineModeEnabled),
         launcherPosition: null,
         panelClosed: false
       });
@@ -934,6 +994,13 @@
       };
     }
 
+    isAnchorUsablyVisible() {
+      const frame = this.getYouTubeFrameRect();
+      const width = frame.right - frame.left;
+      const height = frame.bottom - frame.top;
+      return width >= 80 && height >= 56 && frame.bottom > 0 && frame.top < window.innerHeight;
+    }
+
     clampPositionToRect(left, top, width, height, bounds, margin) {
       const safeWidth = Math.max(1, Number(width) || 1);
       const safeHeight = Math.max(1, Number(height) || 1);
@@ -961,8 +1028,16 @@
     }
 
     refreshAnchorLayout() {
+      const anchorVisible = this.isAnchorUsablyVisible();
+      if (this.root) {
+        this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
+      }
+      if (this.launcherButton) {
+        this.launcherButton.classList.toggle("is-anchor-offscreen", !anchorVisible);
+      }
       if (!this.root || this.root.style.display === "none") {
         this.applyLauncherPosition();
+        this.updateTimelineLayer();
         return;
       }
       if (!this.persistLayout) {
@@ -980,6 +1055,7 @@
       }
       this.applyLauncherPosition();
       this.updatePanelFade();
+      this.updateTimelineLayer();
     }
 
     getDefaultPanelFrameRect() {
@@ -1031,6 +1107,114 @@
         if (typeof this.options.onSettingsChange === "function") {
           this.options.onSettingsChange(this.settings, { launcherPosition: this.settings.launcherPosition });
         }
+      }
+    }
+
+    updateTimelineLayer() {
+      if (!this.timelineLayer || !this.timelineTrack || !this.timelineTooltip) {
+        return;
+      }
+      const enabled = Boolean(this.settings.timelineModeEnabled);
+      const duration = Number(this.timelineDuration);
+      const chunks = Array.isArray(this.timelineChunks) ? this.timelineChunks : [];
+      const anchorVisible = this.isAnchorUsablyVisible();
+      if (!enabled || !anchorVisible || !Number.isFinite(duration) || duration <= 0 || !chunks.length) {
+        this.timelineLayer.classList.remove("is-visible");
+        this.timelineLayerVisible = false;
+        this.hideTimelineTooltip();
+        this.timelineTrack.replaceChildren();
+        return;
+      }
+
+      const frame = this.getYouTubeFrameRect();
+      const width = Math.max(120, frame.right - frame.left);
+      const top = Math.max(frame.top + 8, Math.min(frame.bottom - 42, frame.bottom - 34));
+      this.timelineLayer.style.left = Math.round(frame.left + 8) + "px";
+      this.timelineLayer.style.top = Math.round(top) + "px";
+      this.timelineLayer.style.width = Math.round(Math.max(80, width - 16)) + "px";
+      this.timelineLayer.classList.add("is-visible");
+      this.timelineLayerVisible = true;
+
+      const maxMarkers = 140;
+      const step = Math.max(1, Math.ceil(chunks.length / maxMarkers));
+      const fragment = document.createDocumentFragment();
+      for (let index = 0; index < chunks.length; index += step) {
+        const chunk = chunks[index];
+        const start = Number(chunk && chunk.seekStart !== undefined ? chunk.seekStart : chunk && chunk.start);
+        if (!Number.isFinite(start) || start < 0 || start > duration) {
+          continue;
+        }
+        const marker = document.createElement("button");
+        marker.type = "button";
+        marker.className = step > 1 ? "dc-timeline-marker is-clustered" : "dc-timeline-marker";
+        marker.style.left = Math.max(0, Math.min(100, (start / duration) * 100)).toFixed(3) + "%";
+        marker.dataset.index = String(index);
+        marker.dataset.start = String(start);
+        marker.dataset.text = String(chunk && chunk.text ? chunk.text : "");
+        marker.setAttribute("aria-label", "Seek to caption at " + chunker.formatTimestamp(start));
+        marker.title = marker.dataset.text;
+        fragment.append(marker);
+      }
+      this.timelineTrack.replaceChildren(fragment);
+    }
+
+    handleTimelineClick(event) {
+      if (!this.timelineLayerVisible || typeof this.options.onSeek !== "function") {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const marker = target.closest(".dc-timeline-marker");
+      if (!marker) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const index = Number(marker.getAttribute("data-index"));
+      const start = Number(marker.getAttribute("data-start"));
+      if (!Number.isFinite(start)) {
+        return;
+      }
+      this.options.onSeek({
+        future: true,
+        index: Number.isInteger(index) ? index : -1,
+        seekStart: start,
+        start,
+        end: start + 0.25,
+        timelineMarker: true
+      });
+    }
+
+    handleTimelinePointerMove(event) {
+      if (!this.timelineLayerVisible || !this.timelineTooltip) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        this.hideTimelineTooltip();
+        return;
+      }
+      const marker = target.closest(".dc-timeline-marker");
+      if (!marker) {
+        this.hideTimelineTooltip();
+        return;
+      }
+      const text = marker.getAttribute("data-text") || "";
+      const start = Number(marker.getAttribute("data-start"));
+      this.timelineTooltip.textContent = (Number.isFinite(start) ? chunker.formatTimestamp(start) + "  " : "") + text;
+      const layerRect = this.timelineLayer.getBoundingClientRect();
+      const markerRect = marker.getBoundingClientRect();
+      const maxLeft = Math.max(6, layerRect.width - 260);
+      const left = Math.max(6, Math.min(maxLeft, markerRect.left - layerRect.left - 120));
+      this.timelineTooltip.style.left = Math.round(left) + "px";
+      this.timelineTooltip.classList.add("is-visible");
+    }
+
+    hideTimelineTooltip() {
+      if (this.timelineTooltip) {
+        this.timelineTooltip.classList.remove("is-visible");
       }
     }
 
@@ -1508,6 +1692,13 @@
       this.currentWindowEnd = -1;
       this.scheduleWindowRender(true);
       this.updateJumpBottomVisibility();
+    }
+
+    setTimelineData(chunks, durationSeconds) {
+      this.timelineChunks = Array.isArray(chunks) ? chunks : [];
+      const duration = Number(durationSeconds);
+      this.timelineDuration = Number.isFinite(duration) && duration > 0 ? duration : Number.NaN;
+      this.updateTimelineLayer();
     }
 
     setActiveIndex(index, options) {

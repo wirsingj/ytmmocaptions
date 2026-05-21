@@ -14,7 +14,10 @@
     panelSize: null,
     futurePreviewHeight: 150,
     fadeTowardVideoCenter: true,
-    videoCenterFadeStrength: 20,
+    videoCenterFadeStrength: 72,
+    videoCenterFadeMidpoint: 50,
+    videoCenterFadeMinOpacity: 22,
+    timelineModeEnabled: false,
     launcherPosition: null,
     panelClosed: true
   });
@@ -89,7 +92,23 @@
     if (!Number.isFinite(number)) {
       return DEFAULTS.videoCenterFadeStrength;
     }
-    return Math.max(0, Math.min(60, Math.round(number)));
+    return Math.max(0, Math.min(90, Math.round(number)));
+  }
+
+  function normalizeVideoCenterFadeMidpoint(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return DEFAULTS.videoCenterFadeMidpoint;
+    }
+    return Math.max(20, Math.min(80, Math.round(number)));
+  }
+
+  function normalizeVideoCenterFadeMinOpacity(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return DEFAULTS.videoCenterFadeMinOpacity;
+    }
+    return Math.max(8, Math.min(70, Math.round(number)));
   }
 
   function normalizeLauncherPosition(value) {
@@ -120,6 +139,9 @@
       futurePreviewHeight: normalizeFuturePreviewHeight(source.futurePreviewHeight),
       fadeTowardVideoCenter: typeof source.fadeTowardVideoCenter === "boolean" ? source.fadeTowardVideoCenter : DEFAULTS.fadeTowardVideoCenter,
       videoCenterFadeStrength: normalizeVideoCenterFadeStrength(source.videoCenterFadeStrength),
+      videoCenterFadeMidpoint: normalizeVideoCenterFadeMidpoint(source.videoCenterFadeMidpoint),
+      videoCenterFadeMinOpacity: normalizeVideoCenterFadeMinOpacity(source.videoCenterFadeMinOpacity),
+      timelineModeEnabled: typeof source.timelineModeEnabled === "boolean" ? source.timelineModeEnabled : DEFAULTS.timelineModeEnabled,
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),
       panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed
     };
