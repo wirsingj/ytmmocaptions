@@ -54,11 +54,15 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelPosition: { left: -50, top: 20.4 },
       panelSize: { width: 200, height: 150 },
       futurePreviewHeight: 999,
+      fadeTowardVideoCenter: false,
+      videoCenterFadeStrength: 999,
       launcherPosition: { left: 12.6, top: -3 }
     });
     assert.deepEqual(result.panelPosition, { left: 0, top: 20 });
     assert.deepEqual(result.panelSize, { width: 280, height: 220 });
     assert.equal(result.futurePreviewHeight, 360);
+    assert.equal(result.fadeTowardVideoCenter, false);
+    assert.equal(result.videoCenterFadeStrength, 60);
     assert.deepEqual(result.launcherPosition, { left: 13, top: 0 });
   });
 
@@ -70,6 +74,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");
     assert.equal(result.futurePreviewHeight, 150);
+    assert.equal(result.fadeTowardVideoCenter, true);
+    assert.equal(result.videoCenterFadeStrength, 20);
     assert.equal(result.schemaVersion, 1);
   });
 
@@ -98,6 +104,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
       themeName: "ocean",
       customThemeColor: "#336699",
       futurePreviewHeight: 42,
+      fadeTowardVideoCenter: false,
+      videoCenterFadeStrength: -5,
       plan: "legacy-ignored",
       featureOverrides: { oldGate: true },
       globalKeyboardEnabled: true,
@@ -110,6 +118,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.themeName, "ocean");
     assert.equal(persisted.customThemeColor, "#336699");
     assert.equal(persisted.futurePreviewHeight, 52);
+    assert.equal(persisted.fadeTowardVideoCenter, false);
+    assert.equal(persisted.videoCenterFadeStrength, 0);
     assert.equal(persisted.schemaVersion, 1);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "plan"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "featureOverrides"), false);

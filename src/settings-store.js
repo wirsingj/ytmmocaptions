@@ -13,6 +13,8 @@
     panelPosition: null,
     panelSize: null,
     futurePreviewHeight: 150,
+    fadeTowardVideoCenter: true,
+    videoCenterFadeStrength: 20,
     launcherPosition: null,
     panelClosed: true
   });
@@ -82,6 +84,14 @@
     return Math.max(52, Math.min(360, Math.round(number)));
   }
 
+  function normalizeVideoCenterFadeStrength(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return DEFAULTS.videoCenterFadeStrength;
+    }
+    return Math.max(0, Math.min(60, Math.round(number)));
+  }
+
   function normalizeLauncherPosition(value) {
     if (!value || typeof value !== "object") {
       return null;
@@ -108,6 +118,8 @@
       panelPosition: normalizePanelPosition(source.panelPosition),
       panelSize: normalizePanelSize(source.panelSize),
       futurePreviewHeight: normalizeFuturePreviewHeight(source.futurePreviewHeight),
+      fadeTowardVideoCenter: typeof source.fadeTowardVideoCenter === "boolean" ? source.fadeTowardVideoCenter : DEFAULTS.fadeTowardVideoCenter,
+      videoCenterFadeStrength: normalizeVideoCenterFadeStrength(source.videoCenterFadeStrength),
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),
       panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed
     };

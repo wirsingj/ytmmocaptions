@@ -1,6 +1,6 @@
 # Dialogue Captions
 
-Dialogue Captions is a Chrome/Firefox extension that turns YouTube subtitles into an MMO-style dialogue panel.
+Dialogue Captions is a Chrome/Firefox extension that turns existing captions into an MMO-style dialogue panel. YouTube remains the known-good V1 path; V2 also starts supporting standard HTML5 videos with browser-accessible caption/subtitle tracks.
 
 ## Build Outputs
 
@@ -40,12 +40,13 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 
 - Bottom-left floating chat panel with scroll history.
 - Subtitle cues grouped into readable chunks.
+- On non-YouTube pages, eligible HTML5 videos with existing captions/subtitles can get their own anchored MMOCC panel.
 - Music/lyric-like captions split a little sooner so song lines do not become paragraph blobs.
 - Hover the panel and press `Space` to go to the next chunk.
 - Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
-- Panel preferences persist across YouTube videos: open/closed state, panel size/position, next-up preview height, pill position, opacity, text size, and local-only theme/color choice.
+- Panel preferences persist across videos: open/closed state, panel size/position, next-up preview height, pill position, opacity, center fade, text size, and local-only theme/color choice.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.
 
 ## Project Structure
@@ -63,6 +64,7 @@ ytmmocaptions/
     transcript.js
     caption-timeline.js
     ui-panel.js
+    universal-captions.js
     content-script.js
     page-bridge.js
   styles/
@@ -194,8 +196,9 @@ For AMO signing/upload, use:
 
 ## Store Compliance Notes
 
-- Host permissions are kept to YouTube only. Browser host-permission paths may be ignored by Chrome/Firefox, so runtime activation is also route-gated to `/watch?v=...`.
-- Content scripts are loaded on `https://www.youtube.com/*` so YouTube SPA navigation can be detected reliably; runtime activation and page-bridge caption hooks are still gated to valid `/watch?v=...` pages only.
+- Host permissions are kept to YouTube only. Browser host-permission paths may be ignored by Chrome/Firefox, so YouTube-specific runtime activation is also route-gated to `/watch?v=...`.
+- Content scripts are loaded on normal `http` and `https` pages so V2 can discover local HTML5 `<video>` elements with existing caption/subtitle tracks. The generic path does not request broad host permissions, does not fetch remote transcript data, and only reads browser-exposed media/text-track state.
+- YouTube page-bridge caption hooks are still gated to valid `/watch?v=...` pages only.
 - Page-bridge work is additionally guarded inside the injected page script so snapshots, caption probes, timedtext captures, and bridge fetches stop after YouTube SPA navigation leaves a valid `/watch?v=...` route.
 - No personal data collection.
 - Only local settings are stored via extension storage.

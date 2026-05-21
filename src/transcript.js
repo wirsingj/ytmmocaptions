@@ -1052,7 +1052,7 @@
       if (!control.isConnected) {
         continue;
       }
-      if (control.closest("#dc-panel, .dc-launcher")) {
+      if (control.closest(".dc-panel, .dc-launcher")) {
         continue;
       }
       const element = control;
@@ -1093,7 +1093,7 @@
       if (!control.isConnected) {
         continue;
       }
-      if (control.closest("#dc-panel, .dc-launcher")) {
+      if (control.closest(".dc-panel, .dc-launcher")) {
         continue;
       }
       const rect = typeof control.getBoundingClientRect === "function" ? control.getBoundingClientRect() : null;
@@ -2252,3 +2252,4 @@
     loadTranscript
   };
 })(window);
+

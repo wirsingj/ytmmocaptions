@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Dialogue Captions",
   "version": "1.1.2",
-  "description": "MMO-style dialogue panel for YouTube subtitles with chunk navigation.",
+  "description": "MMO-style dialogue panel for existing captions on YouTube and HTML5 videos.",
   "host_permissions": [
     "https://www.youtube.com/*"
   ],
@@ -12,7 +12,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.youtube.com/*"
+        "http://*/*",
+        "https://*/*"
       ],
       "js": [
         "scripts/platform.js",
@@ -25,12 +26,18 @@
         "scripts/transcript.js",
         "scripts/caption-timeline.js",
         "scripts/ui-panel.js",
+        "scripts/universal-captions.js",
         "scripts/content-script.js"
       ],
       "css": [
         "styles/panel.css"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "exclude_matches": [
+        "*://addons.mozilla.org/*",
+        "*://chrome.google.com/*",
+        "*://chromewebstore.google.com/*"
+      ]
     }
   ],
   "web_accessible_resources": [

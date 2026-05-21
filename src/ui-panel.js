@@ -76,6 +76,11 @@
     constructor(options) {
       this.options = options || {};
       this.settings = this.options.settings || {};
+      this.instanceId = String(this.options.instanceId || "").replace(/[^a-z0-9_-]/gi, "");
+      this.panelId = this.instanceId ? PANEL_ID + "-" + this.instanceId : PANEL_ID;
+      this.launcherId = this.instanceId ? LAUNCHER_ID + "-" + this.instanceId : LAUNCHER_ID;
+      this.anchorElement = this.options.anchorElement instanceof Element ? this.options.anchorElement : null;
+      this.persistLayout = this.options.persistLayout !== false;
 
       this.root = null;
       this.body = null;
@@ -91,6 +96,7 @@
       this.textScaleInput = null;
       this.themeSelect = null;
       this.themeColorInput = null;
+      this.centerFadeInput = null;
       this.header = null;
       this.resetButton = null;
       this.closeButton = null;
@@ -132,8 +138,9 @@
       this.removeExistingUiNodes();
 
       this.root = document.createElement("section");
-      this.root.id = PANEL_ID;
+      this.root.id = this.panelId;
       this.root.className = "dc-panel";
+      this.root.dataset.dcInstanceId = this.instanceId || "youtube";
       this.root.tabIndex = 0;
       this.root.setAttribute("aria-label", "MMO dialogue captions panel");
       this.resizeHandles = [];
@@ -229,11 +236,22 @@
       this.textScaleInput.title = "Text size";
       textScaleWrap.append(this.textScaleInput);
 
+      const centerFadeWrap = document.createElement("label");
+      centerFadeWrap.className = "dc-center-fade-wrap";
+      centerFadeWrap.title = "Fade toward the center of this video";
+      centerFadeWrap.textContent = "Fade";
+      this.centerFadeInput = document.createElement("input");
+      this.centerFadeInput.type = "checkbox";
+      this.centerFadeInput.className = "dc-center-fade-input";
+      this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
+      centerFadeWrap.append(this.centerFadeInput);
+
       controls.append(
         this.themeSelect,
         this.themeColorInput,
         opacityWrap,
         textScaleWrap,
+        centerFadeWrap,
         this.resetButton,
         this.closeButton
       );
@@ -282,8 +300,9 @@
 
       this.launcherButton = document.createElement("button");
       this.launcherButton.type = "button";
-      this.launcherButton.id = LAUNCHER_ID;
+      this.launcherButton.id = this.launcherId;
       this.launcherButton.className = "dc-launcher";
+      this.launcherButton.dataset.dcInstanceId = this.instanceId || "youtube";
       this.launcherButton.textContent = "Captions";
       this.launcherButton.title = "Open panel (drag to move)";
       document.body.append(this.launcherButton);
@@ -325,7 +344,7 @@
     }
 
     removeExistingUiNodes() {
-      const knownNodes = document.querySelectorAll("#" + PANEL_ID + ", #" + LAUNCHER_ID + ", .dc-launcher");
+      const knownNodes = document.querySelectorAll("#" + this.panelId + ", #" + this.launcherId);
       knownNodes.forEach((node) => {
         if (node instanceof Element) {
           node.remove();
@@ -430,6 +449,11 @@
         this.updateSettings({ textScale: Number(this.textScaleInput.value) });
       };
       this.addListener(this.textScaleInput, "input", onTextScaleInput);
+
+      const onCenterFadeChange = () => {
+        this.updateSettings({ fadeTowardVideoCenter: Boolean(this.centerFadeInput.checked) });
+      };
+      this.addListener(this.centerFadeInput, "change", onCenterFadeChange);
 
       const onLauncherClick = () => {
         if (Date.now() < this.launcherSuppressClickUntil) {
@@ -606,6 +630,9 @@
       if (this.textScaleInput && this.textScaleInput.value !== String(normalizedTextScale)) {
         this.textScaleInput.value = String(normalizedTextScale);
       }
+      if (this.centerFadeInput) {
+        this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
+      }
       if (this.themeSelect) {
         const themeName = this.getThemeName();
         if (this.themeSelect.value !== themeName) {
@@ -624,7 +651,7 @@
         this.scrollToBottom();
       }
 
-      if (this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
+      if (this.persistLayout && this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
         this.root.style.left = this.settings.panelPosition.left + "px";
         this.root.style.top = this.settings.panelPosition.top + "px";
         this.root.style.right = "auto";
@@ -805,6 +832,10 @@
       const fadeY = Math.max(0, Math.min(100, ((centerY - rect.top) / rect.height) * 100));
       this.root.style.setProperty("--dc-fade-x", fadeX.toFixed(1) + "%");
       this.root.style.setProperty("--dc-fade-y", fadeY.toFixed(1) + "%");
+      const strength = this.settings.fadeTowardVideoCenter === false
+        ? 0
+        : Math.max(0, Math.min(60, Number(this.settings.videoCenterFadeStrength || 20)));
+      this.root.style.setProperty("--dc-center-mask-alpha", (1 - strength / 100).toFixed(3));
     }
 
     getDefaultPanelRect() {
@@ -848,6 +879,8 @@
         panelPosition: null,
         panelSize: null,
         futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : 150,
+        fadeTowardVideoCenter: defaults.fadeTowardVideoCenter !== false,
+        videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 20,
         launcherPosition: null,
         panelClosed: false
       });
@@ -866,6 +899,17 @@
     }
 
     getYouTubeFrameRect() {
+      if (this.anchorElement instanceof Element && document.documentElement.contains(this.anchorElement)) {
+        const anchorRect = this.anchorElement.getBoundingClientRect();
+        if (anchorRect.width >= 160 && anchorRect.height >= 90) {
+          return {
+            left: Math.max(0, anchorRect.left),
+            top: Math.max(0, anchorRect.top),
+            right: Math.min(window.innerWidth, anchorRect.right),
+            bottom: Math.min(window.innerHeight, anchorRect.bottom)
+          };
+        }
+      }
       const selectors = ["#movie_player", ".html5-video-player", "ytd-player"];
       for (let index = 0; index < selectors.length; index += 1) {
         const element = document.querySelector(selectors[index]);
@@ -916,6 +960,28 @@
       return this.getYouTubeFrameRect();
     }
 
+    refreshAnchorLayout() {
+      if (!this.root || this.root.style.display === "none") {
+        this.applyLauncherPosition();
+        return;
+      }
+      if (!this.persistLayout) {
+        const rect = this.getDefaultPanelRect();
+        if (rect) {
+          this.root.style.left = rect.left + "px";
+          this.root.style.top = rect.top + "px";
+          if (!this.settings.panelSize) {
+            this.root.style.width = rect.width + "px";
+            this.root.style.height = rect.height + "px";
+          }
+        }
+      } else {
+        this.normalizeSavedPanelPosition();
+      }
+      this.applyLauncherPosition();
+      this.updatePanelFade();
+    }
+
     getDefaultPanelFrameRect() {
       const frame = this.getYouTubeFrameRect();
       return {
@@ -942,7 +1008,7 @@
       const width = this.launcherButton.offsetWidth || LAUNCHER_WIDTH;
       const height = this.launcherButton.offsetHeight || LAUNCHER_HEIGHT;
       const frame = this.getLauncherFrameRect();
-      const source = this.settings.launcherPosition || {
+      const source = this.persistLayout && this.settings.launcherPosition ? this.settings.launcherPosition : {
         left: frame.left + LAUNCHER_MARGIN,
         top: frame.bottom - height - LAUNCHER_MARGIN
       };
@@ -953,6 +1019,7 @@
       this.launcherButton.style.bottom = "auto";
 
       if (
+        this.persistLayout &&
         this.settings.launcherPosition &&
         (clamped.left !== Number(this.settings.launcherPosition.left) ||
           clamped.top !== Number(this.settings.launcherPosition.top))
@@ -1011,7 +1078,7 @@
       if (!this.root || this.root.style.display === "none") {
         return;
       }
-      if (!this.settings.panelPosition) {
+      if (!this.persistLayout || !this.settings.panelPosition) {
         return;
       }
       const rect = this.root.getBoundingClientRect();

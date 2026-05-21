@@ -26,11 +26,13 @@ exports.run = async function runComplianceTests(ctx) {
     }
   });
 
-  await runCase("YouTube permissions stay YouTube-only while runtime is watch-page gated", () => {
+  await runCase("V2 content script can see HTML5 videos while YouTube bridge stays YouTube-only", () => {
     for (const fileName of manifests) {
       const manifest = readJson(fileName);
       assert.deepEqual(manifest.host_permissions, ["https://www.youtube.com/*"], fileName);
-      assert.deepEqual(manifest.content_scripts[0].matches, ["https://www.youtube.com/*"], fileName);
+      assert.deepEqual(manifest.content_scripts[0].matches, ["http://*/*", "https://*/*"], fileName);
+      assert.ok(manifest.content_scripts[0].exclude_matches.includes("*://addons.mozilla.org/*"), fileName);
+      assert.ok(manifest.content_scripts[0].exclude_matches.includes("*://chromewebstore.google.com/*"), fileName);
       for (const block of manifest.web_accessible_resources || []) {
         assert.deepEqual(block.matches, ["https://www.youtube.com/*"], fileName);
       }
@@ -51,6 +53,7 @@ exports.run = async function runComplianceTests(ctx) {
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
       const transcriptIndex = js.findIndex((item) => item.includes("transcript.js"));
       const timelineIndex = js.findIndex((item) => item.includes("caption-timeline.js"));
+      const universalIndex = js.findIndex((item) => item.includes("universal-captions.js"));
       const contentIndex = js.findIndex((item) => item.includes("content-script.js"));
       assert.ok(platformIndex >= 0, fileName + " missing platform.js");
       assert.ok(diagnosticsIndex >= 0, fileName + " missing diagnostics.js");
@@ -59,6 +62,7 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
       assert.ok(transcriptIndex >= 0, fileName + " missing transcript.js");
       assert.ok(timelineIndex >= 0, fileName + " missing caption-timeline.js");
+      assert.ok(universalIndex >= 0, fileName + " missing universal-captions.js");
       assert.ok(contentIndex >= 0, fileName + " missing content-script.js");
       assert.ok(platformIndex < diagnosticsIndex, fileName + " loads platform before diagnostics");
       assert.ok(diagnosticsIndex < pageContextIndex, fileName + " loads diagnostics before page-context");
@@ -66,6 +70,7 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
       assert.ok(transcriptIndex < timelineIndex, fileName + " loads caption timeline before transcript");
       assert.ok(timelineIndex < contentIndex, fileName + " loads content-script before caption timeline");
+      assert.ok(universalIndex < contentIndex, fileName + " loads content-script before universal captions");
     }
   });
 
@@ -365,11 +370,22 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("keyboardStepSeconds"));
     assert.ok(!source.includes("autoScroll"));
     assert.ok(source.includes("futurePreviewHeight"));
+    assert.ok(source.includes("fadeTowardVideoCenter"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
     assert.ok(privacy.includes("next-up preview height"));
+  });
+
+  await runCase("V2 universal layer remains local-only and standards-based", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "universal-captions.js"), "utf8");
+    assert.ok(source.includes("HTMLVideoElement"));
+    assert.ok(source.includes("TextTrack"));
+    assert.ok(source.includes("GenericTextTrackAdapter"));
+    assert.ok(!source.includes("getUserMedia"));
+    assert.ok(!source.includes("MediaRecorder"));
+    assert.ok(!source.includes("fetch("));
   });
 };

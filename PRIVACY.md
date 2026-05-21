@@ -2,7 +2,7 @@
 
 Effective date: April 16, 2026
 
-Dialogue Captions is a browser extension for YouTube subtitle navigation.
+Dialogue Captions is a browser extension for turning existing video captions into an MMO-style dialogue panel. YouTube is the primary supported site, and V2 also begins supporting standard HTML5 videos when the page exposes usable caption/subtitle tracks.
 
 ## Data Collection
 
@@ -23,6 +23,7 @@ The extension stores only local preference settings in extension storage:
 - panel theme preset and custom theme color;
 - panel position and size;
 - next-up preview height;
+- whether the panel fades toward the center of the associated video;
 - launcher/pill position;
 - panel open/closed state.
 
@@ -38,15 +39,15 @@ The extension does not store transcript text, chat bubble history, the active bu
 - YouTube host access
   Used only on YouTube pages so the extension can detect watch-page navigation and read captions for the current video.
 
-The extension's content script is injected on `https://www.youtube.com/*` only to detect YouTube SPA route changes.
-Runtime logic remains gated to watch pages (`/watch`) and the panel does not activate on other page types.
-Chrome and Firefox may ignore path portions of host-permission patterns, so the extension also checks the route before starting caption work.
+The extension's content script is injected on normal `http` and `https` pages so it can detect local HTML5 video elements with browser-exposed caption or subtitle tracks. This generic V2 path only reads the video element and its text-track metadata/cues; it does not request microphone access, capture audio, infer captions, scrape unrelated page content, or call external transcription services.
+
+YouTube-specific caption fetching and page-bridge work remains gated to YouTube watch pages (`/watch`) with a valid video id. Chrome and Firefox may ignore path portions of host-permission patterns, so the extension also checks the route before starting YouTube caption work.
 
 No additional host permissions are requested.
 
 ## Network Access
 
-The extension reads YouTube subtitle/caption data and limited YouTube page configuration required for on-page functionality. Subtitle/caption text and page configuration are processed locally in the browser for the current video and are not transmitted to the developer.
+The extension reads YouTube subtitle/caption data, browser-exposed HTML5 text-track data, and limited YouTube page configuration required for on-page functionality. Subtitle/caption text and page configuration are processed locally in the browser for the current video and are not transmitted to the developer.
 
 Dialogue Captions is intended as a local accessibility/navigation aid. It does not bulk download, export, sell, analyze, or transmit YouTube captions to the developer or third parties.
 
