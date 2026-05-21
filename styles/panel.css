@@ -380,8 +380,8 @@
   bottom: 6px;
   height: 14px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(var(--dc-bg-rgb), 0.08), rgba(var(--dc-bg-rgb), 0.2));
-  box-shadow: inset 0 0 0 1px rgba(var(--dc-text-rgb), 0.14);
+  background: transparent;
+  box-shadow: none;
   pointer-events: auto;
   cursor: crosshair;
 }
@@ -393,14 +393,14 @@
   height: 12px;
   border-radius: 999px;
   transform: translateX(-50%);
-  background: rgba(var(--dc-accent-rgb), 0.28);
-  box-shadow: 0 0 7px rgba(var(--dc-accent-rgb), 0.16);
+  background: rgba(var(--dc-accent-rgb), 0.1);
+  box-shadow: none;
   pointer-events: none;
 }
 
 .dc-timeline-marker.is-clustered {
   width: 4px;
-  background: rgba(var(--dc-accent-rgb), 0.22);
+  background: rgba(var(--dc-accent-rgb), 0.08);
 }
 
 .dc-timeline-bubbles {
@@ -467,6 +467,31 @@
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.38),
     0 0 18px rgba(var(--dc-accent-rgb), 0.11);
+  padding-bottom: 20px;
+}
+
+.dc-timeline-lens::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  height: 3px;
+  border-radius: 999px;
+  background:
+    radial-gradient(
+      circle at var(--dc-lens-progress, 0%) 50%,
+      rgba(var(--dc-accent-rgb), 0.78) 0 4px,
+      transparent 5px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(var(--dc-accent-rgb), 0.46) 0,
+      rgba(var(--dc-accent-rgb), 0.46) var(--dc-lens-progress, 0%),
+      rgba(var(--dc-text-rgb), 0.16) var(--dc-lens-progress, 0%),
+      rgba(var(--dc-text-rgb), 0.1) 100%
+    );
+  box-shadow: 0 0 9px rgba(var(--dc-accent-rgb), 0.12);
 }
 
 .dc-timeline-lens.is-visible {

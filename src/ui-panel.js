@@ -1287,8 +1287,12 @@
           ? (this.timelineHoverTime / duration) * layerWidth
           : (Number.isFinite(focusPercent) ? (focusPercent / 100) * layerWidth : layerWidth / 2);
         const lensLeft = timelineScrub.clampBubbleLeft(lensCenter, lensWidth, layerWidth, 8);
+        const progressPercent = Number.isFinite(this.timelineHoverTime)
+          ? Math.max(0, Math.min(100, (this.timelineHoverTime / duration) * 100))
+          : Math.max(0, Math.min(100, Number.isFinite(focusPercent) ? focusPercent : 0));
         this.timelineTooltip.style.left = Math.round(lensLeft) + "px";
         this.timelineTooltip.style.width = Math.round(lensWidth) + "px";
+        this.timelineTooltip.style.setProperty("--dc-lens-progress", progressPercent.toFixed(2) + "%");
         this.timelineTooltip.textContent = (Number.isFinite(focusStart) ? chunker.formatTimestamp(focusStart) + "  " : "") + focusText;
         this.timelineTooltip.classList.add("is-visible");
         this.timelineTooltip.classList.toggle("is-hover", this.timelineHoverIndex >= 0);

@@ -409,6 +409,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("timelineDataKey"));
     assert.ok(panelSource.includes("this.timelineHoverIndex = -1;"));
     assert.ok(panelSource.includes("this.timelineHoverTime = Number.NaN;"));
+    assert.ok(panelSource.includes("--dc-lens-progress"));
     assert.ok(panelSource.includes('this.timelineTooltip.classList.add("is-visible")'));
     assert.ok(panelSource.includes('this.timelineTooltip.classList.toggle("is-hover"'));
     assert.ok(panelSource.includes("Math.pow(blend, 0.72)"));
@@ -419,6 +420,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-timeline-layer"));
     assert.ok(css.includes(".dc-timeline-bubble"));
     assert.ok(css.includes(".dc-timeline-lens"));
+    assert.ok(css.includes(".dc-timeline-lens::after"));
+    assert.ok(css.includes("background: transparent;"));
+    assert.ok(css.includes("radial-gradient("));
     assert.ok(css.includes("width: min(760px, 78vw)"));
     assert.ok(css.includes(".dc-timeline-lens.is-hover"));
     assert.ok(css.includes(".dc-panel.is-timeline-scrub:hover .dc-controls"));
