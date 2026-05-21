@@ -638,7 +638,9 @@
       if (panelClosed) {
         this.pointerInside = false;
       }
-      this.body.style.display = "flex";
+      const timelineActive = Boolean(this.settings.timelineModeEnabled);
+      this.body.style.display = timelineActive ? "none" : "flex";
+      this.body.hidden = timelineActive;
 
       const isNarrowViewport = window.matchMedia("(max-width: 980px)").matches;
       const defaultPanelRect = isNarrowViewport ? null : this.getDefaultPanelRect();
@@ -690,14 +692,13 @@
         this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
       }
       if (this.timelineModeButton) {
-        const timelineActive = Boolean(this.settings.timelineModeEnabled);
         this.timelineModeButton.classList.toggle("is-active", timelineActive);
         this.timelineModeButton.textContent = timelineActive ? "Panel" : "Timeline";
         this.timelineModeButton.title = timelineActive ? "Return to full caption panel" : "Open transcript scrub mode";
         this.timelineModeButton.setAttribute("aria-pressed", timelineActive ? "true" : "false");
       }
       if (this.root) {
-        this.root.classList.toggle("is-timeline-scrub", Boolean(this.settings.timelineModeEnabled));
+        this.root.classList.toggle("is-timeline-scrub", timelineActive);
       }
       if (this.themeSelect) {
         const themeName = this.getThemeName();
@@ -751,15 +752,16 @@
       const setAlpha = (name, value) => {
         this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
       };
-      setAlpha("--dc-panel-alpha-inner", 0 + blend * 0.172);
-      setAlpha("--dc-panel-alpha-mid", 0.004 + blend * 0.354);
-      setAlpha("--dc-panel-alpha-outer", 0.14 + blend * 0.74);
-      setAlpha("--dc-panel-alpha-base", 0.004 + blend * 0.336);
-      setAlpha("--dc-panel-fade-light", 0.001 + blend * 0.019);
-      setAlpha("--dc-panel-fade-shadow", 0.012 + blend * 0.253);
-      setAlpha("--dc-panel-fade-shadow-soft", (0.012 + blend * 0.253) * 0.62);
-      setAlpha("--dc-card-alpha", 0.16 + blend * 0.48);
-      setAlpha("--dc-card-current-alpha", 0.22 + blend * 0.52);
+      const eased = Math.pow(blend, 0.72);
+      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.32);
+      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.5);
+      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.54);
+      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.5);
+      setAlpha("--dc-panel-fade-light", 0.002 + eased * 0.022);
+      setAlpha("--dc-panel-fade-shadow", 0.014 + eased * 0.24);
+      setAlpha("--dc-panel-fade-shadow-soft", (0.014 + eased * 0.24) * 0.62);
+      setAlpha("--dc-card-alpha", 0.2 + eased * 0.5);
+      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.54);
       this.root.style.opacity = "1";
     }
 
@@ -1145,7 +1147,7 @@
 
       const frame = this.getYouTubeFrameRect();
       const width = Math.max(120, frame.right - frame.left);
-      const top = Math.max(frame.top + 8, Math.min(frame.bottom - 148, frame.bottom - 134));
+      const top = Math.max(frame.top + 8, Math.min(frame.bottom - 210, frame.bottom - 190));
       this.timelineLayer.style.left = Math.round(frame.left + 8) + "px";
       this.timelineLayer.style.top = Math.round(top) + "px";
       this.timelineLayer.style.width = Math.round(Math.max(80, width - 16)) + "px";
@@ -1269,24 +1271,13 @@
       }
       const layerRect = this.timelineLayer.getBoundingClientRect();
       const layerWidth = Math.max(120, layerRect.width || 120);
-      const fragment = document.createDocumentFragment();
-      const context = timelineScrub.getContextIndices(chunks, focusIndex);
-      for (let index = 0; index < context.length; index += 1) {
-        const item = context[index];
-        const chunk = chunks[item.index];
-        const percent = timelineScrub.chunkToPercent(chunk, duration);
-        if (!Number.isFinite(percent)) {
-          continue;
-        }
-        fragment.append(this.createTimelineBubble(chunk, item.index, item.role, percent, layerWidth));
-      }
-      this.timelineBubbleStage.replaceChildren(fragment);
+      this.timelineBubbleStage.replaceChildren();
       if (this.timelineTooltip) {
         const focusChunk = chunks[focusIndex];
         const focusPercent = timelineScrub.chunkToPercent(focusChunk, duration);
         const focusStart = timelineScrub.getChunkStart(focusChunk);
         const focusText = timelineScrub.getChunkText(focusChunk);
-        const lensWidth = Math.min(460, Math.max(270, layerWidth * 0.38));
+        const lensWidth = Math.min(620, Math.max(360, layerWidth * 0.48));
         const lensCenter = Number.isFinite(this.timelineHoverTime)
           ? (this.timelineHoverTime / duration) * layerWidth
           : (Number.isFinite(focusPercent) ? (focusPercent / 100) * layerWidth : layerWidth / 2);
@@ -1295,6 +1286,16 @@
         this.timelineTooltip.style.width = Math.round(lensWidth) + "px";
         this.timelineTooltip.textContent = (Number.isFinite(focusStart) ? chunker.formatTimestamp(focusStart) + "  " : "") + focusText;
         this.timelineTooltip.classList.toggle("is-visible", this.timelineHoverIndex >= 0);
+      }
+
+      if (this.timelineHoverIndex < 0) {
+        const focusChunk = chunks[focusIndex];
+        const focusPercent = timelineScrub.chunkToPercent(focusChunk, duration);
+        if (Number.isFinite(focusPercent)) {
+          const fragment = document.createDocumentFragment();
+          fragment.append(this.createTimelineBubble(focusChunk, focusIndex, "current", focusPercent, layerWidth));
+          this.timelineBubbleStage.replaceChildren(fragment);
+        }
       }
     }
 
@@ -1308,7 +1309,7 @@
       bubble.textContent = (Number.isFinite(start) ? chunker.formatTimestamp(start) + "  " : "") + text;
       bubble.setAttribute("aria-label", "Seek to caption at " + (Number.isFinite(start) ? chunker.formatTimestamp(start) : "this moment"));
       const bubbleWidth = role === "current"
-        ? Math.min(420, Math.max(260, layerWidth * 0.44))
+        ? Math.min(580, Math.max(340, layerWidth * 0.46))
         : Math.min(300, Math.max(190, layerWidth * 0.28));
       const centerX = (percent / 100) * layerWidth;
       const left = timelineScrub.clampBubbleLeft(centerX, bubbleWidth, layerWidth, 8);
