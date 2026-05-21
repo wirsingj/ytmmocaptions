@@ -49,17 +49,23 @@ exports.run = async function runComplianceTests(ctx) {
       const pageContextIndex = js.findIndex((item) => item.includes("page-context.js"));
       const captionTextIndex = js.findIndex((item) => item.includes("caption-text.js"));
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
+      const transcriptIndex = js.findIndex((item) => item.includes("transcript.js"));
+      const timelineIndex = js.findIndex((item) => item.includes("caption-timeline.js"));
       const contentIndex = js.findIndex((item) => item.includes("content-script.js"));
       assert.ok(platformIndex >= 0, fileName + " missing platform.js");
       assert.ok(diagnosticsIndex >= 0, fileName + " missing diagnostics.js");
       assert.ok(pageContextIndex >= 0, fileName + " missing page-context.js");
       assert.ok(captionTextIndex >= 0, fileName + " missing caption-text.js");
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
+      assert.ok(transcriptIndex >= 0, fileName + " missing transcript.js");
+      assert.ok(timelineIndex >= 0, fileName + " missing caption-timeline.js");
       assert.ok(contentIndex >= 0, fileName + " missing content-script.js");
       assert.ok(platformIndex < diagnosticsIndex, fileName + " loads platform before diagnostics");
       assert.ok(diagnosticsIndex < pageContextIndex, fileName + " loads diagnostics before page-context");
       assert.ok(captionTextIndex < contentIndex, fileName + " loads content-script before caption-text");
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
+      assert.ok(transcriptIndex < timelineIndex, fileName + " loads caption timeline before transcript");
+      assert.ok(timelineIndex < contentIndex, fileName + " loads content-script before caption timeline");
     }
   });
 
@@ -156,7 +162,9 @@ exports.run = async function runComplianceTests(ctx) {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "page-bridge.js"), "utf8");
     assert.ok(!source.includes('"XSRF_TOKEN"'));
     assert.ok(source.includes('host !== "www.youtube.com"'));
-    assert.ok(source.includes('path.endsWith("/api/timedtext") || path === "/youtubei/v1/get_transcript"'));
+    assert.ok(source.includes('path.endsWith("/api/timedtext")'));
+    assert.ok(source.includes('path === "/youtubei/v1/get_transcript"'));
+    assert.ok(source.includes('path === "/youtubei/v1/get_panel"'));
   });
 
   await runCase("global keyboard is pointer-over-panel only", () => {
@@ -264,16 +272,19 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!/v1\\.0\\.2/.test(sourceSubmission));
   });
 
-  await runCase("optional e2e diagnostic requires an explicit YouTube URL", () => {
+  await runCase("optional e2e diagnostic is explicit, local, and avoids raw transcript assertions", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "tests", "e2e-extension-debug.js"), "utf8");
     const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
     const gitignore = fs.readFileSync(path.join(ROOT_DIR, ".gitignore"), "utf8");
-    assert.ok(source.includes('url: ""'));
-    assert.ok(source.includes("Pass a YouTube watch URL"));
+    assert.ok(source.includes("--browser must be chrome, firefox, or both."));
+    assert.ok(source.includes("e2e-report.json"));
+    assert.ok(source.includes("shared-source-injected-diagnostic"));
     assert.ok(source.includes("textLength"));
+    assert.ok(source.includes("scorePercent"));
     assert.ok(!source.includes("document.title"));
     assert.ok(!source.includes("dQw4w9WgXcQ"));
-    assert.ok(readme.includes("npm run diagnostic:e2e -- --url=https://www.youtube.com/watch?v=VIDEO_ID"));
+    assert.ok(readme.includes("npm run diagnostic:e2e -- --browser=both --url=https://www.youtube.com/watch?v=VIDEO_ID --headed"));
+    assert.ok(readme.includes("tests/artifacts/e2e-report.json"));
     assert.ok(gitignore.includes("tests/artifacts/"));
   });
 
@@ -291,13 +302,24 @@ exports.run = async function runComplianceTests(ctx) {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("dc-future-divider"));
+    assert.ok(panelSource.includes("dc-future-section"));
+    assert.ok(panelSource.includes("handleFutureDividerPointerDown"));
     assert.ok(panelSource.includes("dc-chunk-future"));
     assert.ok(panelSource.includes('role", "separator"'));
     assert.ok(!panelSource.includes('divider.addEventListener("click"'));
     assert.ok(css.includes(".dc-chunk-future"));
     assert.ok(css.includes(".dc-future-divider"));
+    assert.ok(css.includes(".dc-future-section"));
+    assert.ok(css.includes("max-height: var(--dc-future-preview-height"));
     assert.ok(css.includes("border-style: dashed"));
-    assert.ok(css.includes("pointer-events: none"));
+    assert.ok(css.includes("cursor: ns-resize"));
+  });
+
+  await runCase("reading glow cannot persist without an active timing range", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    assert.ok(panelSource.includes("lastGlowWordEnd"));
+    assert.ok(panelSource.includes("this.renderChunkText(textElement, chunk, Boolean(range))"));
+    assert.ok(panelSource.includes("this.lastGlowWordEnd = nextGlowWordEnd"));
   });
 
   await runCase("panel exposes basic accessibility labels and reduced-motion CSS", () => {
@@ -342,10 +364,12 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("chunkSize"));
     assert.ok(!source.includes("keyboardStepSeconds"));
     assert.ok(!source.includes("autoScroll"));
+    assert.ok(source.includes("futurePreviewHeight"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
+    assert.ok(privacy.includes("next-up preview height"));
   });
 };

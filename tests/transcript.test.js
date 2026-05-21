@@ -181,6 +181,280 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.track.kind, "intercepted_player_caption");
   });
 
+  await runCase("transcript prefers direct timedtext over intercepted captures when both exist", async () => {
+    const playerResponse = readFixture("player-response.json");
+    const json3Data = readFixture("json3-sample.json");
+    const interceptedData = {
+      events: [
+        {
+          tStartMs: 5000,
+          dDurationMs: 1000,
+          segs: [{ utf8: "intercepted later line" }]
+        }
+      ]
+    };
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        ytInitialPlayerResponse: playerResponse,
+        location: { href: "https://www.youtube.com/watch?v=abc123" },
+        DialogueCaptions: {
+          pageContext: {
+            getSnapshot() {
+              return {
+                hasPlayerResponse: true,
+                captionTracks: []
+              };
+            },
+            getTimedtextCaptures() {
+              return [
+                {
+                  url: "https://www.youtube.com/api/timedtext?v=abc123&lang=en&fmt=json3",
+                  status: 200,
+                  contentType: "application/json",
+                  body: JSON.stringify(interceptedData),
+                  source: "fetch",
+                  seenAt: Date.now(),
+                  videoId: "abc123"
+                }
+              ];
+            }
+          }
+        }
+      },
+      fetch: async (url) => {
+        if (String(url).includes("fmt=json3")) {
+          return makeJsonResponse(json3Data);
+        }
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "direct transcript mode");
+    assert.equal(result.cues[0].text, "Line one from witness.");
+  });
+
+  await runCase("transcript loads full future timeline from YouTube transcript panel endpoint", async () => {
+    const playerResponse = readFixture("player-response.json");
+    const panelPayload = {
+      actions: [
+        {
+          updateEngagementPanelAction: {
+            content: {
+              transcriptRenderer: {
+                body: {
+                  transcriptBodyRenderer: {
+                    cueGroups: [
+                      {
+                        transcriptCueGroupRenderer: {
+                          formattedStartOffset: { simpleText: "0:08" },
+                          cues: [
+                            {
+                              transcriptCueRenderer: {
+                                cue: { simpleText: "first panel line." }
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        transcriptCueGroupRenderer: {
+                          formattedStartOffset: { simpleText: "0:16" },
+                          cues: [
+                            {
+                              transcriptCueRenderer: {
+                                cue: { simpleText: "second panel line for future preview." }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    };
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        ytInitialPlayerResponse: playerResponse,
+        location: { href: "https://www.youtube.com/watch?v=panel123" },
+        DialogueCaptions: {
+          pageContext: {
+            getSnapshot() {
+              return {
+                hasPlayerResponse: true,
+                captionTracks: [],
+                transcriptPanelParams: "panel-params",
+                ytcfg: {
+                  INNERTUBE_API_KEY: "fake-key",
+                  INNERTUBE_CONTEXT: {
+                    client: {
+                      clientName: "WEB",
+                      clientVersion: "2.test"
+                    }
+                  },
+                  INNERTUBE_CONTEXT_CLIENT_NAME: "1",
+                  INNERTUBE_CONTEXT_CLIENT_VERSION: "2.test"
+                }
+              };
+            },
+            getTimedtextCaptures() {
+              return [];
+            },
+            async pageFetch(url, init) {
+              requested.push({ url: String(url), init });
+              if (String(url).includes("/youtubei/v1/get_panel")) {
+                return {
+                  ok: true,
+                  status: 200,
+                  url: String(url),
+                  contentType: "application/json",
+                  body: JSON.stringify(panelPayload)
+                };
+              }
+              return {
+                ok: true,
+                status: 200,
+                url: String(url),
+                contentType: "text/plain",
+                body: ""
+              };
+            }
+          }
+        }
+      },
+      fetch: async () => makeTextResponse("", 200, "text/plain")
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=panel123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "direct transcript mode");
+    assert.equal(result.track.kind, "get_panel");
+    assert.deepEqual(result.cues.map((cue) => cue.text), [
+      "first panel line.",
+      "second panel line for future preview."
+    ]);
+    assert.equal(result.cues[0].start, 8);
+    assert.equal(result.cues[0].end, 16);
+    const panelRequest = requested.find((entry) => entry.url.includes("/youtubei/v1/get_panel"));
+    assert.ok(panelRequest, "expected get_panel to be requested");
+    assert.equal(JSON.parse(panelRequest.init.body).panelId, "PAmodern_transcript_view");
+  });
+
+  await runCase("transcript derives modern panel params and parses segment view-model cues", async () => {
+    const playerResponse = readFixture("player-response.json");
+    const panelPayload = {
+      content: {
+        sectionListRenderer: {
+          contents: [
+            {
+              itemSectionRenderer: {
+                contents: [
+                  {
+                    transcriptSegmentViewModel: {
+                      timestamp: "1:04",
+                      simpleText: "modern panel cue one."
+                    }
+                  },
+                  {
+                    transcriptSegmentViewModel: {
+                      timestamp: "1:12",
+                      simpleText: "modern panel cue two."
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    };
+    let panelBody = null;
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        ytInitialPlayerResponse: playerResponse,
+        location: { href: "https://www.youtube.com/watch?v=modern123" },
+        DialogueCaptions: {
+          pageContext: {
+            getSnapshot() {
+              return {
+                hasPlayerResponse: true,
+                captionTracks: [],
+                ytcfg: {
+                  INNERTUBE_API_KEY: "fake-key",
+                  INNERTUBE_CONTEXT: {
+                    client: {
+                      clientName: "WEB",
+                      clientVersion: "2.test"
+                    }
+                  },
+                  INNERTUBE_CONTEXT_CLIENT_NAME: "1",
+                  INNERTUBE_CONTEXT_CLIENT_VERSION: "2.test"
+                }
+              };
+            },
+            getTimedtextCaptures() {
+              return [];
+            },
+            async pageFetch(url, init) {
+              if (String(url).includes("/youtubei/v1/get_panel")) {
+                panelBody = JSON.parse(init.body);
+                return {
+                  ok: true,
+                  status: 200,
+                  url: String(url),
+                  contentType: "application/json",
+                  body: JSON.stringify(panelPayload)
+                };
+              }
+              return {
+                ok: true,
+                status: 200,
+                url: String(url),
+                contentType: "text/plain",
+                body: ""
+              };
+            }
+          }
+        }
+      },
+      fetch: async (url) => {
+        throw new Error("get_panel should not fetch the watch page before deriving params: " + url);
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=modern123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.track.kind, "get_panel");
+    assert.equal(result.cues.length, 2);
+    assert.equal(result.cues[0].start, 64);
+    assert.equal(result.cues[0].end, 72);
+    assert.deepEqual(result.cues.map((cue) => cue.text), [
+      "modern panel cue one.",
+      "modern panel cue two."
+    ]);
+    assert.equal(panelBody.panelId, "PAmodern_transcript_view");
+    assert.ok(panelBody.params, "derived panel params should be sent");
+  });
+
   await runCase("transcript filters invalid XML cues and sorts parsed cues", async () => {
     const playerResponse = readFixture("player-response.json");
     const transcript = loadModule("transcript.js", {

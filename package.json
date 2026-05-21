@@ -19,5 +19,8 @@
     "release:sanity": "npm run release:check && npm run package:source && powershell -ExecutionPolicy Bypass -File scripts/verify-release-artifacts.ps1",
     "publish:chrome": "node scripts/publish-chrome.mjs",
     "publish:firefox": "powershell -ExecutionPolicy Bypass -File scripts/publish-firefox.ps1"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
   }
 }

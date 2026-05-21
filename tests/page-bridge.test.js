@@ -206,9 +206,11 @@ exports.run = async function runPageBridgeTests(ctx) {
     const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
     const timedtext = await bridge.request("https://www.youtube.com/api/timedtext?v=abc123", { method: "GET" });
     const transcript = await bridge.request("https://www.youtube.com/youtubei/v1/get_transcript", { method: "POST" });
+    const panel = await bridge.request("https://www.youtube.com/youtubei/v1/get_panel?prettyPrint=false", { method: "POST" });
     assert.equal(timedtext.payload.ok, true);
     assert.equal(transcript.payload.ok, true);
-    assert.equal(bridge.fetchCalls, 2);
+    assert.equal(panel.payload.ok, true);
+    assert.equal(bridge.fetchCalls, 3);
   });
 
   await runCase("page bridge ignores missing-token requests", async () => {

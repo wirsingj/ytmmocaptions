@@ -34,6 +34,7 @@
         "scripts/chunker.js",
         "scripts/bubble-state.js",
         "scripts/transcript.js",
+        "scripts/caption-timeline.js",
         "scripts/ui-panel.js",
         "scripts/content-script.js"
       ],

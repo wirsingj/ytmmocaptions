@@ -89,3 +89,10 @@ try {
 
 Write-Output "Chrome ZIP packaged successfully:"
 Write-Output $zipPath
+
+$releaseDir = Join-Path $projectRoot ("build\releases\v" + $version)
+New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+$versionedPath = Join-Path $releaseDir (Split-Path -Leaf $zipPath)
+Copy-Item -LiteralPath $zipPath -Destination $versionedPath -Force
+Write-Output "Versioned Chrome copy:"
+Write-Output $versionedPath

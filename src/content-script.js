@@ -8,9 +8,10 @@
   const platform = app.platform;
   const pageContext = app.pageContext;
   const diagnostics = app.diagnostics || { record() {} };
+  const captionTimeline = app.captionTimeline;
   const DialoguePanel = app.DialoguePanel;
 
-  if (!transcript || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
+  if (!transcript || !captionTimeline || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
     console.warn("[Dialogue Captions] Missing required modules.");
     return;
   }
@@ -259,6 +260,9 @@
         if (isTypingContext(event.target)) {
           return false;
         }
+        if (!this.canRunShortcutSeek(liveVideo)) {
+          return false;
+        }
         return this.panel.isPointerInside();
       };
 
@@ -341,6 +345,10 @@
           this.captureLiveCaptionLine();
         }
       };
+      const onSeeking = () => {
+        this.handleDiscontinuousTimeMove("seeking");
+        this.scheduleSync();
+      };
       const onSeeked = () => {
         this.handleDiscontinuousTimeMove("seeked");
         this.scheduleSync();
@@ -356,10 +364,12 @@
       };
 
       boundVideo.addEventListener("timeupdate", onTimeUpdate);
+      boundVideo.addEventListener("seeking", onSeeking);
       boundVideo.addEventListener("seeked", onSeeked);
       boundVideo.addEventListener("loadedmetadata", onLoadedMetadata);
 
       this.videoCleanupFns.push(() => boundVideo.removeEventListener("timeupdate", onTimeUpdate));
+      this.videoCleanupFns.push(() => boundVideo.removeEventListener("seeking", onSeeking));
       this.videoCleanupFns.push(() => boundVideo.removeEventListener("seeked", onSeeked));
       this.videoCleanupFns.push(() => boundVideo.removeEventListener("loadedmetadata", onLoadedMetadata));
     }
@@ -703,6 +713,39 @@
       this.liveOverlayUtterance = null;
     }
 
+    isYouTubeAdPlaybackActive() {
+      const player = document.getElementById("movie_player");
+      if (player && player.classList) {
+        const adClasses = ["ad-showing", "ad-interrupting", "ytp-ad-player-overlay"];
+        for (let index = 0; index < adClasses.length; index += 1) {
+          if (player.classList.contains(adClasses[index])) {
+            return true;
+          }
+        }
+      }
+      return Boolean(
+        document.querySelector(
+          ".ytp-ad-module, .ytp-ad-player-overlay, .ytp-ad-skip-button, .ytp-ad-preview-container"
+        )
+      );
+    }
+
+    canRunShortcutSeek(video) {
+      const targetVideo = video || this.refreshVideoReference();
+      if (!targetVideo || this.destroyed) {
+        return false;
+      }
+      if (this.isYouTubeAdPlaybackActive()) {
+        return false;
+      }
+      const readyState = Number(targetVideo.readyState || 0);
+      const duration = Number(targetVideo.duration);
+      if (readyState < 1 || !Number.isFinite(duration) || duration <= 0) {
+        return false;
+      }
+      return true;
+    }
+
     suppressLiveCaptureForSeek(targetTime) {
       if (!this.liveCaptureEnabled) {
         return;
@@ -778,12 +821,10 @@
       this.ensureChunkVisible(action.index);
       this.pendingSeekFocus = {
         index: action.index,
-        minTime: Math.max(0, Math.min(action.targetTime, Number(chunk.start || 0) - 0.55)),
-        maxTime: Math.max(Number(chunk.end || 0), Number(chunk.start || 0) + this.getKeyboardStepSeconds()),
+        minTime: Math.max(0, Math.min(action.targetTime, seekStart - 0.55)),
+        maxTime: Math.max(seekStart + 0.25, Number(chunk.end || seekStart + 0.25)),
         expiresAt: Date.now() + 2600
       };
-      this.activeIndex = action.index;
-      this.panel.setActiveIndex(action.index, { ensureVisible: action.forceScroll });
       if (typeof this.panel.setPlaybackTime === "function") {
         this.panel.setPlaybackTime(action.targetTime, { forceGlowReset: action.forceGlowReset });
       }
@@ -1526,7 +1567,7 @@
       let previousIndex = -1;
       for (let index = 0; index < source.length; index += 1) {
         const chunk = source[index];
-        const start = Number(chunk && chunk.start);
+        const start = this.getChunkActiveStart(chunk);
         const end = Number(chunk && chunk.end);
         if (!Number.isFinite(start)) {
           continue;
@@ -1542,6 +1583,39 @@
         }
       }
       return previousIndex;
+    }
+
+    findPlaybackActiveIndex(chunks, currentTime) {
+      const source = Array.isArray(chunks) ? chunks : [];
+      const now = Number(currentTime);
+      if (!source.length || !Number.isFinite(now)) {
+        return -1;
+      }
+      const startTolerance = 0.08;
+      let index = -1;
+      for (let candidate = 0; candidate < source.length; candidate += 1) {
+        const start = this.getChunkActiveStart(source[candidate]);
+        if (!Number.isFinite(start)) {
+          continue;
+        }
+        if (start <= now + startTolerance) {
+          index = candidate;
+          continue;
+        }
+        break;
+      }
+      if (index < 0) {
+        return -1;
+      }
+      const chunk = source[index];
+      const start = this.getChunkActiveStart(chunk);
+      const end = Math.max(start + 0.25, Number(chunk && chunk.end ? chunk.end : start + 0.25));
+      const nextStart =
+        index < source.length - 1
+          ? this.getChunkActiveStart(source[index + 1])
+          : Number.POSITIVE_INFINITY;
+      const activeUntil = Number.isFinite(nextStart) ? nextStart : end + 0.75;
+      return now >= start - startTolerance && now <= activeUntil + 0.25 ? index : -1;
     }
 
     updateFuturePreviewChunks() {
@@ -1561,28 +1635,18 @@
       }
       const currentTime = this.video.currentTime || 0;
       const pending = this.pendingSeekFocus;
-      if (
-        pending &&
-        Date.now() <= pending.expiresAt &&
-        pending.index >= 0 &&
-        pending.index < sourceChunks.length &&
-        currentTime >= pending.minTime &&
-        currentTime <= pending.maxTime
-      ) {
+      if (pending && Date.now() <= pending.expiresAt && pending.index >= 0 && pending.index < sourceChunks.length) {
         this.ensureChunkVisible(pending.index);
-        this.activeIndex = Math.max(0, Math.min(pending.index, this.chunks.length - 1));
-        this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
-        if (typeof this.panel.setPlaybackTime === "function") {
-          this.panel.setPlaybackTime(this.getTimelineDisplayTime(currentTime, sourceChunks[pending.index], pending.index));
-        }
-        this.triggerBubbleStartFlashIfReady(sourceChunks[pending.index], this.activeIndex, currentTime);
-        return;
+      } else {
+        this.pendingSeekFocus = null;
       }
-      this.pendingSeekFocus = null;
-      const nextIndex = chunker.findActiveChunkIndexAtTime(sourceChunks, currentTime, 0.9);
+      const nextIndex = this.findPlaybackActiveIndex(sourceChunks, currentTime);
       if (nextIndex < 0) {
         this.activeIndex = -1;
         this.panel.setActiveIndex(-1);
+        if (typeof this.panel.setPlaybackTime === "function") {
+          this.panel.setPlaybackTime(currentTime, { forceGlowReset: true });
+        }
         this.updateFuturePreviewChunks();
         return;
       }
@@ -1647,7 +1711,7 @@
         if (signal.aborted || this.destroyed || this.settings.panelClosed || !this.liveCaptureEnabled) {
           return;
         }
-        const response = await transcript.loadTranscript(window.location.href, signal, {
+        const response = await captionTimeline.acquireFullTimeline(window.location.href, signal, {
           videoElement: this.video
         });
         if (
@@ -1670,7 +1734,7 @@
         this.transcriptPreviewChunks = this.allChunks.slice();
         this.syncActiveChunk(true);
         if (this.panel) {
-          this.panel.setStatus("Full transcript loaded. Next up previews are available.", true);
+          this.panel.setStatus("Full caption timeline loaded. Next up previews are available.", true);
         }
       } catch (error) {
         if (!error || error.name !== "AbortError") {
@@ -1700,7 +1764,7 @@
         return;
       }
       const response = await Promise.race([
-        transcript.loadTranscript(url, signal, {
+        captionTimeline.acquireFullTimeline(url, signal, {
           videoElement: this.video
         }),
         new Promise((resolve) => {
@@ -1759,7 +1823,8 @@
       this.transcriptPreviewChunks = this.allChunks.slice();
       diagnostics.record("captions:transcript-loaded", {
         cueCount: response.cues.length,
-        mode: response.mode || "direct transcript mode"
+        mode: response.mode || response.sourceType || "direct transcript mode",
+        futureCueCount: response.futureCueCount || 0
       });
       if (this.panel) {
         const stepSeconds = this.getKeyboardStepSeconds();
@@ -1767,7 +1832,7 @@
           "Loaded " +
             this.chunks.length +
             " chunks (" +
-            (response.mode || "direct transcript mode") +
+            (response.mode || response.sourceType || "caption timeline") +
             "). Hover panel + Space=+" +
             stepSeconds +
             "s, Shift+Space=-" +
@@ -2388,6 +2453,10 @@
       return Math.max(0, Number(chunk.start || 0));
     }
 
+    getChunkActiveStart(chunk) {
+      return this.getChunkSeekStart(chunk);
+    }
+
     getCurrentVideoElement() {
       const direct = document.querySelector("video.html5-main-video");
       if (direct instanceof HTMLVideoElement) {
@@ -2417,15 +2486,15 @@
         return false;
       }
       const chunk = chunks[index];
-      const chunkStart = Math.max(0, Number(chunk && chunk.start ? chunk.start : 0));
+      const chunkStart = this.getChunkActiveStart(chunk);
       const chunkEnd = Math.max(chunkStart + 0.25, Number(chunk && chunk.end ? chunk.end : chunkStart + 0.25));
       const nextStart =
         index < chunks.length - 1
-          ? Math.max(chunkStart + 0.001, Number(chunks[index + 1] && chunks[index + 1].start ? chunks[index + 1].start : chunkEnd))
+          ? Math.max(chunkStart + 0.001, this.getChunkActiveStart(chunks[index + 1]))
           : Number.POSITIVE_INFINITY;
       const effectiveEnd = Math.max(chunkEnd, nextStart === Number.POSITIVE_INFINITY ? chunkEnd : nextStart);
-      const leadTolerance = 0.45;
-      const trailTolerance = Math.max(1.2, this.getKeyboardStepSeconds() * 0.55);
+      const leadTolerance = 0.08;
+      const trailTolerance = 0.75;
       return now >= chunkStart - leadTolerance && now <= effectiveEnd + trailTolerance;
     }
 
@@ -2437,7 +2506,7 @@
       if (!Number.isFinite(target)) {
         return -1;
       }
-      const active = chunker.findActiveChunkIndexAtTime(chunks, target, 0.9);
+      const active = this.findPlaybackActiveIndex(chunks, target);
       if (active >= 0) {
         return active;
       }
@@ -2457,7 +2526,7 @@
 
     handleSpaceShortcut(isBackward) {
       const video = this.refreshVideoReference();
-      if (!video) {
+      if (!this.canRunShortcutSeek(video)) {
         return;
       }
 
@@ -2500,7 +2569,7 @@
       target = Math.max(0, Math.min(upperBound, target));
       if (flashIndex >= 0) {
         const action = this.beginTimelineAction({
-          source: "rewind",
+          source: isBackward ? "rewind" : "forward",
           targetTime: target,
           index: flashIndex,
           seekStart: flashAt,

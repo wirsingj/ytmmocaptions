@@ -16,10 +16,11 @@ YTMMOCC is an MMO-style dialogue layer for YouTube captions. The product should 
 
 The preferred data flow is:
 
-1. Parsed transcript or browser `TextTrack` cues.
-2. Cue-level tokens with timestamps.
-3. Conversational chunking into bubble records.
-4. Renderer consumes bubble records and token timing.
+1. `caption-timeline.js` asks available acquisition strategies for the best full caption timeline.
+2. `transcript.js` performs the lower-level timedtext/TextTrack/intercept parsing work.
+3. Cue-level tokens with timestamps are normalized into one shared timeline shape.
+4. Conversational chunking groups that timeline into bubble records.
+5. Renderer consumes bubble records and token timing.
 
 Overlay DOM text is a fallback only. It can help when full transcript data is unavailable, but it is inherently later and less precise than YouTube's caption timing.
 

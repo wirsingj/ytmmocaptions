@@ -135,6 +135,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("this.boundVideo = null;"));
     assert.ok(source.includes("if (this.boundVideo === this.video)"));
     assert.ok(source.includes("const boundVideo = this.video;"));
+    assert.ok(source.includes('boundVideo.addEventListener("seeking", onSeeking)'));
+    assert.ok(source.includes('boundVideo.removeEventListener("seeking", onSeeking)'));
     assert.ok(source.includes("boundVideo.removeEventListener"));
     assert.ok(source.includes("this.cleanupVideoSync();"));
   });
@@ -162,6 +164,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("beginTimelineAction(action)"));
     assert.ok(source.includes("applyTimelineActionFocus(action)"));
     assert.ok(source.includes("getTimelineDisplayTime(currentTime, chunk, index)"));
+    assert.ok(source.includes("findPlaybackActiveIndex(chunks, currentTime)"));
+    assert.ok(source.includes("const startTolerance = 0.08;"));
     assert.ok(source.includes("maxSettledTime"));
     assert.ok(source.includes("requestTimelineSync(forceScroll)"));
     assert.ok(source.includes("commitTimelineSync(forceScroll)"));
@@ -171,11 +175,28 @@ exports.run = async function runLiveBubbleTests(ctx) {
 
   await runCase("space forward chooses and reveals a destination bubble instead of losing focus", () => {
     assert.ok(source.includes("findShortcutFocusIndex(chunks, targetTime, isBackward)"));
+    assert.ok(source.includes("this.findPlaybackActiveIndex(chunks, target)"));
+    assert.ok(source.includes("canRunShortcutSeek(video)"));
+    assert.ok(source.includes("isYouTubeAdPlaybackActive()"));
     assert.ok(source.includes("const visibleActiveIndex = Number.isInteger(this.activeIndex) ? this.activeIndex : -1;"));
     assert.ok(source.includes("this.isChunkIndexAlignedWithTime(sourceChunks, visibleActiveIndex, now)"));
     assert.ok(source.includes("!isBackward && this.isChunkIndexAlignedWithTime(sourceChunks, focusIndex, rawTarget)"));
     assert.ok(source.includes('source: isBackward ? "rewind" : "forward"'));
     assert.ok(source.includes("this.applyTimelineActionFocus(action);"));
+  });
+
+  await runCase("seek focus does not mark a bubble active before its speech anchor", () => {
+    const focusStart = source.indexOf("    applyTimelineActionFocus(action)");
+    const focusBody = source.slice(focusStart, source.indexOf("    getTimelineDisplayTime", focusStart));
+    assert.ok(focusBody.includes("seekStart - 0.55"));
+    assert.ok(!focusBody.includes("this.activeIndex = action.index;"));
+    assert.ok(!focusBody.includes("this.panel.setActiveIndex(action.index"));
+
+    const activeStart = source.indexOf("    findPlaybackActiveIndex(chunks, currentTime)");
+    const activeBody = source.slice(activeStart, source.indexOf("    updateFuturePreviewChunks()", activeStart));
+    assert.ok(activeBody.includes("this.getChunkActiveStart(source[candidate])"));
+    assert.ok(activeBody.includes("this.getChunkActiveStart(chunk)"));
+    assert.ok(activeBody.includes("this.getChunkActiveStart(source[index + 1])"));
   });
 
   await runCase("future caption previews are limited, honest, and clickable", () => {
@@ -193,7 +214,7 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("maybeUpgradeLiveCaptureToTranscript()"));
     assert.ok(source.includes("tryUpgradeLiveCaptureToTranscript()"));
     assert.ok(source.includes("this.transcriptUpgradeAttempts >= 8"));
-    assert.ok(source.includes("Full transcript loaded. Next up previews are available."));
+    assert.ok(source.includes("Full caption timeline loaded. Next up previews are available."));
     assert.ok(source.includes("this.disableLiveCaptureMode();"));
   });
 };

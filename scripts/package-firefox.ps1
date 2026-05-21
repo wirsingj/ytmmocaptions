@@ -98,3 +98,10 @@ try {
 
 Write-Output "Firefox XPI packaged successfully:"
 Write-Output $xpiPath
+
+$releaseDir = Join-Path $projectRoot ("build\releases\v" + $version)
+New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+$versionedPath = Join-Path $releaseDir (Split-Path -Leaf $xpiPath)
+Copy-Item -LiteralPath $xpiPath -Destination $versionedPath -Force
+Write-Output "Versioned Firefox copy:"
+Write-Output $versionedPath
