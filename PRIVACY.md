@@ -24,7 +24,7 @@ The extension stores only local preference settings in extension storage:
 - panel position and size;
 - next-up preview height;
 - whether the panel fades toward the center of the associated video;
-- timeline marker mode preference;
+- timeline scrub mode preference;
 - launcher/pill position;
 - panel open/closed state.
 

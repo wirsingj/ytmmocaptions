@@ -51,6 +51,7 @@ exports.run = async function runComplianceTests(ctx) {
       const pageContextIndex = js.findIndex((item) => item.includes("page-context.js"));
       const captionTextIndex = js.findIndex((item) => item.includes("caption-text.js"));
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
+      const scrubIndex = js.findIndex((item) => item.includes("timeline-scrub.js"));
       const transcriptIndex = js.findIndex((item) => item.includes("transcript.js"));
       const timelineIndex = js.findIndex((item) => item.includes("caption-timeline.js"));
       const universalIndex = js.findIndex((item) => item.includes("universal-captions.js"));
@@ -60,6 +61,7 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(pageContextIndex >= 0, fileName + " missing page-context.js");
       assert.ok(captionTextIndex >= 0, fileName + " missing caption-text.js");
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
+      assert.ok(scrubIndex >= 0, fileName + " missing timeline-scrub.js");
       assert.ok(transcriptIndex >= 0, fileName + " missing transcript.js");
       assert.ok(timelineIndex >= 0, fileName + " missing caption-timeline.js");
       assert.ok(universalIndex >= 0, fileName + " missing universal-captions.js");
@@ -68,6 +70,8 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(diagnosticsIndex < pageContextIndex, fileName + " loads diagnostics before page-context");
       assert.ok(captionTextIndex < contentIndex, fileName + " loads content-script before caption-text");
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
+      assert.ok(bubbleIndex < scrubIndex, fileName + " loads timeline scrub before bubble-state");
+      assert.ok(scrubIndex < contentIndex, fileName + " loads content-script before timeline scrub");
       assert.ok(transcriptIndex < timelineIndex, fileName + " loads caption timeline before transcript");
       assert.ok(timelineIndex < contentIndex, fileName + " loads content-script before caption timeline");
       assert.ok(universalIndex < contentIndex, fileName + " loads content-script before universal captions");
@@ -378,7 +382,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!privacy.includes("auto-scroll"));
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
     assert.ok(privacy.includes("next-up preview height"));
-    assert.ok(privacy.includes("timeline marker mode"));
+    assert.ok(privacy.includes("timeline scrub mode"));
     assert.ok(privacy.includes("whether the panel fades toward the center"));
   });
 
@@ -392,14 +396,17 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("fetch("));
   });
 
-  await runCase("timeline marker mode reuses panel chunks and stays optional", () => {
+  await runCase("timeline scrub mode reuses panel chunks and stays optional", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const scrubSource = fs.readFileSync(path.join(ROOT_DIR, "src", "timeline-scrub.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("setTimelineData"));
-    assert.ok(panelSource.includes("dc-timeline-marker"));
+    assert.ok(panelSource.includes("dc-timeline-lens"));
     assert.ok(panelSource.includes("timelineModeEnabled"));
     assert.ok(panelSource.includes("handleTimelineClick"));
+    assert.ok(scrubSource.includes("hoverXToTime"));
+    assert.ok(scrubSource.includes("findChunkIndexAtTime"));
     assert.ok(css.includes(".dc-timeline-layer"));
-    assert.ok(css.includes(".dc-timeline-marker"));
+    assert.ok(css.includes(".dc-timeline-bubble"));
   });
 };

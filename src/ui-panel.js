@@ -4,6 +4,7 @@
   const platform = app.platform;
   const bubbleState = app.bubbleState;
   const settingsStore = app.settingsStore;
+  const timelineScrub = app.timelineScrub;
 
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
@@ -102,6 +103,7 @@
       this.timelineLayer = null;
       this.timelineTrack = null;
       this.timelineTooltip = null;
+      this.timelineBubbleStage = null;
       this.header = null;
       this.resetButton = null;
       this.closeButton = null;
@@ -112,6 +114,8 @@
       this.futureChunks = [];
       this.timelineChunks = [];
       this.timelineDuration = Number.NaN;
+      this.timelineHoverIndex = -1;
+      this.timelineHoverTime = Number.NaN;
       this.futureCollapsed = false;
       this.activeIndex = -1;
       this.playbackTime = Number.NaN;
@@ -258,7 +262,7 @@
       this.timelineModeButton.type = "button";
       this.timelineModeButton.className = "dc-btn dc-btn-timeline";
       this.timelineModeButton.textContent = "Timeline";
-      this.timelineModeButton.title = "Toggle caption markers above the video timeline";
+      this.timelineModeButton.title = "Open transcript scrub mode";
       this.timelineModeButton.setAttribute("aria-pressed", this.settings.timelineModeEnabled ? "true" : "false");
 
       controls.append(
@@ -320,10 +324,12 @@
       this.timelineLayer.dataset.dcInstanceId = this.instanceId || "youtube";
       this.timelineTrack = document.createElement("div");
       this.timelineTrack.className = "dc-timeline-track";
+      this.timelineBubbleStage = document.createElement("div");
+      this.timelineBubbleStage.className = "dc-timeline-bubbles";
       this.timelineTooltip = document.createElement("div");
-      this.timelineTooltip.className = "dc-timeline-tooltip";
+      this.timelineTooltip.className = "dc-timeline-lens";
       this.timelineTooltip.setAttribute("role", "tooltip");
-      this.timelineLayer.append(this.timelineTrack, this.timelineTooltip);
+      this.timelineLayer.append(this.timelineBubbleStage, this.timelineTrack, this.timelineTooltip);
       document.body.append(this.timelineLayer);
 
       this.launcherButton = document.createElement("button");
@@ -371,6 +377,7 @@
         this.timelineLayer.remove();
         this.timelineLayer = null;
         this.timelineTrack = null;
+        this.timelineBubbleStage = null;
         this.timelineTooltip = null;
       }
       this.removeExistingUiNodes();
@@ -539,6 +546,8 @@
       this.addListener(this.timelineLayer, "click", onTimelineClick);
       this.addListener(this.timelineLayer, "pointermove", onTimelineMove);
       this.addListener(this.timelineLayer, "pointerleave", onTimelineLeave);
+      this.addListener(this.timelineTrack, "pointerleave", onTimelineLeave);
+      this.addListener(this.timelineBubbleStage, "pointerleave", onTimelineLeave);
 
       const onListPointerDown = (event) => {
         const target = event.target;
@@ -681,8 +690,14 @@
         this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
       }
       if (this.timelineModeButton) {
-        this.timelineModeButton.classList.toggle("is-active", Boolean(this.settings.timelineModeEnabled));
-        this.timelineModeButton.setAttribute("aria-pressed", this.settings.timelineModeEnabled ? "true" : "false");
+        const timelineActive = Boolean(this.settings.timelineModeEnabled);
+        this.timelineModeButton.classList.toggle("is-active", timelineActive);
+        this.timelineModeButton.textContent = timelineActive ? "Panel" : "Timeline";
+        this.timelineModeButton.title = timelineActive ? "Return to full caption panel" : "Open transcript scrub mode";
+        this.timelineModeButton.setAttribute("aria-pressed", timelineActive ? "true" : "false");
+      }
+      if (this.root) {
+        this.root.classList.toggle("is-timeline-scrub", Boolean(this.settings.timelineModeEnabled));
       }
       if (this.themeSelect) {
         const themeName = this.getThemeName();
@@ -1111,7 +1126,7 @@
     }
 
     updateTimelineLayer() {
-      if (!this.timelineLayer || !this.timelineTrack || !this.timelineTooltip) {
+      if (!this.timelineLayer || !this.timelineTrack || !this.timelineTooltip || !this.timelineBubbleStage) {
         return;
       }
       const enabled = Boolean(this.settings.timelineModeEnabled);
@@ -1120,60 +1135,58 @@
       const anchorVisible = this.isAnchorUsablyVisible();
       if (!enabled || !anchorVisible || !Number.isFinite(duration) || duration <= 0 || !chunks.length) {
         this.timelineLayer.classList.remove("is-visible");
+        this.timelineLayer.classList.remove("is-scrub-mode");
         this.timelineLayerVisible = false;
         this.hideTimelineTooltip();
         this.timelineTrack.replaceChildren();
+        this.timelineBubbleStage.replaceChildren();
         return;
       }
 
       const frame = this.getYouTubeFrameRect();
       const width = Math.max(120, frame.right - frame.left);
-      const top = Math.max(frame.top + 8, Math.min(frame.bottom - 42, frame.bottom - 34));
+      const top = Math.max(frame.top + 8, Math.min(frame.bottom - 148, frame.bottom - 134));
       this.timelineLayer.style.left = Math.round(frame.left + 8) + "px";
       this.timelineLayer.style.top = Math.round(top) + "px";
       this.timelineLayer.style.width = Math.round(Math.max(80, width - 16)) + "px";
       this.timelineLayer.classList.add("is-visible");
+      this.timelineLayer.classList.add("is-scrub-mode");
       this.timelineLayerVisible = true;
 
-      const maxMarkers = 140;
-      const step = Math.max(1, Math.ceil(chunks.length / maxMarkers));
+      const helpers = timelineScrub || {};
+      const sampled = typeof helpers.sampleMarkerChunks === "function"
+        ? helpers.sampleMarkerChunks(chunks, 180)
+        : chunks.map((chunk, index) => ({ chunk, index, clustered: false }));
       const fragment = document.createDocumentFragment();
-      for (let index = 0; index < chunks.length; index += step) {
-        const chunk = chunks[index];
-        const start = Number(chunk && chunk.seekStart !== undefined ? chunk.seekStart : chunk && chunk.start);
-        if (!Number.isFinite(start) || start < 0 || start > duration) {
+      for (let itemIndex = 0; itemIndex < sampled.length; itemIndex += 1) {
+        const item = sampled[itemIndex];
+        const chunk = item.chunk;
+        const percent = helpers.chunkToPercent ? helpers.chunkToPercent(chunk, duration) : Number.NaN;
+        if (!Number.isFinite(percent)) {
           continue;
         }
-        const marker = document.createElement("button");
-        marker.type = "button";
-        marker.className = step > 1 ? "dc-timeline-marker is-clustered" : "dc-timeline-marker";
-        marker.style.left = Math.max(0, Math.min(100, (start / duration) * 100)).toFixed(3) + "%";
-        marker.dataset.index = String(index);
-        marker.dataset.start = String(start);
-        marker.dataset.text = String(chunk && chunk.text ? chunk.text : "");
-        marker.setAttribute("aria-label", "Seek to caption at " + chunker.formatTimestamp(start));
-        marker.title = marker.dataset.text;
+        const marker = document.createElement("span");
+        marker.className = item.clustered ? "dc-timeline-marker is-clustered" : "dc-timeline-marker";
+        marker.style.left = percent.toFixed(3) + "%";
+        marker.dataset.index = String(item.index);
         fragment.append(marker);
       }
       this.timelineTrack.replaceChildren(fragment);
+      this.renderTimelineScrub();
     }
 
     handleTimelineClick(event) {
       if (!this.timelineLayerVisible || typeof this.options.onSeek !== "function") {
         return;
       }
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const marker = target.closest(".dc-timeline-marker");
-      if (!marker) {
+      const chunk = this.getTimelineChunkFromPointerEvent(event);
+      if (!chunk) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
-      const index = Number(marker.getAttribute("data-index"));
-      const start = Number(marker.getAttribute("data-start"));
+      const index = Number(chunk.timelineIndex);
+      const start = timelineScrub && timelineScrub.getChunkStart ? timelineScrub.getChunkStart(chunk) : Number(chunk.seekStart || chunk.start);
       if (!Number.isFinite(start)) {
         return;
       }
@@ -1191,31 +1204,117 @@
       if (!this.timelineLayerVisible || !this.timelineTooltip) {
         return;
       }
-      const target = event.target;
-      if (!(target instanceof Element)) {
+      const chunk = this.getTimelineChunkFromPointerEvent(event);
+      if (!chunk) {
         this.hideTimelineTooltip();
         return;
       }
-      const marker = target.closest(".dc-timeline-marker");
-      if (!marker) {
-        this.hideTimelineTooltip();
-        return;
-      }
-      const text = marker.getAttribute("data-text") || "";
-      const start = Number(marker.getAttribute("data-start"));
-      this.timelineTooltip.textContent = (Number.isFinite(start) ? chunker.formatTimestamp(start) + "  " : "") + text;
-      const layerRect = this.timelineLayer.getBoundingClientRect();
-      const markerRect = marker.getBoundingClientRect();
-      const maxLeft = Math.max(6, layerRect.width - 260);
-      const left = Math.max(6, Math.min(maxLeft, markerRect.left - layerRect.left - 120));
-      this.timelineTooltip.style.left = Math.round(left) + "px";
-      this.timelineTooltip.classList.add("is-visible");
+      this.timelineHoverIndex = Number(chunk.timelineIndex);
+      this.timelineHoverTime = this.getTimelineTimeFromPointerEvent(event);
+      this.renderTimelineScrub();
     }
 
     hideTimelineTooltip() {
       if (this.timelineTooltip) {
         this.timelineTooltip.classList.remove("is-visible");
       }
+      this.timelineHoverIndex = -1;
+      this.timelineHoverTime = Number.NaN;
+      this.renderTimelineScrub();
+    }
+
+    getTimelineTimeFromPointerEvent(event) {
+      if (!this.timelineLayer || !timelineScrub || typeof timelineScrub.hoverXToTime !== "function") {
+        return Number.NaN;
+      }
+      const rect = this.timelineLayer.getBoundingClientRect();
+      return timelineScrub.hoverXToTime(event.clientX - rect.left, rect.width, this.timelineDuration);
+    }
+
+    getTimelineChunkFromPointerEvent(event) {
+      if (!timelineScrub || !Array.isArray(this.timelineChunks) || !this.timelineChunks.length) {
+        return null;
+      }
+      const target = event.target;
+      if (target instanceof Element) {
+        const explicit = target.closest(".dc-timeline-bubble[data-index]");
+        if (explicit) {
+          const explicitIndex = Number(explicit.getAttribute("data-index"));
+          if (Number.isInteger(explicitIndex) && explicitIndex >= 0 && explicitIndex < this.timelineChunks.length) {
+            return this.timelineChunks[explicitIndex];
+          }
+        }
+      }
+      const time = this.getTimelineTimeFromPointerEvent(event);
+      const index = timelineScrub.findChunkIndexAtTime(this.timelineChunks, time, 0.35);
+      return index >= 0 ? this.timelineChunks[index] : null;
+    }
+
+    renderTimelineScrub() {
+      if (!this.timelineLayerVisible || !this.timelineLayer || !this.timelineBubbleStage || !timelineScrub) {
+        return;
+      }
+      const chunks = Array.isArray(this.timelineChunks) ? this.timelineChunks : [];
+      const duration = Number(this.timelineDuration);
+      if (!chunks.length || !Number.isFinite(duration) || duration <= 0) {
+        this.timelineBubbleStage.replaceChildren();
+        return;
+      }
+      const focusIndex = this.timelineHoverIndex >= 0
+        ? this.timelineHoverIndex
+        : timelineScrub.findChunkIndexAtTime(chunks, this.playbackTime, 0.35);
+      if (focusIndex < 0 || focusIndex >= chunks.length) {
+        this.timelineBubbleStage.replaceChildren();
+        return;
+      }
+      const layerRect = this.timelineLayer.getBoundingClientRect();
+      const layerWidth = Math.max(120, layerRect.width || 120);
+      const fragment = document.createDocumentFragment();
+      const context = timelineScrub.getContextIndices(chunks, focusIndex);
+      for (let index = 0; index < context.length; index += 1) {
+        const item = context[index];
+        const chunk = chunks[item.index];
+        const percent = timelineScrub.chunkToPercent(chunk, duration);
+        if (!Number.isFinite(percent)) {
+          continue;
+        }
+        fragment.append(this.createTimelineBubble(chunk, item.index, item.role, percent, layerWidth));
+      }
+      this.timelineBubbleStage.replaceChildren(fragment);
+      if (this.timelineTooltip) {
+        const focusChunk = chunks[focusIndex];
+        const focusPercent = timelineScrub.chunkToPercent(focusChunk, duration);
+        const focusStart = timelineScrub.getChunkStart(focusChunk);
+        const focusText = timelineScrub.getChunkText(focusChunk);
+        const lensWidth = Math.min(460, Math.max(270, layerWidth * 0.38));
+        const lensCenter = Number.isFinite(this.timelineHoverTime)
+          ? (this.timelineHoverTime / duration) * layerWidth
+          : (Number.isFinite(focusPercent) ? (focusPercent / 100) * layerWidth : layerWidth / 2);
+        const lensLeft = timelineScrub.clampBubbleLeft(lensCenter, lensWidth, layerWidth, 8);
+        this.timelineTooltip.style.left = Math.round(lensLeft) + "px";
+        this.timelineTooltip.style.width = Math.round(lensWidth) + "px";
+        this.timelineTooltip.textContent = (Number.isFinite(focusStart) ? chunker.formatTimestamp(focusStart) + "  " : "") + focusText;
+        this.timelineTooltip.classList.toggle("is-visible", this.timelineHoverIndex >= 0);
+      }
+    }
+
+    createTimelineBubble(chunk, index, role, percent, layerWidth) {
+      const bubble = document.createElement("button");
+      bubble.type = "button";
+      bubble.className = "dc-timeline-bubble is-" + role;
+      bubble.dataset.index = String(index);
+      const start = timelineScrub.getChunkStart(chunk);
+      const text = timelineScrub.getChunkText(chunk);
+      bubble.textContent = (Number.isFinite(start) ? chunker.formatTimestamp(start) + "  " : "") + text;
+      bubble.setAttribute("aria-label", "Seek to caption at " + (Number.isFinite(start) ? chunker.formatTimestamp(start) : "this moment"));
+      const bubbleWidth = role === "current"
+        ? Math.min(420, Math.max(260, layerWidth * 0.44))
+        : Math.min(300, Math.max(190, layerWidth * 0.28));
+      const centerX = (percent / 100) * layerWidth;
+      const left = timelineScrub.clampBubbleLeft(centerX, bubbleWidth, layerWidth, 8);
+      bubble.style.left = Math.round(left) + "px";
+      bubble.style.width = Math.round(bubbleWidth) + "px";
+      return bubble;
     }
 
     closeToNearestCorner() {
@@ -1695,7 +1794,9 @@
     }
 
     setTimelineData(chunks, durationSeconds) {
-      this.timelineChunks = Array.isArray(chunks) ? chunks : [];
+      this.timelineChunks = timelineScrub && typeof timelineScrub.sortChunks === "function"
+        ? timelineScrub.sortChunks(chunks)
+        : Array.isArray(chunks) ? chunks : [];
       const duration = Number(durationSeconds);
       this.timelineDuration = Number.isFinite(duration) && duration > 0 ? duration : Number.NaN;
       this.updateTimelineLayer();
@@ -1750,6 +1851,7 @@
       }
       this.playbackTime = time;
       this.updateActiveReadingGlow();
+      this.renderTimelineScrub();
     }
 
     flashChunk(index) {

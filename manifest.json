@@ -23,6 +23,7 @@
         "src/caption-text.js",
         "src/chunker.js",
         "src/bubble-state.js",
+        "src/timeline-scrub.js",
         "src/transcript.js",
         "src/caption-timeline.js",
         "src/ui-panel.js",
