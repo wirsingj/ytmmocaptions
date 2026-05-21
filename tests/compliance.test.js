@@ -312,7 +312,8 @@ exports.run = async function runComplianceTests(ctx) {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("dc-future-divider"));
     assert.ok(panelSource.includes("dc-future-section"));
-    assert.ok(panelSource.includes("handleFutureDividerPointerDown"));
+    assert.ok(!panelSource.includes("handleFutureDividerPointerDown"));
+    assert.ok(!panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
     assert.ok(panelSource.includes('role", "separator"'));
     assert.ok(!panelSource.includes('divider.addEventListener("click"'));
@@ -321,7 +322,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-future-section"));
     assert.ok(css.includes("max-height: var(--dc-future-preview-height"));
     assert.ok(css.includes("border-style: dashed"));
-    assert.ok(css.includes("cursor: ns-resize"));
+    assert.ok(css.includes("cursor: default"));
+    assert.ok(css.includes("pointer-events: none"));
   });
 
   await runCase("reading glow cannot persist without an active timing range", () => {

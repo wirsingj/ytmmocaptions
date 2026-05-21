@@ -128,7 +128,6 @@
       this.currentFutureCollapsed = false;
       this.dragState = null;
       this.resizeState = null;
-      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.launcherSuppressClickUntil = 0;
       this.resizeHandles = [];
@@ -141,7 +140,6 @@
       this.layoutRefreshTimers = [];
       this.rafRenderId = 0;
       this.resizeMoveRafId = 0;
-      this.futureDividerRafId = 0;
       this.statusTimer = 0;
       this.timelineLayerVisible = false;
     }
@@ -417,7 +415,6 @@
       }
       this.dragState = null;
       this.resizeState = null;
-      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.cancelResizeFrames();
     }
@@ -426,10 +423,6 @@
       if (this.resizeMoveRafId) {
         platform.cancelFrame(this.resizeMoveRafId);
         this.resizeMoveRafId = 0;
-      }
-      if (this.futureDividerRafId) {
-        platform.cancelFrame(this.futureDividerRafId);
-        this.futureDividerRafId = 0;
       }
     }
 
@@ -544,18 +537,6 @@
       this.addListener(this.timelineLayer, "pointermove", onTimelineMove);
       this.addListener(this.timelineLayer, "pointerleave", onTimelineLeave);
       this.addListener(this.timelineTrack, "pointerleave", onTimelineLeave);
-
-      const onListPointerDown = (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) {
-          return;
-        }
-        const divider = target.closest(".dc-future-divider");
-        if (divider) {
-          this.handleFutureDividerPointerDown(event, divider);
-        }
-      };
-      this.addListener(this.listViewport, "pointerdown", onListPointerDown);
 
       const onJumpBottom = () => {
         if (this.chunks.length > 0) {
@@ -1489,84 +1470,6 @@
       event.stopPropagation();
     }
 
-    handleFutureDividerPointerDown(event, divider) {
-      if (!this.root || !divider) {
-        return;
-      }
-      const section = divider.closest(".dc-future-section");
-      if (!(section instanceof HTMLElement)) {
-        return;
-      }
-      const sectionRect = section.getBoundingClientRect();
-      const panelRect = this.root.getBoundingClientRect();
-      this.futureDividerDragState = {
-        startY: event.clientY,
-        startHeight: sectionRect.height,
-        maxHeight: Math.max(78, Math.min(360, Math.round(panelRect.height * 0.5))),
-        latestY: event.clientY
-      };
-
-      const onMove = (moveEvent) => this.handleFutureDividerMove(moveEvent);
-      let cleanupPointerListeners = null;
-      const onUp = () => {
-        if (cleanupPointerListeners) {
-          cleanupPointerListeners();
-        }
-        this.finishFutureDividerDrag();
-      };
-      cleanupPointerListeners = this.trackActivePointerListeners(() => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-      });
-
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      event.preventDefault();
-      event.stopPropagation();
-    }
-
-    handleFutureDividerMove(event) {
-      if (!this.root || !this.futureDividerDragState) {
-        return;
-      }
-      this.futureDividerDragState.latestY = event.clientY;
-      if (this.futureDividerRafId) {
-        return;
-      }
-      this.futureDividerRafId = platform.requestFrame(() => {
-        this.futureDividerRafId = 0;
-        this.applyFutureDividerMoveFrame();
-      });
-    }
-
-    applyFutureDividerMoveFrame() {
-      if (!this.root || !this.futureDividerDragState) {
-        return;
-      }
-      const state = this.futureDividerDragState;
-      const deltaY = state.latestY - state.startY;
-      const nextHeight = Math.max(52, Math.min(state.maxHeight, state.startHeight - deltaY));
-      this.root.style.setProperty("--dc-future-preview-height", Math.round(nextHeight) + "px");
-    }
-
-    finishFutureDividerDrag() {
-      if (!this.root || !this.futureDividerDragState) {
-        this.futureDividerDragState = null;
-        return;
-      }
-      if (this.futureDividerRafId) {
-        platform.cancelFrame(this.futureDividerRafId);
-        this.futureDividerRafId = 0;
-        this.applyFutureDividerMoveFrame();
-      }
-      const rawValue = this.root.style.getPropertyValue("--dc-future-preview-height");
-      const height = Number.parseInt(rawValue || "", 10);
-      this.futureDividerDragState = null;
-      if (Number.isFinite(height)) {
-        this.updateSettings({ futurePreviewHeight: height });
-      }
-    }
-
     handleResizeMove(event) {
       if (!this.root || !this.resizeState) {
         return;
@@ -2022,7 +1925,7 @@
         divider.setAttribute("role", "separator");
         divider.setAttribute("aria-label", "Next up captions");
         divider.setAttribute("aria-orientation", "horizontal");
-        divider.setAttribute("title", "Drag to resize the next-up preview");
+        divider.setAttribute("title", "Upcoming caption preview");
         divider.textContent = "Next up";
 
         const futureList = document.createElement("div");

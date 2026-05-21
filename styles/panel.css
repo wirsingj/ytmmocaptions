@@ -682,9 +682,8 @@
   letter-spacing: 0.08em;
   text-align: left;
   text-transform: uppercase;
-  cursor: ns-resize;
-  pointer-events: auto;
-  touch-action: none;
+  cursor: default;
+  pointer-events: none;
   user-select: none;
 }
 
