@@ -270,9 +270,7 @@
     const leadSeconds =
       Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
         ? Number(opts.leadSeconds)
-        : wordsPerSecond >= 4.8
-          ? 0.07
-          : 0.1;
+        : 0;
     const progress = clamp((now + leadSeconds - start) / duration, 0, 0.999);
     const baseWindow =
       Number.isFinite(opts.windowWords) && opts.windowWords > 0
@@ -306,7 +304,7 @@
     const leadSeconds =
       Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
         ? Number(opts.leadSeconds)
-        : 0.02;
+        : 0;
     const targetTime = now + leadSeconds;
     let activeTokenIndex = -1;
     for (let index = 0; index < tokens.length; index += 1) {
@@ -331,12 +329,15 @@
     const windowWords =
       Number.isFinite(opts.windowWords) && opts.windowWords > 0
         ? Math.max(3, Math.min(6, Math.round(opts.windowWords)))
-        : 4;
-    const lastWord = Math.min(words.length - 1, firstWord + windowWords - 1);
+        : 3;
+    const halfWindow = Math.floor((windowWords - 1) / 2);
+    const maxFirstWord = Math.max(0, words.length - windowWords);
+    const centeredFirstWord = Math.max(0, Math.min(maxFirstWord, firstWord - halfWindow));
+    const lastWord = Math.min(words.length - 1, centeredFirstWord + windowWords - 1);
     return {
-      start: words[firstWord].start,
+      start: words[centeredFirstWord].start,
       end: words[lastWord].end,
-      firstWord,
+      firstWord: centeredFirstWord,
       lastWord,
       progress: clamp(activeTokenIndex / Math.max(1, tokens.length - 1), 0, 0.999)
     };

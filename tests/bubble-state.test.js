@@ -241,7 +241,29 @@ exports.run = async function runBubbleStateTests(ctx) {
     const late = bubbleState.getReadingGlowRange(bubble, 12.2, { leadSeconds: 0, windowWords: 3 });
 
     assert.equal(early.firstWord, 0);
-    assert.equal(late.firstWord, 2);
+    assert.equal(late.firstWord, 1);
+    assert.equal(late.lastWord, 3);
+  });
+
+  await runCase("token reading glow centers on the spoken word instead of starting ahead", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 6,
+      seekStart: 0,
+      text: "zero one two three four five",
+      tokens: [
+        { text: "zero", start: 0, end: 1 },
+        { text: "one", start: 1, end: 2 },
+        { text: "two", start: 2, end: 3 },
+        { text: "three", start: 3, end: 4 },
+        { text: "four", start: 4, end: 5 },
+        { text: "five", start: 5, end: 6 }
+      ]
+    };
+    const range = bubbleState.getReadingGlowRange(bubble, 3.2, { leadSeconds: 0, windowWords: 3 });
+    assert.equal(range.firstWord, 2);
+    assert.equal(range.lastWord, 4);
   });
 
   await runCase("reading glow matches token text to rendered words after small drift", () => {
@@ -260,6 +282,7 @@ exports.run = async function runBubbleStateTests(ctx) {
     };
     const range = bubbleState.getReadingGlowRange(bubble, 2.2, { leadSeconds: 0, windowWords: 3 });
 
-    assert.equal(range.firstWord, 3);
+    assert.equal(range.firstWord, 2);
+    assert.equal(range.lastWord, 4);
   });
 };
