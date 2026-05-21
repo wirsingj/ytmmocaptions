@@ -686,6 +686,9 @@
       const textScale = Number(this.settings.textScale || 100);
       const normalizedTextScale = Math.max(100, Math.min(200, textScale));
       this.root.style.setProperty("--dc-text-scale", String(normalizedTextScale / 100));
+      if (this.timelineLayer) {
+        this.timelineLayer.style.setProperty("--dc-text-scale", String(normalizedTextScale / 100));
+      }
       if (this.textScaleInput && this.textScaleInput.value !== String(normalizedTextScale)) {
         this.textScaleInput.value = String(normalizedTextScale);
       }
@@ -751,7 +754,11 @@
       const normalizedPercent = Math.max(10, Math.min(100, Number(opacityPercent)));
       const blend = (normalizedPercent - 10) / 90;
       const setAlpha = (name, value) => {
-        this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
+        const alpha = Math.max(0, Math.min(1, value)).toFixed(3);
+        this.root.style.setProperty(name, alpha);
+        if (this.timelineLayer) {
+          this.timelineLayer.style.setProperty(name, alpha);
+        }
       };
       const eased = Math.pow(blend, 0.72);
       setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.58);
@@ -885,6 +892,18 @@
       this.root.style.setProperty("--dc-panel-rgb", this.rgbString(theme.panel));
       this.root.style.setProperty("--dc-card-rgb", this.rgbString(theme.card));
       this.root.style.setProperty("--dc-current-rgb", this.rgbString(theme.current));
+      if (this.timelineLayer) {
+        this.timelineLayer.style.setProperty("--dc-accent", theme.accent);
+        this.timelineLayer.style.setProperty("--dc-text", theme.text);
+        this.timelineLayer.style.setProperty("--dc-muted", theme.muted);
+        this.timelineLayer.style.setProperty("--dc-accent-rgb", this.rgbString(accentRgb));
+        this.timelineLayer.style.setProperty("--dc-text-rgb", this.rgbString(textRgb));
+        this.timelineLayer.style.setProperty("--dc-muted-rgb", this.rgbString(mutedRgb));
+        this.timelineLayer.style.setProperty("--dc-bg-rgb", this.rgbString(theme.bg));
+        this.timelineLayer.style.setProperty("--dc-panel-rgb", this.rgbString(theme.panel));
+        this.timelineLayer.style.setProperty("--dc-card-rgb", this.rgbString(theme.card));
+        this.timelineLayer.style.setProperty("--dc-current-rgb", this.rgbString(theme.current));
+      }
     }
 
     updatePanelFade() {

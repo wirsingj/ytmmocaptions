@@ -414,16 +414,18 @@
   position: absolute;
   bottom: 38px;
   overflow: hidden;
-  padding: 10px 12px;
+  padding: 11px 13px;
   border: 1px solid rgba(var(--dc-accent-rgb), 0.38);
   border-radius: 11px;
   color: var(--dc-text);
   background:
-    linear-gradient(135deg, rgba(var(--dc-text-rgb), 0.055), transparent 42%),
-    rgba(var(--dc-bg-rgb), 0.78);
+    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.03), transparent 35%),
+    rgba(var(--dc-card-rgb), var(--dc-card-alpha, 0.78));
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(8px);
-  font: 14px/1.36 "Segoe UI", sans-serif;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: calc(13px * var(--dc-text-scale, 1.2));
+  line-height: 1.34;
   text-align: left;
   white-space: normal;
   pointer-events: auto;
@@ -455,10 +457,10 @@
 }
 
 .dc-timeline-lens {
-  width: min(760px, 78vw);
-  max-height: 132px;
-  font-size: 15px;
-  line-height: 1.38;
+  width: min(860px, 82vw);
+  max-height: 178px;
+  font-size: calc(15px * var(--dc-text-scale, 1.2));
+  line-height: 1.36;
   opacity: 0;
   transform: translateY(4px) scale(0.985);
   transition: opacity 120ms ease, transform 120ms ease;
@@ -467,7 +469,7 @@
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.38),
     0 0 18px rgba(var(--dc-accent-rgb), 0.11);
-  padding-bottom: 20px;
+  padding: 13px 15px 24px;
 }
 
 .dc-timeline-lens::after {
