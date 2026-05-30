@@ -280,6 +280,61 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(saved["dialogueCaptions.settings.v1"].panelPosition, { anchor: "player", left: 144, top: 70 });
   });
 
+  await runCase("stored local color opacity and open state survive a fresh settings store", async () => {
+    const first = makeStore();
+    await first.store.savePatch({
+      panelOpacity: 86,
+      themeName: "custom",
+      customThemeColor: "#bb2222",
+      fadeTowardVideoCenter: false,
+      panelClosed: false
+    });
+
+    const second = makeStore(null, first.saved["dialogueCaptions.settings.v1"]);
+    const loaded = await second.store.load();
+    assert.equal(loaded.panelOpacity, 86);
+    assert.equal(loaded.themeName, "custom");
+    assert.equal(loaded.customThemeColor, "#bb2222");
+    assert.equal(loaded.fadeTowardVideoCenter, false);
+    assert.equal(loaded.panelClosed, false);
+    assert.equal(loaded.layoutLocked, false);
+    assert.equal(loaded.panelPosition, null);
+    assert.equal(loaded.panelSize, null);
+  });
+
+  await runCase("locked layout survives a fresh settings store", async () => {
+    const first = makeStore();
+    await first.store.savePatch({
+      panelOpacity: 91,
+      themeName: "custom",
+      customThemeColor: "#992211",
+      fadeTowardVideoCenter: true,
+      panelClosed: false,
+      layoutLocked: true,
+      textScale: 150,
+      panelPosition: { anchor: "player", left: 120, top: 72 },
+      panelSize: { width: 620, height: 410 },
+      futurePreviewHeight: 180,
+      futurePreviewEnabled: false,
+      launcherPosition: { left: 18, top: 24 }
+    });
+
+    const second = makeStore(null, first.saved["dialogueCaptions.settings.v1"]);
+    const loaded = await second.store.load();
+    assert.equal(loaded.panelOpacity, 91);
+    assert.equal(loaded.themeName, "custom");
+    assert.equal(loaded.customThemeColor, "#992211");
+    assert.equal(loaded.fadeTowardVideoCenter, true);
+    assert.equal(loaded.panelClosed, false);
+    assert.equal(loaded.layoutLocked, true);
+    assert.equal(loaded.textScale, 150);
+    assert.deepEqual(loaded.panelPosition, { anchor: "player", left: 120, top: 72 });
+    assert.deepEqual(loaded.panelSize, { width: 620, height: 410 });
+    assert.equal(loaded.futurePreviewHeight, 180);
+    assert.equal(loaded.futurePreviewEnabled, false);
+    assert.deepEqual(loaded.launcherPosition, { left: 18, top: 24 });
+  });
+
   await runCase("settings load waits for pending local preference writes", async () => {
     const { store, releaseStorageSet } = makeStore(null, {
       panelOpacity: 35,
