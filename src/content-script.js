@@ -2407,7 +2407,10 @@
     }
 
     persistSettings(nextSettings, patch) {
-      const patchSource = patch && typeof patch === "object" ? patch : nextSettings;
+      const patchSource =
+        patch && typeof patch === "object" && patch.layoutLocked === true
+          ? nextSettings
+          : patch && typeof patch === "object" ? patch : nextSettings;
       this.settings = settingsStore.normalizeSettings(nextSettings);
       if (settingsStore && typeof settingsStore.savePatch === "function") {
         settingsStore.savePatch(patchSource).then((persisted) => {

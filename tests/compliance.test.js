@@ -355,7 +355,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(resetStart >= 0);
     assert.ok(resetEnd > resetStart);
     const resetBody = panelSource.slice(resetStart, resetEnd);
-    assert.ok(resetBody.includes("panelOpacity"));
+    assert.ok(!resetBody.includes("panelOpacity"));
+    assert.ok(!resetBody.includes("fadeTowardVideoCenter"));
     assert.ok(resetBody.includes("panelPosition: null"));
     assert.ok(!resetBody.includes("themeName"));
     assert.ok(!resetBody.includes("customThemeColor"));
@@ -431,16 +432,18 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes("futurePreviewHeight"));
     assert.ok(source.includes("futurePreviewEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
+    assert.ok(source.includes("layoutLocked"));
+    assert.ok(source.includes("toStoredSettings"));
     assert.ok(source.includes("timelineModeEnabled"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
-    assert.ok(privacy.includes("next-up preview height"));
-    assert.ok(privacy.includes("whether Future / Next Up previews are enabled"));
-    assert.ok(privacy.includes("timeline scrub mode"));
-    assert.ok(privacy.includes("whether the panel fades toward the center"));
+    assert.ok(privacy.includes("opacity"));
+    assert.ok(privacy.includes("Fade"));
+    assert.ok(privacy.includes("Layout Lock"));
+    assert.ok(privacy.includes("Fade setting"));
   });
 
   await runCase("generic video experiment is source-only and not in release manifests", () => {

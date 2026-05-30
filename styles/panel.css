@@ -374,6 +374,16 @@
   padding: 0 8px;
 }
 
+.dc-btn-lock {
+  min-width: 38px;
+  padding: 0 8px;
+  opacity: 0.78;
+}
+
+.dc-btn-lock.is-active {
+  opacity: 1;
+}
+
 .dc-btn:hover:not(:disabled) {
   border-color: var(--dc-accent);
 }
@@ -704,6 +714,12 @@
 
 .dc-jump-bottom.is-hidden {
   display: none;
+}
+
+.dc-jump-bottom:disabled {
+  opacity: 0.48;
+  cursor: default;
+  color: rgba(var(--dc-muted-rgb), 0.78);
 }
 
 .dc-spacer {

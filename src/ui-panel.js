@@ -108,6 +108,7 @@
       this.futurePreviewInput = null;
       this.timelineModeButton = null;
       this.timelineFeatureEnabled = TIMELINE_MODE_EXPERIMENT_ENABLED;
+      this.layoutLockButton = null;
       this.timelineLayer = null;
       this.timelineTrack = null;
       this.timelineTooltip = null;
@@ -210,7 +211,14 @@
       this.resetButton.type = "button";
       this.resetButton.className = "dc-btn dc-btn-reset";
       this.resetButton.textContent = "Reset";
-      this.resetButton.title = "Reset panel size, position, transparency, and text size";
+      this.resetButton.title = "Reset panel layout for this video";
+
+      this.layoutLockButton = document.createElement("button");
+      this.layoutLockButton.type = "button";
+      this.layoutLockButton.className = "dc-btn dc-btn-lock";
+      this.layoutLockButton.textContent = "Lock";
+      this.layoutLockButton.title = "Save panel layout across videos";
+      this.layoutLockButton.setAttribute("aria-pressed", this.settings.layoutLocked ? "true" : "false");
 
       this.themeSelect = document.createElement("select");
       this.themeSelect.className = "dc-theme-select";
@@ -308,7 +316,7 @@
       }
       const actionControls = document.createElement("div");
       actionControls.className = "dc-control-actions";
-      actionControls.append(this.resetButton, this.closeButton);
+      actionControls.append(this.layoutLockButton, this.resetButton, this.closeButton);
       controls.append(actionControls);
       header.append(titleWrap, controls);
 
@@ -521,6 +529,11 @@
       const onReset = () => this.resetPanelDefaults();
       this.addListener(this.closeButton, "click", onClose);
       this.addListener(this.resetButton, "click", onReset);
+
+      const onLayoutLockToggle = () => {
+        this.updateSettings({ layoutLocked: !this.settings.layoutLocked });
+      };
+      this.addListener(this.layoutLockButton, "click", onLayoutLockToggle);
 
       const onOpacityInput = () => {
         this.updateSettings({ panelOpacity: Number(this.opacityInput.value) });
@@ -746,6 +759,15 @@
       }
       if (this.futurePreviewInput) {
         this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
+      }
+      if (this.layoutLockButton) {
+        const locked = Boolean(this.settings.layoutLocked);
+        this.layoutLockButton.classList.toggle("is-active", locked);
+        this.layoutLockButton.textContent = locked ? "Locked" : "Lock";
+        this.layoutLockButton.title = locked
+          ? "Panel layout is saved across videos"
+          : "Save panel size, position, text size, and Next layout across videos";
+        this.layoutLockButton.setAttribute("aria-pressed", locked ? "true" : "false");
       }
       if (this.timelineModeButton) {
         this.timelineModeButton.classList.toggle("is-active", timelineActive);
@@ -1017,13 +1039,11 @@
     resetPanelDefaults() {
       const defaults = settingsStore && settingsStore.DEFAULTS ? settingsStore.DEFAULTS : {};
       this.updateSettings({
-        panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 55,
         textScale: Number.isFinite(defaults.textScale) ? defaults.textScale : 120,
         panelPosition: null,
         panelSize: null,
         futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : DEFAULT_FUTURE_PREVIEW_HEIGHT,
         futurePreviewEnabled: defaults.futurePreviewEnabled !== false,
-        fadeTowardVideoCenter: defaults.fadeTowardVideoCenter !== false,
         videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 84,
         videoCenterFadeMidpoint: Number.isFinite(defaults.videoCenterFadeMidpoint) ? defaults.videoCenterFadeMidpoint : 50,
         videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 12,
@@ -2153,10 +2173,11 @@
       }
       const isClosed = this.root.style.display === "none";
       const currentIndex = this.getCurrentCaptionIndex();
-      const shouldShow =
-        !isClosed &&
-        this.chunks.length > 0 &&
-        (currentIndex >= 0 ? !this.isIndexVisible(currentIndex) : !this.isNearBottom(1.4));
+      const hasChunks = this.chunks.length > 0;
+      const currentVisible = currentIndex >= 0 ? this.isIndexVisible(currentIndex) : this.isNearBottom(1.4);
+      const shouldShow = !isClosed;
+      this.jumpBottomButton.disabled = !hasChunks || currentVisible;
+      this.jumpBottomButton.title = currentVisible ? "Current caption is visible" : "Scroll to the current caption";
       this.jumpBottomButton.classList.toggle("is-hidden", !shouldShow);
     }
 

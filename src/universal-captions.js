@@ -202,6 +202,7 @@
             "videoCenterFadeStrength",
             "videoCenterFadeMidpoint",
             "videoCenterFadeMinOpacity",
+            "layoutLocked",
             "timelineModeEnabled",
             "futurePreviewEnabled",
             "futurePreviewHeight"
@@ -212,7 +213,7 @@
           });
           this.settings = settingsStore.normalizeSettings({ ...this.settings, ...allowed });
           if (typeof settingsStore.savePatch === "function") {
-            settingsStore.savePatch(allowed).then((persisted) => {
+            settingsStore.savePatch(allowed.layoutLocked === true ? this.settings : allowed).then((persisted) => {
               this.settings = settingsStore.normalizeSettings({ ...persisted, ...this.settings });
               if (this.panel && this.panel.settings !== this.settings) {
                 this.panel.settings = this.settings;

@@ -19,6 +19,7 @@
     videoCenterFadeStrength: 84,
     videoCenterFadeMidpoint: 50,
     videoCenterFadeMinOpacity: 12,
+    layoutLocked: false,
     timelineModeEnabled: false,
     launcherPosition: null,
     panelClosed: true
@@ -148,16 +149,59 @@
       videoCenterFadeStrength: normalizeVideoCenterFadeStrength(source.videoCenterFadeStrength),
       videoCenterFadeMidpoint: normalizeVideoCenterFadeMidpoint(source.videoCenterFadeMidpoint),
       videoCenterFadeMinOpacity: normalizeVideoCenterFadeMinOpacity(source.videoCenterFadeMinOpacity),
+      layoutLocked: typeof source.layoutLocked === "boolean" ? source.layoutLocked : DEFAULTS.layoutLocked,
       timelineModeEnabled: typeof source.timelineModeEnabled === "boolean" ? source.timelineModeEnabled : DEFAULTS.timelineModeEnabled,
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),
       panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed
     };
   }
 
+  function toStoredSettings(settings) {
+    const normalized = normalizeSettings(settings);
+    const stored = {
+      schemaVersion: SCHEMA_VERSION,
+      panelOpacity: normalized.panelOpacity,
+      themeName: normalized.themeName,
+      customThemeColor: normalized.customThemeColor,
+      fadeTowardVideoCenter: normalized.fadeTowardVideoCenter,
+      layoutLocked: normalized.layoutLocked
+    };
+    if (normalized.layoutLocked) {
+      stored.textScale = normalized.textScale;
+      stored.panelPosition = normalized.panelPosition;
+      stored.panelSize = normalized.panelSize;
+      stored.futurePreviewHeight = normalized.futurePreviewHeight;
+      stored.futurePreviewEnabled = normalized.futurePreviewEnabled;
+    }
+    return stored;
+  }
+
+  function fromStoredSettings(settings) {
+    const normalized = normalizeSettings(settings);
+    if (normalized.layoutLocked) {
+      return normalized;
+    }
+    return normalizeSettings({
+      ...normalized,
+      textScale: DEFAULTS.textScale,
+      panelPosition: null,
+      panelSize: null,
+      futurePreviewHeight: DEFAULTS.futurePreviewHeight,
+      futurePreviewEnabled: DEFAULTS.futurePreviewEnabled,
+      videoCenterFadeStrength: DEFAULTS.videoCenterFadeStrength,
+      videoCenterFadeMidpoint: DEFAULTS.videoCenterFadeMidpoint,
+      videoCenterFadeMinOpacity: DEFAULTS.videoCenterFadeMinOpacity,
+      timelineModeEnabled: DEFAULTS.timelineModeEnabled,
+      launcherPosition: null,
+      panelClosed: DEFAULTS.panelClosed
+    });
+  }
+
   async function load() {
     try {
+      await saveQueue.catch(() => {});
       const data = await platform.storageGet(STORAGE_KEY);
-      return normalizeSettings(data ? data[STORAGE_KEY] : null);
+      return fromStoredSettings(data ? data[STORAGE_KEY] : null);
     } catch (error) {
       console.warn("[Dialogue Captions] Failed to read settings from extension storage.", error);
       return { ...DEFAULTS };
@@ -166,11 +210,12 @@
 
   async function save(nextSettings) {
     const normalized = normalizeSettings(nextSettings);
+    const stored = toStoredSettings(normalized);
     saveQueue = saveQueue
       .catch(() => {})
       .then(async () => {
         try {
-          await platform.storageSet({ [STORAGE_KEY]: normalized });
+          await platform.storageSet({ [STORAGE_KEY]: stored });
         } catch (error) {
           console.warn("[Dialogue Captions] Failed to save settings to extension storage.", error);
         }
@@ -186,9 +231,9 @@
       .then(async () => {
         try {
           const data = await platform.storageGet(STORAGE_KEY);
-          const current = normalizeSettings(data ? data[STORAGE_KEY] : null);
+          const current = fromStoredSettings(data ? data[STORAGE_KEY] : null);
           const normalized = normalizeSettings({ ...current, ...source });
-          await platform.storageSet({ [STORAGE_KEY]: normalized });
+          await platform.storageSet({ [STORAGE_KEY]: toStoredSettings(normalized) });
           return normalized;
         } catch (error) {
           console.warn("[Dialogue Captions] Failed to patch settings in extension storage.", error);
