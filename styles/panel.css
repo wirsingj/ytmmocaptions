@@ -92,32 +92,7 @@
 }
 
 .dc-panel.is-timeline-scrub .dc-controls {
-  max-width: 116px;
-  overflow: hidden;
-  opacity: 0.58;
-  transition: max-width 150ms ease, opacity 150ms ease;
-}
-
-.dc-panel.is-timeline-scrub:hover .dc-controls,
-.dc-panel.is-timeline-scrub:focus-within .dc-controls {
-  max-width: 520px;
-  opacity: 1;
-}
-
-.dc-panel.is-timeline-scrub .dc-opacity-wrap,
-.dc-panel.is-timeline-scrub .dc-text-scale-wrap,
-.dc-panel.is-timeline-scrub .dc-center-fade-wrap {
-  font-size: 0;
-  gap: 2px;
-}
-
-.dc-panel.is-timeline-scrub:hover .dc-opacity-wrap,
-.dc-panel.is-timeline-scrub:hover .dc-text-scale-wrap,
-.dc-panel.is-timeline-scrub:hover .dc-center-fade-wrap,
-.dc-panel.is-timeline-scrub:focus-within .dc-opacity-wrap,
-.dc-panel.is-timeline-scrub:focus-within .dc-text-scale-wrap,
-.dc-panel.is-timeline-scrub:focus-within .dc-center-fade-wrap {
-  font-size: 10px;
+  display: none;
 }
 
 .dc-panel::before {
@@ -156,8 +131,8 @@
   justify-content: flex-start;
   gap: 12px;
   align-items: center;
-  min-height: 28px;
-  padding: 4px 10px;
+  min-height: 22px;
+  padding: 3px 10px;
   border-bottom: 1px solid var(--dc-border-soft);
   cursor: move;
 }
@@ -216,10 +191,17 @@
 }
 
 .dc-controls {
+  position: absolute;
+  top: 31px;
+  bottom: 32px;
+  left: 6px;
+  z-index: 4;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 7px;
-  min-width: 0;
+  gap: 5px;
+  width: 28px;
+  pointer-events: auto;
 }
 
 .dc-controls * {
@@ -227,8 +209,7 @@
 }
 
 .dc-btn,
-.dc-size-select,
-.dc-theme-select {
+.dc-size-select {
   border: 1px solid var(--dc-border);
   border-radius: 7px;
   background:
@@ -239,27 +220,73 @@
   height: 23px;
 }
 
-.dc-theme-select {
-  width: 67px;
-  padding: 0 3px;
-  color-scheme: dark;
+.dc-rail-item {
+  position: relative;
+  width: 28px;
+  min-height: 28px;
+}
+
+.dc-rail-trigger {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(var(--dc-accent-rgb), 0.2);
+  border-radius: 7px;
+  background: rgba(var(--dc-bg-rgb), 0.38);
+  color: rgba(var(--dc-text-rgb), 0.76);
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.dc-rail-item:hover .dc-rail-trigger,
+.dc-rail-item:focus-within .dc-rail-trigger {
+  border-color: rgba(var(--dc-accent-rgb), 0.55);
+  background: rgba(var(--dc-bg-rgb), 0.68);
+  color: var(--dc-text);
+}
+
+.dc-rail-popover {
+  position: absolute;
+  left: 33px;
+  top: 0;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  max-width: min(260px, calc(100vw - 70px));
+  padding: 5px 7px;
+  border: 1px solid rgba(var(--dc-accent-rgb), 0.25);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.05), rgba(var(--dc-text-rgb), 0.01)),
+    rgba(var(--dc-bg-rgb), 0.9);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(8px);
+}
+
+.dc-rail-item:hover .dc-rail-popover,
+.dc-rail-item:focus-within .dc-rail-popover {
+  display: flex;
+}
+
+.dc-theme-swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: max-content;
 }
 
 .dc-theme-color {
   appearance: none;
   -webkit-appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 1px;
   border: 1px solid var(--dc-border);
   border-radius: 7px;
   background: rgba(var(--dc-bg-rgb), 0.48);
   cursor: pointer;
-}
-
-.dc-theme-color:disabled {
-  opacity: 0.42;
-  cursor: default;
 }
 
 .dc-theme-color::-webkit-color-swatch-wrapper {
@@ -274,6 +301,23 @@
 .dc-theme-color::-moz-color-swatch {
   border: 0;
   border-radius: 5px;
+}
+
+.dc-theme-swatch {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(var(--dc-accent-rgb), 0.28);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.08)),
+    var(--dc-swatch-color, var(--dc-accent));
+  cursor: pointer;
+}
+
+.dc-theme-swatch.is-active {
+  border-color: var(--dc-accent);
+  box-shadow: 0 0 0 1px rgba(var(--dc-accent-rgb), 0.35);
 }
 
 .dc-btn {
@@ -342,6 +386,12 @@
   font-size: 10px;
   color: var(--dc-muted);
   white-space: nowrap;
+}
+
+.dc-opacity-input,
+.dc-text-scale-input {
+  width: 108px;
+  accent-color: var(--dc-accent);
 }
 
 .dc-center-fade-input {
@@ -541,6 +591,8 @@
   flex-direction: column;
   min-height: 0;
   flex: 1;
+  box-sizing: border-box;
+  padding-left: 34px;
 }
 
 .dc-status {

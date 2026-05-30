@@ -356,6 +356,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('aria-live", "polite"'));
     assert.ok(panelSource.includes('aria-label", "Panel theme"'));
     assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
+    assert.ok(panelSource.includes('opacityWrap.textContent = "Opacity"'));
+    assert.ok(panelSource.includes("dc-theme-swatches"));
+    assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 
@@ -426,6 +429,8 @@ exports.run = async function runComplianceTests(ctx) {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("setTimelineData"));
     assert.ok(panelSource.includes("dc-timeline-lens"));
+    assert.ok(panelSource.includes("TIMELINE_MODE_EXPERIMENT_ENABLED = false"));
+    assert.ok(panelSource.includes("timelineFeatureEnabled"));
     assert.ok(panelSource.includes("timelineModeEnabled"));
     assert.ok(panelSource.includes("handleTimelineClick"));
     assert.ok(panelSource.includes('this.body.style.display = timelineActive ? "none" : "flex"'));
@@ -441,8 +446,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('this.timelineTooltip.classList.add("is-visible")'));
     assert.ok(panelSource.includes('this.timelineTooltip.classList.toggle("is-hover"'));
     assert.ok(panelSource.includes("Math.pow(blend, 0.72)"));
-    assert.ok(panelSource.includes('setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.78)'));
-    assert.ok(panelSource.includes('setAlpha("--dc-card-alpha", 0.2 + eased * 0.72)'));
+    assert.ok(panelSource.includes('setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84)'));
+    assert.ok(panelSource.includes('setAlpha("--dc-card-alpha", 0.2 + eased * 0.8)'));
     assert.ok(scrubSource.includes("hoverXToTime"));
     assert.ok(scrubSource.includes("findChunkIndexAtTime"));
     assert.ok(css.includes(".dc-timeline-layer"));
@@ -456,7 +461,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("font-size: calc(15px * var(--dc-text-scale, 1.2))"));
     assert.ok(css.includes("width: min(860px, 82vw)"));
     assert.ok(css.includes(".dc-timeline-lens.is-hover"));
-    assert.ok(css.includes(".dc-panel.is-timeline-scrub:hover .dc-controls"));
+    assert.ok(css.includes(".dc-panel.is-timeline-scrub .dc-controls"));
+    assert.ok(css.includes(".dc-rail-popover"));
     assert.ok(css.includes(".dc-panel-open .ytp-caption-window-rollup"));
     assert.ok(css.includes(".dc-panel-open .ytp-caption-segment"));
   });

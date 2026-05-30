@@ -20,6 +20,7 @@
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
   const LAUNCHER_CONTROL_BAR_GAP = 54;
+  const TIMELINE_MODE_EXPERIMENT_ENABLED = false;
   const THEME_PRESETS = Object.freeze({
     stone: {
       label: "Stone",
@@ -96,11 +97,13 @@
       this.opacityInput = null;
       this.textScaleWrap = null;
       this.textScaleInput = null;
-      this.themeSelect = null;
+      this.themeButtons = [];
       this.themeColorInput = null;
       this.centerFadeInput = null;
       this.futurePreviewInput = null;
       this.timelineModeButton = null;
+      this.timelineRailPopover = null;
+      this.timelineFeatureEnabled = TIMELINE_MODE_EXPERIMENT_ENABLED;
       this.timelineLayer = null;
       this.timelineTrack = null;
       this.timelineTooltip = null;
@@ -179,6 +182,24 @@
 
       const controls = document.createElement("div");
       controls.className = "dc-controls";
+      controls.setAttribute("aria-label", "Panel controls");
+
+      const createRailItem = (triggerText, title) => {
+        const item = document.createElement("div");
+        item.className = "dc-rail-item";
+        const trigger = document.createElement("button");
+        trigger.type = "button";
+        trigger.className = "dc-rail-trigger";
+        trigger.textContent = triggerText;
+        trigger.title = title;
+        trigger.setAttribute("aria-label", title);
+        const popover = document.createElement("div");
+        popover.className = "dc-rail-popover";
+        popover.setAttribute("role", "group");
+        popover.setAttribute("aria-label", title);
+        item.append(trigger, popover);
+        return { item, popover };
+      };
 
       this.closeButton = document.createElement("button");
       this.closeButton.type = "button";
@@ -192,35 +213,39 @@
       this.resetButton.textContent = "Reset";
       this.resetButton.title = "Reset panel size, position, transparency, and text size";
 
-      this.themeSelect = document.createElement("select");
-      this.themeSelect.className = "dc-theme-select";
-      this.themeSelect.title = "Panel theme";
-      this.themeSelect.setAttribute("aria-label", "Panel theme");
-      const themeOptions = [
-        ["stone", "Stone"],
-        ["ember", "Ember"],
-        ["forest", "Forest"],
-        ["ocean", "Ocean"],
-        ["violet", "Violet"],
-        ["custom", "Custom"]
-      ];
-      for (let index = 0; index < themeOptions.length; index += 1) {
-        const option = document.createElement("option");
-        option.value = themeOptions[index][0];
-        option.textContent = themeOptions[index][1];
-        this.themeSelect.append(option);
-      }
+      const themeRail = createRailItem("C", "Panel theme");
+      const themeSwatches = document.createElement("div");
+      themeSwatches.className = "dc-theme-swatches";
+      themeSwatches.setAttribute("aria-label", "Panel theme");
 
       this.themeColorInput = document.createElement("input");
       this.themeColorInput.type = "color";
-      this.themeColorInput.className = "dc-theme-color";
+      this.themeColorInput.className = "dc-theme-color dc-theme-swatch dc-theme-custom";
       this.themeColorInput.title = "Custom theme color";
       this.themeColorInput.setAttribute("aria-label", "Custom theme color");
       this.themeColorInput.value = this.settings.customThemeColor || "#ded6c3";
+      themeSwatches.append(this.themeColorInput);
+
+      const themeNames = Object.keys(THEME_PRESETS);
+      this.themeButtons = [];
+      for (let index = 0; index < themeNames.length; index += 1) {
+        const themeName = themeNames[index];
+        const preset = THEME_PRESETS[themeName];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "dc-theme-swatch";
+        button.dataset.themeName = themeName;
+        button.title = preset.label;
+        button.setAttribute("aria-label", preset.label + " theme");
+        button.style.setProperty("--dc-swatch-color", preset.accent);
+        this.themeButtons.push(button);
+        themeSwatches.append(button);
+      }
+      themeRail.popover.append(themeSwatches);
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
-      opacityWrap.textContent = "Blend";
+      opacityWrap.textContent = "Opacity";
       this.opacityWrap = opacityWrap;
 
       this.opacityInput = document.createElement("input");
@@ -230,8 +255,10 @@
       this.opacityInput.max = "100";
       this.opacityInput.step = "1";
       this.opacityInput.value = String(this.settings.panelOpacity || 100);
-      this.opacityInput.title = "Panel background blend";
+      this.opacityInput.title = "Panel opacity";
       opacityWrap.append(this.opacityInput);
+      const opacityRail = createRailItem("O", "Panel opacity");
+      opacityRail.popover.append(opacityWrap);
 
       const textScaleWrap = document.createElement("label");
       textScaleWrap.className = "dc-text-scale-wrap";
@@ -247,6 +274,8 @@
       this.textScaleInput.value = String(this.settings.textScale || 100);
       this.textScaleInput.title = "Text size";
       textScaleWrap.append(this.textScaleInput);
+      const textRail = createRailItem("Aa", "Text size");
+      textRail.popover.append(textScaleWrap);
 
       const centerFadeWrap = document.createElement("label");
       centerFadeWrap.className = "dc-center-fade-wrap";
@@ -257,6 +286,8 @@
       this.centerFadeInput.className = "dc-center-fade-input";
       this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
       centerFadeWrap.append(this.centerFadeInput);
+      const fadeRail = createRailItem("F", "Center fade");
+      fadeRail.popover.append(centerFadeWrap);
 
       const futurePreviewWrap = document.createElement("label");
       futurePreviewWrap.className = "dc-future-toggle-wrap";
@@ -274,18 +305,30 @@
       this.timelineModeButton.textContent = "Timeline";
       this.timelineModeButton.title = "Open transcript scrub mode";
       this.timelineModeButton.setAttribute("aria-pressed", this.settings.timelineModeEnabled ? "true" : "false");
+      this.timelineModeButton.hidden = !this.timelineFeatureEnabled;
+
+      const timelineRail = createRailItem("Tl", "Timeline mode");
+      timelineRail.item.classList.add("dc-rail-item-timeline");
+      this.timelineRailPopover = timelineRail.popover;
+      timelineRail.popover.append(this.timelineModeButton);
+      timelineRail.item.hidden = !this.timelineFeatureEnabled;
+
+      const resetRail = createRailItem("R", "Reset panel");
+      resetRail.popover.append(this.resetButton);
+
+      const closeRail = createRailItem("X", "Collapse panel");
+      closeRail.popover.append(this.closeButton);
 
       controls.append(
-        this.themeSelect,
-        this.themeColorInput,
-        opacityWrap,
-        textScaleWrap,
-        centerFadeWrap,
-        this.timelineModeButton,
-        this.resetButton,
-        this.closeButton
+        themeRail.item,
+        opacityRail.item,
+        textRail.item,
+        fadeRail.item,
+        timelineRail.item,
+        resetRail.item,
+        closeRail.item
       );
-      header.append(titleWrap, controls);
+      header.append(titleWrap);
 
       this.body = document.createElement("div");
       this.body.className = "dc-body";
@@ -322,7 +365,7 @@
       footer.append(futurePreviewWrap, this.jumpBottomButton);
 
       this.body.append(this.statusEl, this.listViewport, footer);
-      this.root.append(header, this.body);
+      this.root.append(header, this.body, controls);
       for (let index = 0; index < this.resizeHandles.length; index += 1) {
         this.root.append(this.resizeHandles[index]);
       }
@@ -478,10 +521,13 @@
       };
       this.addListener(this.opacityInput, "input", onOpacityInput);
 
-      const onThemeChange = () => {
-        this.updateSettings({ themeName: this.themeSelect.value || "stone" });
-      };
-      this.addListener(this.themeSelect, "change", onThemeChange);
+      for (let index = 0; index < this.themeButtons.length; index += 1) {
+        const button = this.themeButtons[index];
+        const onThemeButtonClick = () => {
+          this.updateSettings({ themeName: button.dataset.themeName || "stone" });
+        };
+        this.addListener(button, "click", onThemeButtonClick);
+      }
 
       const onThemeColorInput = () => {
         this.updateSettings({ themeName: "custom", customThemeColor: this.themeColorInput.value || "#ded6c3" });
@@ -504,6 +550,9 @@
       this.addListener(this.futurePreviewInput, "change", onFuturePreviewChange);
 
       const onTimelineToggle = () => {
+        if (!this.timelineFeatureEnabled) {
+          return;
+        }
         this.updateSettings({ timelineModeEnabled: !this.settings.timelineModeEnabled });
       };
       this.addListener(this.timelineModeButton, "click", onTimelineToggle);
@@ -632,7 +681,7 @@
       if (panelClosed) {
         this.pointerInside = false;
       }
-      const timelineActive = Boolean(this.settings.timelineModeEnabled);
+      const timelineActive = this.timelineFeatureEnabled && Boolean(this.settings.timelineModeEnabled);
       this.body.style.display = timelineActive ? "none" : "flex";
       this.body.hidden = timelineActive;
 
@@ -692,26 +741,31 @@
         this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
       }
       if (this.timelineModeButton) {
+        if (timelineActive && this.timelineModeButton.parentElement !== this.header) {
+          this.header.append(this.timelineModeButton);
+        } else if (!timelineActive && this.timelineRailPopover && this.timelineModeButton.parentElement !== this.timelineRailPopover) {
+          this.timelineRailPopover.append(this.timelineModeButton);
+        }
         this.timelineModeButton.classList.toggle("is-active", timelineActive);
         this.timelineModeButton.textContent = timelineActive ? "Panel" : "Timeline";
         this.timelineModeButton.title = timelineActive ? "Return to full caption panel" : "Open transcript scrub mode";
+        this.timelineModeButton.hidden = !this.timelineFeatureEnabled;
         this.timelineModeButton.setAttribute("aria-pressed", timelineActive ? "true" : "false");
       }
       if (this.root) {
         this.root.classList.toggle("is-timeline-scrub", timelineActive);
       }
-      if (this.themeSelect) {
-        const themeName = this.getThemeName();
-        if (this.themeSelect.value !== themeName) {
-          this.themeSelect.value = themeName;
-        }
+      const themeName = this.getThemeName();
+      for (let index = 0; index < this.themeButtons.length; index += 1) {
+        const button = this.themeButtons[index];
+        button.classList.toggle("is-active", button.dataset.themeName === themeName);
       }
       if (this.themeColorInput) {
         const color = this.getCustomThemeColor();
         if (this.themeColorInput.value.toLowerCase() !== color) {
           this.themeColorInput.value = color;
         }
-        this.themeColorInput.disabled = this.getThemeName() !== "custom";
+        this.themeColorInput.classList.toggle("is-active", themeName === "custom");
       }
       this.applyFuturePreviewHeight();
       if (this.stickToBottom) {
@@ -757,15 +811,15 @@
         }
       };
       const eased = Math.pow(blend, 0.72);
-      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.58);
-      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.78);
-      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.78);
-      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.82);
+      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.78);
+      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.88);
+      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84);
+      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.94);
       setAlpha("--dc-panel-fade-light", 0.002 + eased * 0.026);
       setAlpha("--dc-panel-fade-shadow", 0.014 + eased * 0.28);
       setAlpha("--dc-panel-fade-shadow-soft", (0.014 + eased * 0.28) * 0.62);
-      setAlpha("--dc-card-alpha", 0.2 + eased * 0.72);
-      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.68);
+      setAlpha("--dc-card-alpha", 0.2 + eased * 0.8);
+      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.74);
       this.root.style.opacity = "1";
     }
 
@@ -1148,7 +1202,7 @@
       if (!this.timelineLayer || !this.timelineTrack || !this.timelineTooltip) {
         return;
       }
-      const enabled = Boolean(this.settings.timelineModeEnabled);
+      const enabled = this.timelineFeatureEnabled && Boolean(this.settings.timelineModeEnabled);
       const duration = Number(this.timelineDuration);
       const chunks = Array.isArray(this.timelineChunks) ? this.timelineChunks : [];
       const anchorVisible = this.isAnchorUsablyVisible();
