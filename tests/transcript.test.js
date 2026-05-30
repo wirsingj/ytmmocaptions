@@ -112,6 +112,72 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.reason, "Transcript metadata is unavailable.");
   });
 
+  await runCase("transcript rejects non-YouTube watch URLs", async () => {
+    let fetchCalls = 0;
+    const transcript = loadModule("transcript.js", {
+      fetch: async () => {
+        fetchCalls += 1;
+        return makeTextResponse("");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://evil.example/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "Not a YouTube watch page.");
+    assert.equal(fetchCalls, 0);
+  });
+
+  await runCase("transcript blocks non-YouTube caption track URLs", async () => {
+    const playerResponse = {
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [
+            {
+              baseUrl: "https://evil.example/api/timedtext?v=abc123",
+              languageCode: "en",
+              kind: ""
+            }
+          ]
+        }
+      }
+    };
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        ytInitialPlayerResponse: playerResponse,
+        location: { href: "https://www.youtube.com/watch?v=abc123" },
+        ytcfg: {
+          get(key) {
+            const values = {
+              INNERTUBE_API_KEY: "fake-key",
+              INNERTUBE_CONTEXT: { client: { clientName: "WEB", clientVersion: "2.test" } },
+              INNERTUBE_CONTEXT_CLIENT_NAME: "1",
+              INNERTUBE_CONTEXT_CLIENT_VERSION: "2.test"
+            };
+            return values[key] || null;
+          }
+        }
+      },
+      fetch: async (url) => {
+        requested.push(String(url));
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "No subtitle cues were found in available tracks.");
+    assert.ok(!requested.some((url) => url.includes("evil.example")));
+  });
+
   await runCase("transcript handles malformed track data without crashing", async () => {
     const transcript = loadModule("transcript.js", {
       windowProps: {

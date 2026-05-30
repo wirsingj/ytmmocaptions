@@ -189,7 +189,51 @@
     });
   }
 
+  function parseAllowedYouTubeUrl(url) {
+    try {
+      const parsed = new URL(String(url || ""));
+      if (parsed.protocol !== "https:" || parsed.hostname !== "www.youtube.com") {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function isAllowedTranscriptFetchUrl(url) {
+    const parsed = parseAllowedYouTubeUrl(url);
+    if (!parsed) {
+      return false;
+    }
+    const path = parsed.pathname;
+    return (
+      path.endsWith("/api/timedtext") ||
+      path === "/youtubei/v1/get_transcript" ||
+      path === "/youtubei/v1/get_panel"
+    );
+  }
+
+  function blockedFetchResult() {
+    return {
+      ok: false,
+      status: 0,
+      url: "",
+      contentType: "",
+      body: "",
+      error: "blocked_request",
+      transport: "blocked"
+    };
+  }
+
   async function fetchTextDirect(sourcePath, requestedUrl, signal, init) {
+    if (!isAllowedTranscriptFetchUrl(requestedUrl)) {
+      logDebug("transcript fetch blocked outside YouTube allowlist", {
+        sourcePath: sourcePath,
+        requestedUrl: requestedUrl
+      });
+      return blockedFetchResult();
+    }
     const safeInit = init && typeof init === "object" ? init : {};
     try {
       const response = await fetch(requestedUrl, {
@@ -221,6 +265,13 @@
   }
 
   async function fetchTextWithContext(sourcePath, requestedUrl, signal, init) {
+    if (!isAllowedTranscriptFetchUrl(requestedUrl)) {
+      logDebug("transcript fetch blocked outside YouTube allowlist", {
+        sourcePath: sourcePath,
+        requestedUrl: requestedUrl
+      });
+      return blockedFetchResult();
+    }
     const safeInit = init && typeof init === "object" ? init : {};
     const pageContext = app.pageContext;
     if (pageContext && typeof pageContext.pageFetch === "function") {
@@ -264,11 +315,8 @@
   }
 
   function isWatchPage(url) {
-    try {
-      return new URL(url).pathname === "/watch";
-    } catch {
-      return false;
-    }
+    const parsed = parseAllowedYouTubeUrl(url);
+    return Boolean(parsed && parsed.pathname === "/watch");
   }
 
   function decodeHtmlEntities(input) {

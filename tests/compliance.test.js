@@ -187,6 +187,15 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes('path === "/youtubei/v1/get_panel"'));
   });
 
+  await runCase("transcript fetch fallback uses the same YouTube allowlist", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "transcript.js"), "utf8");
+    assert.ok(source.includes('parsed.hostname !== "www.youtube.com"'));
+    assert.ok(source.includes('path.endsWith("/api/timedtext")'));
+    assert.ok(source.includes('path === "/youtubei/v1/get_transcript"'));
+    assert.ok(source.includes('path === "/youtubei/v1/get_panel"'));
+    assert.ok(source.includes('error: "blocked_request"'));
+  });
+
   await runCase("global keyboard is pointer-over-panel only", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
     assert.ok(source.includes("return this.panel.isPointerInside();"));
