@@ -298,7 +298,10 @@
       if (this.timelineFeatureEnabled) {
         controls.append(this.timelineModeButton);
       }
-      controls.append(this.resetButton, this.closeButton);
+      const actionControls = document.createElement("div");
+      actionControls.className = "dc-control-actions";
+      actionControls.append(this.resetButton, this.closeButton);
+      controls.append(actionControls);
       header.append(titleWrap, controls);
 
       this.body = document.createElement("div");
@@ -1008,8 +1011,6 @@
       this.updateSettings({
         panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 55,
         textScale: Number.isFinite(defaults.textScale) ? defaults.textScale : 120,
-        themeName: defaults.themeName || "stone",
-        customThemeColor: defaults.customThemeColor || "#ded6c3",
         panelPosition: null,
         panelSize: null,
         futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : DEFAULT_FUTURE_PREVIEW_HEIGHT,

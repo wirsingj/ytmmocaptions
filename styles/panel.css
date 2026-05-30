@@ -213,6 +213,7 @@
 .dc-controls {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   gap: 7px;
   min-width: 0;
 }
@@ -274,6 +275,13 @@
   cursor: pointer;
   padding: 0 7px;
   min-width: 26px;
+}
+
+.dc-control-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
 }
 
 .dc-btn-close {

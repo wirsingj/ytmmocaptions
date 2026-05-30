@@ -347,6 +347,19 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("touch-action: none"));
   });
 
+  await runCase("panel reset preserves the selected theme", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const resetStart = panelSource.indexOf("resetPanelDefaults() {");
+    const resetEnd = panelSource.indexOf("applyFuturePreviewHeight()", resetStart);
+    assert.ok(resetStart >= 0);
+    assert.ok(resetEnd > resetStart);
+    const resetBody = panelSource.slice(resetStart, resetEnd);
+    assert.ok(resetBody.includes("panelOpacity"));
+    assert.ok(resetBody.includes("panelPosition: null"));
+    assert.ok(!resetBody.includes("themeName"));
+    assert.ok(!resetBody.includes("customThemeColor"));
+  });
+
   await runCase("reading glow cannot persist without an active timing range", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     assert.ok(panelSource.includes("lastGlowWordEnd"));
