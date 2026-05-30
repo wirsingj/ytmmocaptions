@@ -182,7 +182,7 @@ exports.run = async function runComplianceTests(ctx) {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "page-bridge.js"), "utf8");
     assert.ok(!source.includes('"XSRF_TOKEN"'));
     assert.ok(source.includes('host !== "www.youtube.com"'));
-    assert.ok(source.includes('path.endsWith("/api/timedtext")'));
+    assert.ok(source.includes('path === "/api/timedtext"'));
     assert.ok(source.includes('path === "/youtubei/v1/get_transcript"'));
     assert.ok(source.includes('path === "/youtubei/v1/get_panel"'));
   });
@@ -190,7 +190,7 @@ exports.run = async function runComplianceTests(ctx) {
   await runCase("transcript fetch fallback uses the same YouTube allowlist", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "transcript.js"), "utf8");
     assert.ok(source.includes('parsed.hostname !== "www.youtube.com"'));
-    assert.ok(source.includes('path.endsWith("/api/timedtext")'));
+    assert.ok(source.includes('path === "/api/timedtext"'));
     assert.ok(source.includes('path === "/youtubei/v1/get_transcript"'));
     assert.ok(source.includes('path === "/youtubei/v1/get_panel"'));
     assert.ok(source.includes('error: "blocked_request"'));
@@ -322,6 +322,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("activePointerCleanupFns"));
     assert.ok(panelSource.includes("cleanupActivePointerListeners()"));
     assert.ok(panelSource.includes("trackActivePointerListeners"));
+    assert.ok(panelSource.includes('window.addEventListener("pointercancel"'));
+    assert.ok(panelSource.includes('window.removeEventListener("pointercancel"'));
     assert.ok(panelSource.includes("this.dragState = null;"));
     assert.ok(panelSource.includes("this.resizeState = null;"));
     assert.ok(panelSource.includes("this.futureDividerDragState = null;"));

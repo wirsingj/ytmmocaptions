@@ -178,6 +178,53 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.ok(!requested.some((url) => url.includes("evil.example")));
   });
 
+  await runCase("transcript blocks nested YouTube timedtext-like paths", async () => {
+    const playerResponse = {
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [
+            {
+              baseUrl: "https://www.youtube.com/anything/api/timedtext?v=abc123",
+              languageCode: "en",
+              kind: ""
+            }
+          ]
+        }
+      }
+    };
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        ytInitialPlayerResponse: playerResponse,
+        location: { href: "https://www.youtube.com/watch?v=abc123" },
+        ytcfg: {
+          get(key) {
+            const values = {
+              INNERTUBE_API_KEY: "fake-key",
+              INNERTUBE_CONTEXT: { client: { clientName: "WEB", clientVersion: "2.test" } },
+              INNERTUBE_CONTEXT_CLIENT_NAME: "1",
+              INNERTUBE_CONTEXT_CLIENT_VERSION: "2.test"
+            };
+            return values[key] || null;
+          }
+        }
+      },
+      fetch: async (url) => {
+        requested.push(String(url));
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "No subtitle cues were found in available tracks.");
+    assert.ok(!requested.some((url) => url.includes("/anything/api/timedtext")));
+  });
+
   await runCase("transcript handles malformed track data without crashing", async () => {
     const transcript = loadModule("transcript.js", {
       windowProps: {

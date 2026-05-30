@@ -1998,6 +1998,9 @@
       if (!this.root) {
         return;
       }
+      if (event.button !== 0) {
+        return;
+      }
       const target = event.target instanceof Element ? event.target : null;
       const section = target ? target.closest(".dc-future-section") : null;
       if (!(section instanceof Element)) {
@@ -2015,19 +2018,25 @@
 
       const onMove = (moveEvent) => this.handleFutureDividerMove(moveEvent);
       let cleanupPointerListeners = null;
-      const onUp = () => {
+      const onUp = (upEvent) => {
         if (cleanupPointerListeners) {
           cleanupPointerListeners();
+        }
+        if (upEvent) {
+          upEvent.preventDefault();
+          upEvent.stopPropagation();
         }
         this.finishFutureDividerDrag();
       };
       cleanupPointerListeners = this.trackActivePointerListeners(() => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
       });
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
       event.preventDefault();
       event.stopPropagation();
     }
@@ -2057,6 +2066,9 @@
 
     handleResizePointerDown(event, zone) {
       if (!this.root) {
+        return;
+      }
+      if (event.button !== 0) {
         return;
       }
       if (!this.isResizeZone(zone)) {
@@ -2108,10 +2120,12 @@
       cleanupPointerListeners = this.trackActivePointerListeners(() => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
       });
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
       event.preventDefault();
       event.stopPropagation();
     }

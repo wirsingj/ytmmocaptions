@@ -462,7 +462,7 @@
       }
       const path = parsed.pathname.toLowerCase();
       return (
-        path.endsWith("/api/timedtext") ||
+        path === "/api/timedtext" ||
         path === "/youtubei/v1/get_transcript" ||
         path === "/youtubei/v1/get_panel"
       );
