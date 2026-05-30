@@ -383,6 +383,8 @@ exports.run = async function runComplianceTests(ctx) {
     const resetBody = panelSource.slice(resetStart, resetEnd);
     assert.ok(!resetBody.includes("panelOpacity"));
     assert.ok(!resetBody.includes("fadeTowardVideoCenter"));
+    assert.ok(!resetBody.includes("futurePreviewEnabled"));
+    assert.ok(!resetBody.includes("caseFixEnabled"));
     assert.ok(resetBody.includes("panelPosition: null"));
     assert.ok(!resetBody.includes("themeName"));
     assert.ok(!resetBody.includes("customThemeColor"));

@@ -1358,7 +1358,6 @@
         panelPosition: null,
         panelSize: null,
         futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : DEFAULT_FUTURE_PREVIEW_HEIGHT,
-        futurePreviewEnabled: defaults.futurePreviewEnabled !== false,
         videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 84,
         videoCenterFadeMidpoint: Number.isFinite(defaults.videoCenterFadeMidpoint) ? defaults.videoCenterFadeMidpoint : 50,
         videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 12,
