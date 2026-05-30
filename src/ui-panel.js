@@ -184,10 +184,18 @@
 
       const titleWrap = document.createElement("div");
       titleWrap.className = "dc-title-wrap";
+      const brandMark = document.createElement("span");
+      brandMark.className = "dc-brand-mark";
+      brandMark.setAttribute("aria-hidden", "true");
+      const brandPlay = document.createElement("span");
+      brandPlay.className = "dc-brand-play";
+      const brandBubble = document.createElement("span");
+      brandBubble.className = "dc-brand-bubble";
+      brandMark.append(brandPlay, brandBubble);
       const title = document.createElement("h2");
       title.className = "dc-title";
       title.textContent = "YTMMOCC";
-      titleWrap.append(title);
+      titleWrap.append(brandMark, title);
 
       const controls = document.createElement("div");
       controls.className = "dc-controls";

@@ -360,6 +360,18 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!resetBody.includes("customThemeColor"));
   });
 
+  await runCase("panel header includes themed brand mark without red asset dependency", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes("dc-brand-mark"));
+    assert.ok(panelSource.includes("dc-brand-play"));
+    assert.ok(panelSource.includes("dc-brand-bubble"));
+    assert.ok(css.includes(".dc-brand-mark"));
+    assert.ok(css.includes("rgba(var(--dc-accent-rgb)"));
+    assert.ok(!css.includes("#ff0000"));
+    assert.ok(!css.includes("#f00"));
+  });
+
   await runCase("reading glow cannot persist without an active timing range", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     assert.ok(panelSource.includes("lastGlowWordEnd"));
