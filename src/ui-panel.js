@@ -103,7 +103,11 @@
       this.textScaleWrap = null;
       this.textScaleInput = null;
       this.themeSelect = null;
-      this.themeColorInput = null;
+      this.themeColorButton = null;
+      this.themeColorSwatch = null;
+      this.colorPickerPopover = null;
+      this.colorWheel = null;
+      this.colorPickerIndicator = null;
       this.centerFadeInput = null;
       this.futurePreviewInput = null;
       this.timelineModeButton = null;
@@ -226,26 +230,46 @@
       this.themeSelect.title = "Panel theme";
       this.themeSelect.setAttribute("aria-label", "Panel theme");
       const themeOptions = [
+        ["custom", "Custom", true],
         ["stone", "Stone"],
         ["ember", "Ember"],
         ["forest", "Forest"],
         ["ocean", "Ocean"],
-        ["violet", "Violet"],
-        ["custom", "Custom"]
+        ["violet", "Violet"]
       ];
       for (let index = 0; index < themeOptions.length; index += 1) {
         const option = document.createElement("option");
         option.value = themeOptions[index][0];
         option.textContent = themeOptions[index][1];
+        if (themeOptions[index][2]) {
+          option.hidden = true;
+        }
         this.themeSelect.append(option);
       }
 
-      this.themeColorInput = document.createElement("input");
-      this.themeColorInput.type = "color";
-      this.themeColorInput.className = "dc-theme-color";
-      this.themeColorInput.title = "Custom theme color";
-      this.themeColorInput.setAttribute("aria-label", "Custom theme color");
-      this.themeColorInput.value = this.settings.customThemeColor || "#ded6c3";
+      this.themeColorButton = document.createElement("button");
+      this.themeColorButton.type = "button";
+      this.themeColorButton.className = "dc-theme-color";
+      this.themeColorButton.title = "Pick custom theme color";
+      this.themeColorButton.setAttribute("aria-label", "Custom theme color");
+      this.themeColorButton.setAttribute("aria-expanded", "false");
+      this.themeColorSwatch = document.createElement("span");
+      this.themeColorSwatch.className = "dc-theme-color-swatch";
+      this.themeColorButton.append(this.themeColorSwatch);
+
+      this.colorPickerPopover = document.createElement("div");
+      this.colorPickerPopover.className = "dc-color-popover";
+      this.colorPickerPopover.hidden = true;
+      this.colorPickerPopover.setAttribute("role", "dialog");
+      this.colorPickerPopover.setAttribute("aria-label", "Pick custom theme color");
+      this.colorWheel = document.createElement("button");
+      this.colorWheel.type = "button";
+      this.colorWheel.className = "dc-color-wheel";
+      this.colorWheel.setAttribute("aria-label", "Color wheel");
+      this.colorPickerIndicator = document.createElement("span");
+      this.colorPickerIndicator.className = "dc-color-indicator";
+      this.colorWheel.append(this.colorPickerIndicator);
+      this.colorPickerPopover.append(this.colorWheel);
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
@@ -307,7 +331,8 @@
 
       controls.append(
         this.themeSelect,
-        this.themeColorInput,
+        this.themeColorButton,
+        this.colorPickerPopover,
         opacityWrap,
         textScaleWrap,
         centerFadeWrap
@@ -556,14 +581,44 @@
 
       const onThemeChange = () => {
         this.updateSettings({ themeName: this.themeSelect.value || "stone" });
+        this.closeColorPicker();
       };
       this.addListener(this.themeSelect, "change", onThemeChange);
 
-      const onThemeColorInput = () => {
-        this.updateSettings({ themeName: "custom", customThemeColor: this.themeColorInput.value || "#ded6c3" });
+      const onThemeColorClick = (event) => {
+        event.preventDefault();
+        this.toggleColorPicker();
       };
-      this.addListener(this.themeColorInput, "input", onThemeColorInput);
-      this.addListener(this.themeColorInput, "change", onThemeColorInput);
+      this.addListener(this.themeColorButton, "click", onThemeColorClick);
+
+      const onColorWheelPointer = (event) => {
+        this.pickColorFromWheel(event);
+      };
+      this.addListener(this.colorWheel, "pointerdown", onColorWheelPointer);
+      this.addListener(this.colorWheel, "pointermove", (event) => {
+        if (event.buttons === 1) {
+          this.pickColorFromWheel(event);
+        }
+      });
+
+      const onColorPickerEscape = (event) => {
+        if (event.key === "Escape") {
+          this.closeColorPicker();
+        }
+      };
+      this.addListener(this.root, "keydown", onColorPickerEscape);
+
+      const onColorPickerOutside = (event) => {
+        if (!this.colorPickerPopover || this.colorPickerPopover.hidden) {
+          return;
+        }
+        const target = event.target;
+        if (target instanceof Element && (target.closest(".dc-color-popover") || target.closest(".dc-theme-color"))) {
+          return;
+        }
+        this.closeColorPicker();
+      };
+      this.addListener(document, "pointerdown", onColorPickerOutside, { capture: true });
 
       const onTextScaleInput = () => {
         this.updateSettings({ textScale: Number(this.textScaleInput.value) });
@@ -817,13 +872,15 @@
           this.themeSelect.value = themeName;
         }
       }
-      if (this.themeColorInput) {
-        const color = this.getCustomThemeColor();
-        if (this.themeColorInput.value.toLowerCase() !== color) {
-          this.themeColorInput.value = color;
-        }
-        this.themeColorInput.disabled = this.getThemeName() !== "custom";
+      if (this.themeColorSwatch) {
+        this.themeColorSwatch.style.background = this.getThemeName() === "custom"
+          ? this.getCustomThemeColor()
+          : this.getActiveTheme().accent;
       }
+      if (this.themeColorButton) {
+        this.themeColorButton.classList.toggle("is-active", this.getThemeName() === "custom");
+      }
+      this.updateColorPickerIndicator();
       this.applyFuturePreviewHeight();
       if (this.stickToBottom) {
         this.scrollToBottom();
@@ -887,6 +944,59 @@
       return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#ded6c3";
     }
 
+    toggleColorPicker() {
+      if (!this.colorPickerPopover) {
+        return;
+      }
+      const nextOpen = Boolean(this.colorPickerPopover.hidden);
+      this.colorPickerPopover.hidden = !nextOpen;
+      this.themeColorButton.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+      if (nextOpen) {
+        this.updateColorPickerIndicator();
+      }
+    }
+
+    closeColorPicker() {
+      if (!this.colorPickerPopover) {
+        return;
+      }
+      this.colorPickerPopover.hidden = true;
+      if (this.themeColorButton) {
+        this.themeColorButton.setAttribute("aria-expanded", "false");
+      }
+    }
+
+    pickColorFromWheel(event) {
+      if (!this.colorWheel) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = this.colorWheel.getBoundingClientRect();
+      const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+      const dx = event.clientX - rect.left - rect.width / 2;
+      const dy = event.clientY - rect.top - rect.height / 2;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const saturation = Math.max(0, Math.min(1, distance / radius));
+      const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+      const color = this.hsvToHex(hue, saturation, 0.92);
+      this.updateSettings({ themeName: "custom", customThemeColor: color });
+    }
+
+    updateColorPickerIndicator() {
+      if (!this.colorPickerIndicator || !this.colorWheel) {
+        return;
+      }
+      const hsv = this.hexToHsv(this.getCustomThemeColor());
+      const radiusPercent = Math.max(0, Math.min(1, hsv.s)) * 50;
+      const radians = hsv.h * Math.PI / 180;
+      const left = 50 + Math.cos(radians) * radiusPercent;
+      const top = 50 + Math.sin(radians) * radiusPercent;
+      this.colorPickerIndicator.style.left = left.toFixed(1) + "%";
+      this.colorPickerIndicator.style.top = top.toFixed(1) + "%";
+      this.colorPickerIndicator.style.background = this.getCustomThemeColor();
+    }
+
     hexToRgb(hex) {
       const value = String(hex || "").replace("#", "");
       if (!/^[0-9a-f]{6}$/i.test(value)) {
@@ -897,6 +1007,52 @@
         parseInt(value.slice(2, 4), 16),
         parseInt(value.slice(4, 6), 16)
       ];
+    }
+
+    hsvToHex(hue, saturation, value) {
+      const h = ((Number(hue) % 360) + 360) % 360;
+      const s = Math.max(0, Math.min(1, Number(saturation)));
+      const v = Math.max(0, Math.min(1, Number(value)));
+      const chroma = v * s;
+      const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1));
+      const match = v - chroma;
+      let rgb = [0, 0, 0];
+      if (h < 60) {
+        rgb = [chroma, x, 0];
+      } else if (h < 120) {
+        rgb = [x, chroma, 0];
+      } else if (h < 180) {
+        rgb = [0, chroma, x];
+      } else if (h < 240) {
+        rgb = [0, x, chroma];
+      } else if (h < 300) {
+        rgb = [x, 0, chroma];
+      } else {
+        rgb = [chroma, 0, x];
+      }
+      return this.rgbToHex(rgb.map((channel) => Math.round((channel + match) * 255)));
+    }
+
+    hexToHsv(hex) {
+      const rgb = this.hexToRgb(hex).map((value) => Math.max(0, Math.min(255, value)) / 255);
+      const max = Math.max(rgb[0], rgb[1], rgb[2]);
+      const min = Math.min(rgb[0], rgb[1], rgb[2]);
+      const delta = max - min;
+      let hue = 0;
+      if (delta !== 0) {
+        if (max === rgb[0]) {
+          hue = 60 * (((rgb[1] - rgb[2]) / delta) % 6);
+        } else if (max === rgb[1]) {
+          hue = 60 * ((rgb[2] - rgb[0]) / delta + 2);
+        } else {
+          hue = 60 * ((rgb[0] - rgb[1]) / delta + 4);
+        }
+      }
+      return {
+        h: (hue + 360) % 360,
+        s: max === 0 ? 0 : delta / max,
+        v: max
+      };
     }
 
     mixColor(left, right, amount) {

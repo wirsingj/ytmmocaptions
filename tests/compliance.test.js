@@ -391,8 +391,13 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
     assert.ok(panelSource.includes('opacityWrap.textContent = "Opacity"'));
     assert.ok(panelSource.includes("dc-theme-select"));
+    assert.ok(panelSource.includes("dc-color-popover"));
+    assert.ok(panelSource.includes("pickColorFromWheel"));
+    assert.ok(!panelSource.includes('type = "color"'));
     assert.ok(panelSource.includes("getPersistenceSnapshot()"));
     assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
+    assert.ok(!css.includes("::-webkit-color-swatch"));
+    assert.ok(css.includes(".dc-color-wheel"));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 
