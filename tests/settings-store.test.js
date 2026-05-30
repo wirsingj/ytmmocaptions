@@ -224,7 +224,9 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelPosition: { anchor: "player", left: 88, top: 44 },
       panelSize: { width: 640, height: 360 },
       futurePreviewHeight: 150,
-      futurePreviewEnabled: false
+      futurePreviewEnabled: false,
+      launcherPosition: { left: 12, top: 34 },
+      panelClosed: false
     });
 
     assert.equal(locked.layoutLocked, true);
@@ -233,6 +235,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(locked.panelSize, { width: 640, height: 360 });
     assert.equal(locked.futurePreviewHeight, 150);
     assert.equal(locked.futurePreviewEnabled, false);
+    assert.deepEqual(locked.launcherPosition, { left: 12, top: 34 });
+    assert.equal(locked.panelClosed, false);
 
     const stored = saved["dialogueCaptions.settings.v1"];
     assert.equal(stored.layoutLocked, true);
@@ -241,6 +245,36 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(stored.panelSize, { width: 640, height: 360 });
     assert.equal(stored.futurePreviewHeight, 150);
     assert.equal(stored.futurePreviewEnabled, false);
+    assert.deepEqual(stored.launcherPosition, { left: 12, top: 34 });
+    assert.equal(stored.panelClosed, false);
+  });
+
+  await runCase("locked layout survives follow-up geometry patch saves", async () => {
+    const { store, saved } = makeStore(null, {
+      panelOpacity: 70,
+      themeName: "custom",
+      customThemeColor: "#445566",
+      fadeTowardVideoCenter: true,
+      layoutLocked: true,
+      textScale: 135,
+      panelPosition: { anchor: "player", left: 30, top: 40 },
+      panelSize: { width: 560, height: 330 },
+      futurePreviewHeight: 125,
+      futurePreviewEnabled: true,
+      panelClosed: false
+    });
+
+    const persisted = await store.savePatch({
+      panelPosition: { anchor: "player", left: 144, top: 70 }
+    });
+
+    assert.equal(persisted.layoutLocked, true);
+    assert.equal(persisted.panelClosed, false);
+    assert.equal(persisted.textScale, 135);
+    assert.deepEqual(persisted.panelSize, { width: 560, height: 330 });
+    assert.deepEqual(persisted.panelPosition, { anchor: "player", left: 144, top: 70 });
+    assert.equal(saved["dialogueCaptions.settings.v1"].panelClosed, false);
+    assert.deepEqual(saved["dialogueCaptions.settings.v1"].panelPosition, { anchor: "player", left: 144, top: 70 });
   });
 
   await runCase("settings load waits for pending local preference writes", async () => {

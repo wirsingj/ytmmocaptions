@@ -28,6 +28,7 @@ When Layout Lock is enabled, the extension also stores the user's local panel la
 - panel position and size;
 - next-up preview height;
 - whether Future / Next Up previews are enabled.
+- panel open/closed state and launcher/pill position.
 
 When Layout Lock is off, layout preferences reset for each YouTube video/session. Timeline scrub mode remains hidden and off by default in this release.
 

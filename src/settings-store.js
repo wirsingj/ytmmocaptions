@@ -172,6 +172,8 @@
       stored.panelSize = normalized.panelSize;
       stored.futurePreviewHeight = normalized.futurePreviewHeight;
       stored.futurePreviewEnabled = normalized.futurePreviewEnabled;
+      stored.launcherPosition = normalized.launcherPosition;
+      stored.panelClosed = normalized.panelClosed;
     }
     return stored;
   }

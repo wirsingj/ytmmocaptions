@@ -47,7 +47,7 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
 - Future / Next Up previews can be turned on or off.
 - Color, opacity, and center fade persist across YouTube videos using extension storage.
-- Layout Lock can also persist panel size/position, text size, Future / Next Up setting, and preview height.
+- Layout Lock can also persist panel open/closed state, panel size/position, text size, Future / Next Up setting, and preview height.
 - With Layout Lock off, panel layout resets for each video/session.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.
 

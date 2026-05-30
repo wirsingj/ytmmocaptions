@@ -65,10 +65,7 @@ async function copyManifestRuntimeFiles(targetRoot, manifest) {
 async function createTargetBuild(targetName, manifestSource) {
   const targetRoot = path.join(buildRoot, targetName);
   const manifest = await readJson(path.join(projectRoot, manifestSource));
-  await ensureDir(targetRoot);
-  await clearDir(path.join(targetRoot, "scripts"));
-  await clearDir(path.join(targetRoot, "styles"));
-  await clearDir(path.join(targetRoot, "assets"));
+  await clearDir(targetRoot);
 
   await copyManifestRuntimeFiles(targetRoot, manifest);
   await copyDir(path.join(projectRoot, "styles"), path.join(targetRoot, "styles"));
