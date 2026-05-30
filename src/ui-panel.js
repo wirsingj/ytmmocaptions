@@ -794,10 +794,16 @@
 
     updateSettings(patch) {
       this.settings = { ...this.settings, ...patch };
-      this.applySettings();
+      this.applySettings({ preservePanelPlacement: this.shouldPreservePanelPlacement(patch) });
       if (typeof this.options.onSettingsChange === "function") {
         this.options.onSettingsChange(this.settings, patch);
       }
+    }
+
+    shouldPreservePanelPlacement(patch) {
+      const source = patch && typeof patch === "object" ? patch : {};
+      const layoutKeys = ["panelClosed", "panelPosition", "panelSize", "launcherPosition", "timelineModeEnabled"];
+      return !layoutKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key));
     }
 
     getPersistenceSnapshot() {
@@ -831,10 +837,11 @@
       }
     }
 
-    applySettings() {
+    applySettings(options) {
       if (!this.root || !this.body) {
         return;
       }
+      const preservePanelPlacement = Boolean(options && options.preservePanelPlacement);
 
       const panelClosed = Boolean(this.settings.panelClosed);
       this.root.style.display = panelClosed ? "none" : "flex";
@@ -852,37 +859,39 @@
       this.body.hidden = timelineActive;
 
       const isNarrowViewport = window.matchMedia("(max-width: 980px)").matches;
-      const defaultPanelRect = isNarrowViewport ? null : this.getDefaultPanelRect();
-      if (isNarrowViewport) {
-        this.root.style.width = "";
-        this.root.style.height = "";
-      } else if (
-        this.settings.panelSize &&
-        Number.isFinite(this.settings.panelSize.width) &&
-        Number.isFinite(this.settings.panelSize.height) &&
-        this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
-      ) {
-        const panelFrame = this.getPanelFrameRect();
-        const maxPanelHeight = Math.max(
-          MIN_PANEL_HEIGHT,
-          panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2
-        );
-        const boundedWidth = Math.max(
-          MIN_PANEL_WIDTH,
-          Math.min(panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2, Number(this.settings.panelSize.width))
-        );
-        const boundedHeight = Math.max(
-          MIN_PANEL_HEIGHT,
-          Math.min(maxPanelHeight, Number(this.settings.panelSize.height))
-        );
-        this.root.style.width = Math.round(boundedWidth) + "px";
-        this.root.style.height = Math.round(boundedHeight) + "px";
-      } else if (defaultPanelRect) {
-        this.root.style.width = defaultPanelRect.width + "px";
-        this.root.style.height = defaultPanelRect.height + "px";
-      } else {
-        this.root.style.width = "";
-        this.root.style.height = "";
+      const defaultPanelRect = !preservePanelPlacement && !isNarrowViewport ? this.getDefaultPanelRect() : null;
+      if (!preservePanelPlacement) {
+        if (isNarrowViewport) {
+          this.root.style.width = "";
+          this.root.style.height = "";
+        } else if (
+          this.settings.panelSize &&
+          Number.isFinite(this.settings.panelSize.width) &&
+          Number.isFinite(this.settings.panelSize.height) &&
+          this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
+        ) {
+          const panelFrame = this.getPanelFrameRect();
+          const maxPanelHeight = Math.max(
+            MIN_PANEL_HEIGHT,
+            panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2
+          );
+          const boundedWidth = Math.max(
+            MIN_PANEL_WIDTH,
+            Math.min(panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2, Number(this.settings.panelSize.width))
+          );
+          const boundedHeight = Math.max(
+            MIN_PANEL_HEIGHT,
+            Math.min(maxPanelHeight, Number(this.settings.panelSize.height))
+          );
+          this.root.style.width = Math.round(boundedWidth) + "px";
+          this.root.style.height = Math.round(boundedHeight) + "px";
+        } else if (defaultPanelRect) {
+          this.root.style.width = defaultPanelRect.width + "px";
+          this.root.style.height = defaultPanelRect.height + "px";
+        } else {
+          this.root.style.width = "";
+          this.root.style.height = "";
+        }
       }
 
       const panelOpacity = Number(this.settings.panelOpacity || 55);
@@ -950,29 +959,33 @@
         this.scrollToBottom();
       }
 
-      if (
-        this.persistLayout &&
-        this.settings.panelPosition &&
-        Number.isFinite(this.settings.panelPosition.left) &&
-        Number.isFinite(this.settings.panelPosition.top) &&
-        this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
-      ) {
-        this.applySavedPanelPosition();
-      } else if (defaultPanelRect) {
-        this.root.style.left = defaultPanelRect.left + "px";
-        this.root.style.top = defaultPanelRect.top + "px";
-        this.root.style.right = "auto";
-        this.root.style.bottom = "auto";
-      } else {
-        this.root.style.left = "";
-        this.root.style.top = "";
-        this.root.style.right = "";
-        this.root.style.bottom = "";
+      if (!preservePanelPlacement) {
+        if (
+          this.persistLayout &&
+          this.settings.panelPosition &&
+          Number.isFinite(this.settings.panelPosition.left) &&
+          Number.isFinite(this.settings.panelPosition.top) &&
+          this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
+        ) {
+          this.applySavedPanelPosition();
+        } else if (defaultPanelRect) {
+          this.root.style.left = defaultPanelRect.left + "px";
+          this.root.style.top = defaultPanelRect.top + "px";
+          this.root.style.right = "auto";
+          this.root.style.bottom = "auto";
+        } else {
+          this.root.style.left = "";
+          this.root.style.top = "";
+          this.root.style.right = "";
+          this.root.style.bottom = "";
+        }
       }
 
       this.updatePanelFade();
       this.applyLauncherPosition();
-      this.normalizeSavedPanelPosition();
+      if (!preservePanelPlacement) {
+        this.normalizeSavedPanelPosition();
+      }
       this.updatePanelFade();
       this.updateTimelineLayer();
       this.updateJumpBottomVisibility();

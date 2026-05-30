@@ -349,6 +349,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("dc-future-section"));
     assert.ok(panelSource.includes("futurePreviewEnabled"));
     assert.ok(panelSource.includes("dc-future-toggle-input"));
+    assert.ok(panelSource.includes("shouldPreservePanelPlacement"));
+    assert.ok(panelSource.includes("preservePanelPlacement: this.shouldPreservePanelPlacement(patch)"));
+    assert.ok(panelSource.includes("!preservePanelPlacement"));
     assert.ok(panelSource.includes("handleFutureDividerPointerDown"));
     assert.ok(panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
