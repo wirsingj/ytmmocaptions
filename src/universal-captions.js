@@ -203,6 +203,7 @@
             "videoCenterFadeMidpoint",
             "videoCenterFadeMinOpacity",
             "timelineModeEnabled",
+            "futurePreviewEnabled",
             "futurePreviewHeight"
           ].forEach((key) => {
             if (Object.prototype.hasOwnProperty.call(source, key)) {
@@ -299,11 +300,13 @@
       this.chunks = this.allChunks.slice(0, visibleCount);
       this.panel.setChunks(this.chunks);
       const futureStart = Math.max(0, revealThrough + 1);
-      const future = this.allChunks.slice(futureStart, futureStart + 4).map((chunk, offset) => ({
-        ...chunk,
-        actualIndex: futureStart + offset,
-        futurePreviewOnly: true
-      }));
+      const future = this.settings.futurePreviewEnabled === false
+        ? []
+        : this.allChunks.slice(futureStart, futureStart + 4).map((chunk, offset) => ({
+          ...chunk,
+          actualIndex: futureStart + offset,
+          futurePreviewOnly: true
+        }));
       this.panel.setFutureChunks(future);
       if (typeof this.panel.setTimelineData === "function") {
         this.panel.setTimelineData(this.allChunks, Number(this.video.duration));

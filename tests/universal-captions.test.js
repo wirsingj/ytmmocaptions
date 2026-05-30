@@ -9,6 +9,7 @@ function loadUniversalCaptions(options = {}) {
   const panelInstances = [];
   const diagnosticsEvents = [];
   const videos = typeof options.makeVideos === "function" ? options.makeVideos(FakeVideo) : (options.videos || []);
+  const loadedSettings = options.settings || { panelClosed: true };
   const scope = {
     DialogueCaptions: {
       chunker: {
@@ -34,7 +35,7 @@ function loadUniversalCaptions(options = {}) {
           return value || {};
         },
         async load() {
-          return { panelClosed: true };
+          return loadedSettings;
         },
         async save(value) {
           return value;
@@ -50,7 +51,9 @@ function loadUniversalCaptions(options = {}) {
         mount() {}
         setStatus() {}
         setChunks() {}
-        setFutureChunks() {}
+        setFutureChunks(chunks) {
+          this.futureChunks = chunks;
+        }
         setActiveIndex() {}
         setPlaybackTime() {}
         refreshAnchorLayout() {
@@ -236,5 +239,25 @@ exports.run = async function runUniversalCaptionsTests(ctx) {
 
     registry.destroy();
     assert.equal(panelInstances[1].destroyed, true);
+  });
+
+  await runCase("generic future preview respects persisted Next toggle", async () => {
+    const { api, panelInstances } = loadUniversalCaptions({
+      settings: { panelClosed: false, futurePreviewEnabled: false },
+      makeVideos(FakeVideo) {
+        const video = makeEligibleVideo(FakeVideo, "first caption");
+        video.textTracks[0].cues = [
+          { startTime: 0, endTime: 2, text: "first caption" },
+          { startTime: 3, endTime: 5, text: "future caption" }
+        ];
+        return [video];
+      }
+    });
+    const registry = new api.PlayerRegistry();
+    registry.scan();
+    await flushAsyncWork();
+    assert.equal(panelInstances.length, 1);
+    assert.deepEqual(panelInstances[0].futureChunks, []);
+    registry.destroy();
   });
 };

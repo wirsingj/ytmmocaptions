@@ -1814,6 +1814,9 @@
     }
 
     setTimelineData(chunks, durationSeconds) {
+      if (!this.timelineFeatureEnabled) {
+        return;
+      }
       const normalized = timelineScrub && typeof timelineScrub.sortChunks === "function"
         ? timelineScrub.sortChunks(chunks)
         : Array.isArray(chunks) ? chunks : [];
@@ -1837,6 +1840,10 @@
       this.timelineDataKey = nextKey;
       this.timelineChunks = normalized;
       this.updateTimelineLayer();
+    }
+
+    isTimelineFeatureAvailable() {
+      return Boolean(this.timelineFeatureEnabled);
     }
 
     setActiveIndex(index, options) {

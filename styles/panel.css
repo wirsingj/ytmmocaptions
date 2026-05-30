@@ -62,9 +62,7 @@
   pointer-events: none;
 }
 
-#movie_player.dc-player-host,
-.html5-video-player.dc-player-host,
-ytd-player.dc-player-host {
+.dc-player-host {
   position: relative;
   overflow: hidden;
 }

@@ -1625,7 +1625,12 @@
       if (this.panel && typeof this.panel.setFutureChunks === "function") {
         this.panel.setFutureChunks(this.getFuturePreviewChunks());
       }
-      if (this.panel && typeof this.panel.setTimelineData === "function") {
+      if (
+        this.panel &&
+        typeof this.panel.isTimelineFeatureAvailable === "function" &&
+        this.panel.isTimelineFeatureAvailable() &&
+        typeof this.panel.setTimelineData === "function"
+      ) {
         const duration = this.video ? Number(this.video.duration) : Number.NaN;
         this.panel.setTimelineData(this.allChunks, duration);
       }
