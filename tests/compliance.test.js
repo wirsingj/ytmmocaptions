@@ -477,15 +477,17 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-panel-open .ytp-caption-segment"));
   });
 
-  await runCase("video-anchored panel hides instead of floating over comments when player is offscreen", () => {
+  await runCase("video-anchored panel mounts inside the player instead of floating over comments", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes("resolveMountElement()"));
+    assert.ok(panelSource.includes('(this.mountElement || document.body).append(this.root)'));
+    assert.ok(panelSource.includes("getElementLocalRect"));
+    assert.ok(panelSource.includes("localToPlayerPanelPosition"));
     assert.ok(panelSource.includes("isAnchorUsablyVisible()"));
     assert.ok(panelSource.includes("is-anchor-offscreen"));
-    assert.ok(panelSource.includes("getVisibleYouTubeFrameRect()"));
-    assert.ok(panelSource.includes("visibleHeight >= panelHeight + DEFAULT_PANEL_MARGIN * 2"));
-    assert.ok(panelSource.includes("right: 0,"));
-    assert.ok(panelSource.includes("bottom: 0"));
+    assert.ok(css.includes("dc-player-host"));
+    assert.ok(css.includes("position: absolute;"));
     assert.ok(css.includes(".dc-panel.is-anchor-offscreen"));
     assert.ok(css.includes(".dc-launcher.is-anchor-offscreen"));
   });

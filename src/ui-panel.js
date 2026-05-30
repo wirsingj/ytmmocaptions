@@ -85,6 +85,7 @@
       this.timelineId = this.instanceId ? "dc-timeline-" + this.instanceId : "dc-timeline";
       this.anchorElement = this.options.anchorElement instanceof Element ? this.options.anchorElement : null;
       this.persistLayout = this.options.persistLayout !== false;
+      this.mountElement = null;
 
       this.root = null;
       this.body = null;
@@ -151,6 +152,10 @@
 
     mount() {
       this.removeExistingUiNodes();
+      this.mountElement = this.resolveMountElement();
+      if (this.mountElement) {
+        this.mountElement.classList.add("dc-player-host");
+      }
 
       this.root = document.createElement("section");
       this.root.id = this.panelId;
@@ -331,7 +336,7 @@
       for (let index = 0; index < this.resizeHandles.length; index += 1) {
         this.root.append(this.resizeHandles[index]);
       }
-      document.body.append(this.root);
+      (this.mountElement || document.body).append(this.root);
 
       this.timelineLayer = document.createElement("div");
       this.timelineLayer.id = this.timelineId;
@@ -343,7 +348,7 @@
       this.timelineTooltip.className = "dc-timeline-lens";
       this.timelineTooltip.setAttribute("role", "tooltip");
       this.timelineLayer.append(this.timelineTrack, this.timelineTooltip);
-      document.body.append(this.timelineLayer);
+      (this.mountElement || document.body).append(this.timelineLayer);
 
       this.launcherButton = document.createElement("button");
       this.launcherButton.type = "button";
@@ -352,7 +357,7 @@
       this.launcherButton.dataset.dcInstanceId = this.instanceId || "youtube";
       this.launcherButton.textContent = "Captions";
       this.launcherButton.title = "Open panel (drag to move)";
-      document.body.append(this.launcherButton);
+      (this.mountElement || document.body).append(this.launcherButton);
 
       this.bindEvents();
       this.applySettings();
@@ -393,6 +398,10 @@
         this.timelineTooltip = null;
       }
       this.removeExistingUiNodes();
+      if (this.mountElement) {
+        this.mountElement.classList.remove("dc-player-host");
+        this.mountElement = null;
+      }
       document.documentElement.classList.remove(ACTIVE_PAGE_CLASS);
     }
 
@@ -403,6 +412,25 @@
           node.remove();
         }
       });
+    }
+
+    resolveMountElement() {
+      if (this.anchorElement instanceof HTMLElement && document.documentElement.contains(this.anchorElement)) {
+        if (this.anchorElement.tagName !== "VIDEO") {
+          return this.anchorElement;
+        }
+        if (this.anchorElement.parentElement instanceof HTMLElement) {
+          return this.anchorElement.parentElement;
+        }
+      }
+      const selectors = ["#movie_player", ".html5-video-player", "ytd-player"];
+      for (let index = 0; index < selectors.length; index += 1) {
+        const element = document.querySelector(selectors[index]);
+        if (element instanceof HTMLElement) {
+          return element;
+        }
+      }
+      return document.body;
     }
 
     addListener(target, type, handler, options) {
@@ -661,11 +689,11 @@
         );
         const boundedWidth = Math.max(
           MIN_PANEL_WIDTH,
-          Math.min(window.innerWidth - 8, Number(this.settings.panelSize.width))
+          Math.min(panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2, Number(this.settings.panelSize.width))
         );
         const boundedHeight = Math.max(
           MIN_PANEL_HEIGHT,
-          Math.min(maxPanelHeight, window.innerHeight - 8, Number(this.settings.panelSize.height))
+          Math.min(maxPanelHeight, Number(this.settings.panelSize.height))
         );
         this.root.style.width = Math.round(boundedWidth) + "px";
         this.root.style.height = Math.round(boundedHeight) + "px";
@@ -1052,6 +1080,26 @@
       };
     }
 
+    getMountViewportRect() {
+      if (this.mountElement instanceof Element && document.documentElement.contains(this.mountElement)) {
+        return this.mountElement.getBoundingClientRect();
+      }
+      return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+    }
+
+    getElementLocalRect(element) {
+      const rect = element.getBoundingClientRect();
+      const mountRect = this.getMountViewportRect();
+      return {
+        left: rect.left - mountRect.left,
+        top: rect.top - mountRect.top,
+        right: rect.right - mountRect.left,
+        bottom: rect.bottom - mountRect.top,
+        width: rect.width,
+        height: rect.height
+      };
+    }
+
     clampPositionToRect(left, top, width, height, bounds, margin) {
       const safeWidth = Math.max(1, Number(width) || 1);
       const safeHeight = Math.max(1, Number(height) || 1);
@@ -1067,7 +1115,7 @@
     }
 
     getLauncherFrameRect() {
-      const frame = this.getYouTubeFrameRect();
+      const frame = this.getPanelFrameRect();
       return {
         ...frame,
         bottom: Math.max(frame.top + LAUNCHER_HEIGHT + LAUNCHER_MARGIN * 2, frame.bottom - LAUNCHER_CONTROL_BAR_GAP)
@@ -1075,18 +1123,19 @@
     }
 
     getPanelFrameRect() {
-      return this.getVisibleYouTubeFrameRect();
+      const mountRect = this.getMountViewportRect();
+      const width = Math.max(0, mountRect.right - mountRect.left);
+      const height = Math.max(0, mountRect.bottom - mountRect.top);
+      return {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height
+      };
     }
 
     refreshAnchorLayout() {
-      const frame = this.getPanelFrameRect();
-      const visibleWidth = frame.right - frame.left;
-      const visibleHeight = frame.bottom - frame.top;
-      const panelWidth = this.root ? this.root.offsetWidth || MIN_PANEL_WIDTH : MIN_PANEL_WIDTH;
-      const panelHeight = this.root ? this.root.offsetHeight || MIN_PANEL_HEIGHT : MIN_PANEL_HEIGHT;
-      const anchorVisible = this.isAnchorUsablyVisible() &&
-        visibleWidth >= panelWidth + DEFAULT_PANEL_MARGIN * 2 &&
-        visibleHeight >= panelHeight + DEFAULT_PANEL_MARGIN * 2;
+      let anchorVisible = this.isAnchorUsablyVisible();
       if (this.root) {
         this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
       }
@@ -1111,13 +1160,14 @@
       } else {
         this.normalizeSavedPanelPosition();
       }
+      this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
       this.applyLauncherPosition();
       this.updatePanelFade();
       this.updateTimelineLayer();
     }
 
     getDefaultPanelFrameRect() {
-      const frame = this.getYouTubeFrameRect();
+      const frame = this.getPanelFrameRect();
       return {
         ...frame,
         bottom: Math.max(frame.top + MIN_PANEL_HEIGHT + DEFAULT_PANEL_MARGIN * 2, frame.bottom - PANEL_CONTROL_BAR_GAP)
@@ -1128,24 +1178,23 @@
       return this.clampPositionToRect(left, top, width, height, this.getPanelFrameRect(), DEFAULT_PANEL_MARGIN);
     }
 
-    panelPositionToViewport(width, height) {
+    panelPositionToLocal(width, height) {
       if (!this.settings.panelPosition) {
         return null;
       }
       const position = this.settings.panelPosition;
-      const frame = this.getPanelFrameRect();
-      const sourceLeft = position.anchor === "player" ? frame.left + Number(position.left) : Number(position.left);
-      const sourceTop = position.anchor === "player" ? frame.top + Number(position.top) : Number(position.top);
+      const mountRect = this.getMountViewportRect();
+      const sourceLeft = position.anchor === "player" ? Number(position.left) : Number(position.left) - mountRect.left;
+      const sourceTop = position.anchor === "player" ? Number(position.top) : Number(position.top) - mountRect.top;
       return this.clampPanelPosition(sourceLeft, sourceTop, width, height);
     }
 
-    viewportToPlayerPanelPosition(left, top, width, height) {
-      const frame = this.getPanelFrameRect();
+    localToPlayerPanelPosition(left, top, width, height) {
       const clamped = this.clampPanelPosition(left, top, width, height);
       return {
         anchor: "player",
-        left: Math.max(0, Math.round(clamped.left - frame.left)),
-        top: Math.max(0, Math.round(clamped.top - frame.top))
+        left: Math.max(0, Math.round(clamped.left)),
+        top: Math.max(0, Math.round(clamped.top))
       };
     }
 
@@ -1153,8 +1202,8 @@
       if (!this.root || !this.settings.panelPosition) {
         return;
       }
-      const rect = this.root.getBoundingClientRect();
-      const positioned = this.panelPositionToViewport(rect.width, rect.height);
+      const rect = this.getElementLocalRect(this.root);
+      const positioned = this.panelPositionToLocal(rect.width, rect.height);
       if (!positioned) {
         return;
       }
@@ -1221,7 +1270,7 @@
         return;
       }
 
-      const frame = this.getYouTubeFrameRect();
+      const frame = this.getPanelFrameRect();
       const width = Math.max(120, frame.right - frame.left);
       const top = Math.max(frame.top + 8, Math.min(frame.bottom - 210, frame.bottom - 190));
       this.timelineLayer.style.left = Math.round(frame.left + 8) + "px";
@@ -1368,7 +1417,7 @@
         return;
       }
 
-      const rect = this.root.getBoundingClientRect();
+      const rect = this.getElementLocalRect(this.root);
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
       const frame = this.getLauncherFrameRect();
@@ -1409,8 +1458,8 @@
       if (!this.persistLayout || !this.settings.panelPosition) {
         return;
       }
-      const rect = this.root.getBoundingClientRect();
-      const clamped = this.panelPositionToViewport(rect.width, rect.height);
+      const rect = this.getElementLocalRect(this.root);
+      const clamped = this.panelPositionToLocal(rect.width, rect.height);
       if (!clamped) {
         return;
       }
@@ -1418,7 +1467,7 @@
       this.root.style.top = clamped.top + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
-      const nextPosition = this.viewportToPlayerPanelPosition(clamped.left, clamped.top, rect.width, rect.height);
+      const nextPosition = this.localToPlayerPanelPosition(clamped.left, clamped.top, rect.width, rect.height);
 
       const changed =
         this.settings.panelPosition.anchor !== "player" ||
@@ -1446,7 +1495,7 @@
         return;
       }
 
-      const rect = this.root.getBoundingClientRect();
+      const rect = this.getElementLocalRect(this.root);
       this.root.style.left = rect.left + "px";
       this.root.style.top = rect.top + "px";
       this.root.style.right = "auto";
@@ -1505,7 +1554,7 @@
       const height = this.root.offsetHeight || 320;
       this.dragState = null;
       this.updateSettings({
-        panelPosition: this.viewportToPlayerPanelPosition(
+        panelPosition: this.localToPlayerPanelPosition(
           Number.isFinite(left) ? left : 0,
           Number.isFinite(top) ? top : 0,
           width,
@@ -1522,7 +1571,7 @@
         return;
       }
 
-      const rect = this.root.getBoundingClientRect();
+      const rect = this.getElementLocalRect(this.root);
       this.root.style.left = rect.left + "px";
       this.root.style.top = rect.top + "px";
       this.root.style.right = "auto";
@@ -1626,7 +1675,7 @@
       const height = Number.parseInt(this.root.style.height || "0", 10);
       this.resizeState = null;
       this.updateSettings({
-        panelPosition: this.viewportToPlayerPanelPosition(
+        panelPosition: this.localToPlayerPanelPosition(
           Number.isFinite(left) ? left : 0,
           Number.isFinite(top) ? top : 0,
           Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
@@ -1643,7 +1692,7 @@
       if (!this.launcherButton || this.launcherButton.style.display === "none") {
         return;
       }
-      const rect = this.launcherButton.getBoundingClientRect();
+      const rect = this.getElementLocalRect(this.launcherButton);
       this.launcherButton.style.left = rect.left + "px";
       this.launcherButton.style.top = rect.top + "px";
       this.launcherButton.style.right = "auto";

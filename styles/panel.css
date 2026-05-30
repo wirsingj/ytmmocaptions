@@ -33,7 +33,7 @@
   --dc-center-mask-midpoint: 50%;
   --dc-card-alpha: 0.62;
   --dc-card-current-alpha: 0.7;
-  position: fixed;
+  position: absolute;
   left: 14px;
   bottom: 14px;
   width: min(36vw, 680px);
@@ -60,6 +60,13 @@
 .dc-timeline-layer:not(.is-visible) {
   visibility: hidden;
   pointer-events: none;
+}
+
+#movie_player.dc-player-host,
+.html5-video-player.dc-player-host,
+ytd-player.dc-player-host {
+  position: relative;
+  overflow: hidden;
 }
 
 .dc-panel.is-timeline-scrub {
@@ -352,7 +359,7 @@
 }
 
 .dc-timeline-layer {
-  position: fixed;
+  position: absolute;
   z-index: 2147483645;
   height: 178px;
   display: block;
@@ -847,7 +854,7 @@
 }
 
 .dc-launcher {
-  position: fixed;
+  position: absolute;
   left: 14px;
   bottom: 14px;
   z-index: 2147483001;
