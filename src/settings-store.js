@@ -6,7 +6,7 @@
   const SCHEMA_VERSION = 1;
   const DEFAULTS = Object.freeze({
     schemaVersion: SCHEMA_VERSION,
-    panelOpacity: 88,
+    panelOpacity: 55,
     textScale: 120,
     themeName: "stone",
     customThemeColor: "#ded6c3",

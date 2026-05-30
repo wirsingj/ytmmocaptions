@@ -78,6 +78,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const { normalize } = makeStore();
     const result = normalize({});
     assert.equal(result.panelClosed, true);
+    assert.equal(result.panelOpacity, 55);
     assert.equal(result.textScale, 120);
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");

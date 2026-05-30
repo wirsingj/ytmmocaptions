@@ -232,7 +232,7 @@
       this.opacityInput.min = "10";
       this.opacityInput.max = "100";
       this.opacityInput.step = "1";
-      this.opacityInput.value = String(this.settings.panelOpacity || 100);
+      this.opacityInput.value = String(this.settings.panelOpacity || 55);
       this.opacityInput.title = "Panel opacity";
       opacityWrap.append(this.opacityInput);
 
@@ -677,7 +677,7 @@
         this.root.style.height = "";
       }
 
-      const panelOpacity = Number(this.settings.panelOpacity || 100);
+      const panelOpacity = Number(this.settings.panelOpacity || 55);
       const normalizedOpacity = Math.max(10, Math.min(100, panelOpacity));
       this.applyTheme();
       this.applyPanelBlend(normalizedOpacity);
@@ -766,15 +766,15 @@
         }
       };
       const eased = Math.pow(blend, 0.72);
-      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.78);
-      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.88);
-      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84);
-      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.94);
+      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.83);
+      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.83);
+      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.69);
+      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.83);
       setAlpha("--dc-panel-fade-light", 0.002 + eased * 0.026);
       setAlpha("--dc-panel-fade-shadow", 0.014 + eased * 0.28);
       setAlpha("--dc-panel-fade-shadow-soft", (0.014 + eased * 0.28) * 0.62);
-      setAlpha("--dc-card-alpha", 0.2 + eased * 0.8);
-      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.74);
+      setAlpha("--dc-card-alpha", 0.2 + eased * 0.65);
+      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.62);
       this.root.style.opacity = "1";
     }
 
@@ -930,7 +930,11 @@
       const strength = enabled ? Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100 : 0;
       const midpoint = Math.max(20, Math.min(80, Number(this.settings.videoCenterFadeMidpoint || 50)));
       const minimum = Math.max(0.08, Math.min(0.7, Number(this.settings.videoCenterFadeMinOpacity || 12) / 100));
-      const centerAlpha = enabled ? minimum + (1 - minimum) * (1 - strength) : 1;
+      const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 55)));
+      const opacityBlend = (opacityPercent - 10) / 90;
+      const opacitySolidityFloor = 0.08 + opacityBlend * 0.77;
+      const fadeAlpha = minimum + (1 - minimum) * (1 - strength);
+      const centerAlpha = enabled ? Math.max(fadeAlpha, opacitySolidityFloor) : 1;
       const midAlpha = enabled ? Math.min(1, centerAlpha + (1 - centerAlpha) * 0.38) : 1;
       this.root.style.setProperty("--dc-center-mask-alpha", centerAlpha.toFixed(3));
       this.root.style.setProperty("--dc-center-mask-mid-alpha", midAlpha.toFixed(3));
@@ -971,7 +975,7 @@
     resetPanelDefaults() {
       const defaults = settingsStore && settingsStore.DEFAULTS ? settingsStore.DEFAULTS : {};
       this.updateSettings({
-        panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 88,
+        panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 55,
         textScale: Number.isFinite(defaults.textScale) ? defaults.textScale : 120,
         themeName: defaults.themeName || "stone",
         customThemeColor: defaults.customThemeColor || "#ded6c3",
