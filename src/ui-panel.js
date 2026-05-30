@@ -126,7 +126,9 @@
       this.resetButton = null;
       this.closeButton = null;
       this.launcherButton = null;
-      this.jumpBottomButton = null;
+      this.jumpControls = null;
+      this.jumpCurrentButton = null;
+      this.jumpLatestButton = null;
 
       this.chunks = [];
       this.futureChunks = [];
@@ -388,11 +390,22 @@
 
       const footer = document.createElement("div");
       footer.className = "dc-footer";
-      this.jumpBottomButton = document.createElement("button");
-      this.jumpBottomButton.type = "button";
-      this.jumpBottomButton.className = "dc-jump-bottom is-hidden";
-      this.jumpBottomButton.textContent = "Jump to Current";
-      this.jumpBottomButton.title = "Scroll to the current caption";
+      this.jumpControls = document.createElement("div");
+      this.jumpControls.className = "dc-jump-controls is-hidden";
+      const jumpLabel = document.createElement("span");
+      jumpLabel.className = "dc-jump-label";
+      jumpLabel.textContent = "Jump to";
+      this.jumpCurrentButton = document.createElement("button");
+      this.jumpCurrentButton.type = "button";
+      this.jumpCurrentButton.className = "dc-jump-button";
+      this.jumpCurrentButton.textContent = "Current";
+      this.jumpCurrentButton.title = "Scroll to the current caption";
+      this.jumpLatestButton = document.createElement("button");
+      this.jumpLatestButton.type = "button";
+      this.jumpLatestButton.className = "dc-jump-button";
+      this.jumpLatestButton.textContent = "Latest";
+      this.jumpLatestButton.title = "Scroll to the latest caption";
+      this.jumpControls.append(jumpLabel, this.jumpCurrentButton, this.jumpLatestButton);
       const footerToggles = document.createElement("div");
       footerToggles.className = "dc-footer-toggles";
       const footerDivider = document.createElement("span");
@@ -400,7 +413,7 @@
       footerDivider.setAttribute("aria-hidden", "true");
       footerDivider.textContent = "|";
       footerToggles.append(futurePreviewWrap, footerDivider, caseFixWrap);
-      footer.append(footerToggles, this.jumpBottomButton);
+      footer.append(footerToggles, this.jumpControls);
 
       this.body.append(this.statusEl, this.listViewport, footer);
       this.root.append(header, this.body);
@@ -758,7 +771,13 @@
         this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
-      this.addListener(this.jumpBottomButton, "click", onJumpBottom);
+      const onJumpLatest = () => {
+        this.scrollToBottom();
+        this.scheduleWindowRender();
+        this.updateJumpBottomVisibility();
+      };
+      this.addListener(this.jumpCurrentButton, "click", onJumpBottom);
+      this.addListener(this.jumpLatestButton, "click", onJumpLatest);
 
       const onScroll = () => {
         if (Date.now() < this.programmaticScrollUntil) {
@@ -2578,17 +2597,20 @@
     }
 
     updateJumpBottomVisibility() {
-      if (!this.jumpBottomButton || !this.listViewport || !this.root) {
+      if (!this.jumpControls || !this.jumpCurrentButton || !this.jumpLatestButton || !this.listViewport || !this.root) {
         return;
       }
       const isClosed = this.root.style.display === "none";
       const currentIndex = this.getCurrentCaptionIndex();
       const hasChunks = this.chunks.length > 0;
       const currentVisible = currentIndex >= 0 ? this.isIndexVisible(currentIndex) : this.isNearBottom(1.4);
+      const latestVisible = this.isNearBottom(0.35);
       const shouldShow = !isClosed;
-      this.jumpBottomButton.disabled = !hasChunks || currentVisible;
-      this.jumpBottomButton.title = currentVisible ? "Current caption is visible" : "Scroll to the current caption";
-      this.jumpBottomButton.classList.toggle("is-hidden", !shouldShow);
+      this.jumpCurrentButton.disabled = !hasChunks || currentVisible;
+      this.jumpCurrentButton.title = currentVisible ? "Current caption is visible" : "Scroll to the current caption";
+      this.jumpLatestButton.disabled = !hasChunks || latestVisible;
+      this.jumpLatestButton.title = latestVisible ? "Latest caption is visible" : "Scroll to the latest caption";
+      this.jumpControls.classList.toggle("is-hidden", !shouldShow);
     }
 
     scheduleWindowRender(skipIfQueued) {

@@ -418,6 +418,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('aria-label", "Panel theme"'));
     assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
     assert.ok(panelSource.includes('opacityWrap.textContent = "Opacity"'));
+    assert.ok(panelSource.includes('jumpLabel.textContent = "Jump to"'));
+    assert.ok(panelSource.includes('this.jumpCurrentButton.textContent = "Current"'));
+    assert.ok(panelSource.includes('this.jumpLatestButton.textContent = "Latest"'));
     assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(panelSource.includes("dc-color-popover"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
