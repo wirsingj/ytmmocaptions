@@ -5,13 +5,17 @@
   const bubbleState = app.bubbleState;
   const settingsStore = app.settingsStore;
   const timelineScrub = app.timelineScrub;
+  const captionText = app.captionText;
 
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
+  const COLOR_PICKER_ID = "dc-color-picker";
   const ACTIVE_PAGE_CLASS = "dc-panel-open";
   const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
+  const MIN_RESTORED_PANEL_WIDTH = 340;
+  const MIN_RESTORED_PANEL_HEIGHT = 250;
   const DEFAULT_PANEL_MAX_WIDTH = 680;
   const DEFAULT_PANEL_MAX_HEIGHT = 500;
   const DEFAULT_PANEL_MARGIN = 12;
@@ -20,6 +24,9 @@
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
   const LAUNCHER_CONTROL_BAR_GAP = 54;
+  const DEFAULT_FUTURE_PREVIEW_HEIGHT = 96;
+  const MIN_FUTURE_PREVIEW_HEIGHT = 52;
+  const MAX_FUTURE_PREVIEW_HEIGHT = 360;
   // Timeline mode is intentionally shipped dormant until it gets a focused UX pass.
   const TIMELINE_MODE_EXPERIMENT_ENABLED = false;
   const THEME_PRESETS = Object.freeze({
@@ -82,6 +89,7 @@
       this.instanceId = String(this.options.instanceId || "").replace(/[^a-z0-9_-]/gi, "");
       this.panelId = this.instanceId ? PANEL_ID + "-" + this.instanceId : PANEL_ID;
       this.launcherId = this.instanceId ? LAUNCHER_ID + "-" + this.instanceId : LAUNCHER_ID;
+      this.colorPickerId = this.instanceId ? COLOR_PICKER_ID + "-" + this.instanceId : COLOR_PICKER_ID;
       this.timelineId = this.instanceId ? "dc-timeline-" + this.instanceId : "dc-timeline";
       this.anchorElement = this.options.anchorElement instanceof Element ? this.options.anchorElement : null;
       this.persistLayout = this.options.persistLayout !== false;
@@ -100,11 +108,17 @@
       this.textScaleWrap = null;
       this.textScaleInput = null;
       this.themeSelect = null;
-      this.themeColorInput = null;
+      this.themeColorButton = null;
+      this.themeColorSwatch = null;
+      this.colorPickerPopover = null;
+      this.colorWheel = null;
+      this.colorPickerIndicator = null;
       this.centerFadeInput = null;
       this.futurePreviewInput = null;
+      this.caseFixInput = null;
       this.timelineModeButton = null;
       this.timelineFeatureEnabled = TIMELINE_MODE_EXPERIMENT_ENABLED;
+      this.layoutLockButton = null;
       this.timelineLayer = null;
       this.timelineTrack = null;
       this.timelineTooltip = null;
@@ -112,7 +126,9 @@
       this.resetButton = null;
       this.closeButton = null;
       this.launcherButton = null;
-      this.jumpBottomButton = null;
+      this.jumpControls = null;
+      this.jumpCurrentButton = null;
+      this.jumpLatestButton = null;
 
       this.chunks = [];
       this.futureChunks = [];
@@ -132,10 +148,13 @@
       this.currentFutureCount = -1;
       this.currentFutureCollapsed = false;
       this.currentFutureKey = "";
+      this.currentCaseFixEnabled = null;
       this.dragState = null;
       this.resizeState = null;
+      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.launcherSuppressClickUntil = 0;
+      this.suppressPageClickUntil = 0;
       this.resizeHandles = [];
       this.pointerInside = false;
       this.stickToBottom = true;
@@ -164,12 +183,12 @@
       this.root.tabIndex = 0;
       this.root.setAttribute("aria-label", "MMO dialogue captions panel");
       this.resizeHandles = [];
-      const resizeCorners = ["top-left", "top-right", "bottom-left", "bottom-right"];
-      for (let index = 0; index < resizeCorners.length; index += 1) {
-        const corner = resizeCorners[index];
+      const resizeZones = ["top", "right", "bottom", "left", "top-left", "top-right", "bottom-left", "bottom-right"];
+      for (let index = 0; index < resizeZones.length; index += 1) {
+        const zone = resizeZones[index];
         const handle = document.createElement("div");
-        handle.className = "dc-resize-handle dc-resize-" + corner;
-        handle.setAttribute("data-corner", corner);
+        handle.className = "dc-resize-handle dc-resize-" + zone;
+        handle.setAttribute("data-resize-zone", zone);
         handle.title = "Resize panel";
         this.resizeHandles.push(handle);
       }
@@ -180,10 +199,18 @@
 
       const titleWrap = document.createElement("div");
       titleWrap.className = "dc-title-wrap";
+      const brandMark = document.createElement("span");
+      brandMark.className = "dc-brand-mark";
+      brandMark.setAttribute("aria-hidden", "true");
+      const brandPlay = document.createElement("span");
+      brandPlay.className = "dc-brand-play";
+      const brandBubble = document.createElement("span");
+      brandBubble.className = "dc-brand-bubble";
+      brandMark.append(brandPlay, brandBubble);
       const title = document.createElement("h2");
       title.className = "dc-title";
       title.textContent = "YTMMOCC";
-      titleWrap.append(title);
+      titleWrap.append(brandMark, title);
 
       const controls = document.createElement("div");
       controls.className = "dc-controls";
@@ -198,7 +225,14 @@
       this.resetButton.type = "button";
       this.resetButton.className = "dc-btn dc-btn-reset";
       this.resetButton.textContent = "Reset";
-      this.resetButton.title = "Reset panel size, position, transparency, and text size";
+      this.resetButton.title = "Reset panel layout for this video";
+
+      this.layoutLockButton = document.createElement("button");
+      this.layoutLockButton.type = "button";
+      this.layoutLockButton.className = "dc-btn dc-btn-lock";
+      this.layoutLockButton.textContent = "Lock";
+      this.layoutLockButton.title = "Save panel layout across videos";
+      this.layoutLockButton.setAttribute("aria-pressed", this.settings.layoutLocked ? "true" : "false");
 
       this.themeSelect = document.createElement("select");
       this.themeSelect.className = "dc-theme-select";
@@ -219,12 +253,31 @@
         this.themeSelect.append(option);
       }
 
-      this.themeColorInput = document.createElement("input");
-      this.themeColorInput.type = "color";
-      this.themeColorInput.className = "dc-theme-color";
-      this.themeColorInput.title = "Custom theme color";
-      this.themeColorInput.setAttribute("aria-label", "Custom theme color");
-      this.themeColorInput.value = this.settings.customThemeColor || "#ded6c3";
+      this.themeColorButton = document.createElement("button");
+      this.themeColorButton.type = "button";
+      this.themeColorButton.className = "dc-theme-color";
+      this.themeColorButton.title = "Pick custom theme color";
+      this.themeColorButton.setAttribute("aria-label", "Custom theme color");
+      this.themeColorButton.setAttribute("aria-expanded", "false");
+      this.themeColorSwatch = document.createElement("span");
+      this.themeColorSwatch.className = "dc-theme-color-swatch";
+      this.themeColorButton.append(this.themeColorSwatch);
+
+      this.colorPickerPopover = document.createElement("div");
+      this.colorPickerPopover.id = this.colorPickerId;
+      this.colorPickerPopover.className = "dc-color-popover";
+      this.colorPickerPopover.dataset.dcInstanceId = this.instanceId || "youtube";
+      this.colorPickerPopover.hidden = true;
+      this.colorPickerPopover.setAttribute("role", "dialog");
+      this.colorPickerPopover.setAttribute("aria-label", "Pick custom theme color");
+      this.colorWheel = document.createElement("button");
+      this.colorWheel.type = "button";
+      this.colorWheel.className = "dc-color-wheel";
+      this.colorWheel.setAttribute("aria-label", "Color wheel");
+      this.colorPickerIndicator = document.createElement("span");
+      this.colorPickerIndicator.className = "dc-color-indicator";
+      this.colorWheel.append(this.colorPickerIndicator);
+      this.colorPickerPopover.append(this.colorWheel);
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
@@ -276,6 +329,16 @@
       this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
       futurePreviewWrap.append(this.futurePreviewInput);
 
+      const caseFixWrap = document.createElement("label");
+      caseFixWrap.className = "dc-case-fix-toggle-wrap";
+      caseFixWrap.title = "Soften all-caps captions into sentence case";
+      caseFixWrap.textContent = "Case Fix";
+      this.caseFixInput = document.createElement("input");
+      this.caseFixInput.type = "checkbox";
+      this.caseFixInput.className = "dc-case-fix-toggle-input";
+      this.caseFixInput.checked = this.settings.caseFixEnabled !== false;
+      caseFixWrap.append(this.caseFixInput);
+
       this.timelineModeButton = document.createElement("button");
       this.timelineModeButton.type = "button";
       this.timelineModeButton.className = "dc-btn dc-btn-timeline";
@@ -286,7 +349,7 @@
 
       controls.append(
         this.themeSelect,
-        this.themeColorInput,
+        this.themeColorButton,
         opacityWrap,
         textScaleWrap,
         centerFadeWrap
@@ -294,7 +357,10 @@
       if (this.timelineFeatureEnabled) {
         controls.append(this.timelineModeButton);
       }
-      controls.append(this.resetButton, this.closeButton);
+      const actionControls = document.createElement("div");
+      actionControls.className = "dc-control-actions";
+      actionControls.append(this.layoutLockButton, this.resetButton, this.closeButton);
+      controls.append(actionControls);
       header.append(titleWrap, controls);
 
       this.body = document.createElement("div");
@@ -324,12 +390,30 @@
 
       const footer = document.createElement("div");
       footer.className = "dc-footer";
-      this.jumpBottomButton = document.createElement("button");
-      this.jumpBottomButton.type = "button";
-      this.jumpBottomButton.className = "dc-jump-bottom is-hidden";
-      this.jumpBottomButton.textContent = "Jump to Latest";
-      this.jumpBottomButton.title = "Scroll to newest dialogue";
-      footer.append(futurePreviewWrap, this.jumpBottomButton);
+      this.jumpControls = document.createElement("div");
+      this.jumpControls.className = "dc-jump-controls is-hidden";
+      const jumpLabel = document.createElement("span");
+      jumpLabel.className = "dc-jump-label";
+      jumpLabel.textContent = "Jump to";
+      this.jumpCurrentButton = document.createElement("button");
+      this.jumpCurrentButton.type = "button";
+      this.jumpCurrentButton.className = "dc-jump-button";
+      this.jumpCurrentButton.textContent = "Current";
+      this.jumpCurrentButton.title = "Scroll to the current caption";
+      this.jumpLatestButton = document.createElement("button");
+      this.jumpLatestButton.type = "button";
+      this.jumpLatestButton.className = "dc-jump-button";
+      this.jumpLatestButton.textContent = "Latest";
+      this.jumpLatestButton.title = "Scroll to the latest caption";
+      this.jumpControls.append(jumpLabel, this.jumpCurrentButton, this.jumpLatestButton);
+      const footerToggles = document.createElement("div");
+      footerToggles.className = "dc-footer-toggles";
+      const footerDivider = document.createElement("span");
+      footerDivider.className = "dc-footer-divider";
+      footerDivider.setAttribute("aria-hidden", "true");
+      footerDivider.textContent = "|";
+      footerToggles.append(futurePreviewWrap, footerDivider, caseFixWrap);
+      footer.append(footerToggles, this.jumpControls);
 
       this.body.append(this.statusEl, this.listViewport, footer);
       this.root.append(header, this.body);
@@ -337,6 +421,7 @@
         this.root.append(this.resizeHandles[index]);
       }
       (this.mountElement || document.body).append(this.root);
+      document.body.append(this.colorPickerPopover);
 
       this.timelineLayer = document.createElement("div");
       this.timelineLayer.id = this.timelineId;
@@ -397,6 +482,12 @@
         this.timelineTrack = null;
         this.timelineTooltip = null;
       }
+      if (this.colorPickerPopover) {
+        this.colorPickerPopover.remove();
+        this.colorPickerPopover = null;
+        this.colorWheel = null;
+        this.colorPickerIndicator = null;
+      }
       this.removeExistingUiNodes();
       if (this.mountElement) {
         this.mountElement.classList.remove("dc-player-host");
@@ -406,7 +497,9 @@
     }
 
     removeExistingUiNodes() {
-      const knownNodes = document.querySelectorAll("#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId);
+      const knownNodes = document.querySelectorAll(
+        "#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId + ", #" + this.colorPickerId
+      );
       knownNodes.forEach((node) => {
         if (node instanceof Element) {
           node.remove();
@@ -460,6 +553,7 @@
       }
       this.dragState = null;
       this.resizeState = null;
+      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.cancelResizeFrames();
     }
@@ -476,12 +570,27 @@
         return;
       }
 
-      const onPanelPointerDown = () => {
+      const onPanelPointerDown = (event) => {
         if (this.root) {
           this.root.focus();
         }
+        if (this.shouldStartPanelMove(event)) {
+          this.startPanelDrag(event);
+        }
       };
       this.addListener(this.root, "pointerdown", onPanelPointerDown);
+
+      const onPageClick = (event) => {
+        if (Date.now() >= this.suppressPageClickUntil) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === "function") {
+          event.stopImmediatePropagation();
+        }
+      };
+      this.addListener(window, "click", onPageClick, { capture: true });
 
       const onPointerEnter = () => {
         this.pointerInside = true;
@@ -496,8 +605,8 @@
       this.addListener(this.header, "pointerdown", onHeaderPointerDown);
       for (let index = 0; index < this.resizeHandles.length; index += 1) {
         const handle = this.resizeHandles[index];
-        const corner = handle.getAttribute("data-corner") || "";
-        const onResizeDown = (event) => this.handleResizePointerDown(event, corner);
+        const zone = handle.getAttribute("data-resize-zone") || "";
+        const onResizeDown = (event) => this.handleResizePointerDown(event, zone);
         this.addListener(handle, "pointerdown", onResizeDown);
       }
 
@@ -506,25 +615,76 @@
       this.addListener(this.closeButton, "click", onClose);
       this.addListener(this.resetButton, "click", onReset);
 
+      const onLayoutLockToggle = () => {
+        this.updateSettings({ layoutLocked: !this.settings.layoutLocked });
+      };
+      this.addListener(this.layoutLockButton, "click", onLayoutLockToggle);
+
       const onOpacityInput = () => {
         this.updateSettings({ panelOpacity: Number(this.opacityInput.value) });
       };
       this.addListener(this.opacityInput, "input", onOpacityInput);
+      this.addListener(this.opacityInput, "change", onOpacityInput);
 
       const onThemeChange = () => {
         this.updateSettings({ themeName: this.themeSelect.value || "stone" });
+        if (this.themeSelect.value !== "custom") {
+          this.closeColorPicker();
+        }
       };
       this.addListener(this.themeSelect, "change", onThemeChange);
 
-      const onThemeColorInput = () => {
-        this.updateSettings({ themeName: "custom", customThemeColor: this.themeColorInput.value || "#ded6c3" });
+      const onThemeColorClick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleColorPicker();
       };
-      this.addListener(this.themeColorInput, "input", onThemeColorInput);
+      this.addListener(this.themeColorButton, "click", onThemeColorClick);
+
+      const onColorPickerPointerDown = (event) => {
+        event.stopPropagation();
+      };
+      this.addListener(this.colorPickerPopover, "pointerdown", onColorPickerPointerDown);
+      this.addListener(this.colorPickerPopover, "click", onColorPickerPointerDown);
+
+      const onColorWheelPointer = (event) => {
+        this.pickColorFromWheel(event);
+      };
+      this.addListener(this.colorWheel, "pointerdown", onColorWheelPointer);
+      this.addListener(this.colorWheel, "pointermove", (event) => {
+        if (event.buttons === 1) {
+          this.pickColorFromWheel(event);
+        }
+      });
+
+      const onColorPickerEscape = (event) => {
+        if (event.key === "Escape") {
+          this.closeColorPicker();
+        }
+      };
+      this.addListener(this.root, "keydown", onColorPickerEscape);
+
+      const onColorPickerOutside = (event) => {
+        if (!this.colorPickerPopover || this.colorPickerPopover.hidden) {
+          return;
+        }
+        const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+        if (path.includes(this.colorPickerPopover) || path.includes(this.themeColorButton)) {
+          return;
+        }
+        const target = event.target;
+        if (target instanceof Element && (target.closest(".dc-color-popover") || target.closest(".dc-theme-color"))) {
+          return;
+        }
+        this.closeColorPicker();
+      };
+      this.addListener(document, "pointerdown", onColorPickerOutside);
 
       const onTextScaleInput = () => {
         this.updateSettings({ textScale: Number(this.textScaleInput.value) });
       };
       this.addListener(this.textScaleInput, "input", onTextScaleInput);
+      this.addListener(this.textScaleInput, "change", onTextScaleInput);
 
       const onCenterFadeChange = () => {
         this.updateSettings({ fadeTowardVideoCenter: Boolean(this.centerFadeInput.checked) });
@@ -535,6 +695,21 @@
         this.updateSettings({ futurePreviewEnabled: Boolean(this.futurePreviewInput.checked) });
       };
       this.addListener(this.futurePreviewInput, "change", onFuturePreviewChange);
+
+      const onCaseFixChange = () => {
+        this.updateSettings({ caseFixEnabled: Boolean(this.caseFixInput.checked) });
+        this.scheduleWindowRender();
+        this.renderTimelineScrub();
+      };
+      this.addListener(this.caseFixInput, "change", onCaseFixChange);
+
+      const onListPointerDown = (event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest(".dc-future-divider")) {
+          this.handleFutureDividerPointerDown(event);
+        }
+      };
+      this.addListener(this.listViewport, "pointerdown", onListPointerDown);
 
       const onTimelineToggle = () => {
         if (!this.timelineFeatureEnabled) {
@@ -592,15 +767,17 @@
       this.addListener(this.timelineTrack, "pointerleave", onTimelineLeave);
 
       const onJumpBottom = () => {
-        if (this.chunks.length > 0) {
-          const latestIndex = this.chunks.length - 1;
-          this.activeIndex = latestIndex;
-        }
-        this.scrollToBottom();
+        this.scrollToCurrentCaption();
         this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
-      this.addListener(this.jumpBottomButton, "click", onJumpBottom);
+      const onJumpLatest = () => {
+        this.jumpToLatestCaption();
+        this.scheduleWindowRender();
+        this.updateJumpBottomVisibility();
+      };
+      this.addListener(this.jumpCurrentButton, "click", onJumpBottom);
+      this.addListener(this.jumpLatestButton, "click", onJumpLatest);
 
       const onScroll = () => {
         if (Date.now() < this.programmaticScrollUntil) {
@@ -620,11 +797,13 @@
 
       const onResize = () => {
         this.applySettings();
+        this.updateColorPickerPosition();
       };
       this.addListener(window, "resize", onResize);
 
       const onWindowScroll = () => {
         this.refreshAnchorLayout();
+        this.updateColorPickerPosition();
       };
       this.addListener(window, "scroll", onWindowScroll, { passive: true });
 
@@ -634,10 +813,35 @@
 
     updateSettings(patch) {
       this.settings = { ...this.settings, ...patch };
-      this.applySettings();
+      this.applySettings({ preservePanelPlacement: this.shouldPreservePanelPlacement(patch) });
       if (typeof this.options.onSettingsChange === "function") {
         this.options.onSettingsChange(this.settings, patch);
       }
+    }
+
+    shouldPreservePanelPlacement(patch) {
+      const source = patch && typeof patch === "object" ? patch : {};
+      const layoutKeys = ["panelClosed", "panelPosition", "panelSize", "launcherPosition", "timelineModeEnabled"];
+      return !layoutKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key));
+    }
+
+    getPersistenceSnapshot() {
+      const snapshot = {
+        panelClosed: !this.root || this.root.style.display === "none"
+      };
+      if (!this.root || snapshot.panelClosed || !this.settings.layoutLocked) {
+        return snapshot;
+      }
+      const rect = this.getElementLocalRect(this.root);
+      if (!this.isRestorablePanelLayout(rect, rect)) {
+        return snapshot;
+      }
+      snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
+      snapshot.panelSize = {
+        width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
+        height: Math.max(MIN_PANEL_HEIGHT, Math.round(rect.height))
+      };
+      return snapshot;
     }
 
     scheduleSettledLayoutRefresh() {
@@ -652,10 +856,11 @@
       }
     }
 
-    applySettings() {
+    applySettings(options) {
       if (!this.root || !this.body) {
         return;
       }
+      const preservePanelPlacement = Boolean(options && options.preservePanelPlacement);
 
       const panelClosed = Boolean(this.settings.panelClosed);
       this.root.style.display = panelClosed ? "none" : "flex";
@@ -673,36 +878,39 @@
       this.body.hidden = timelineActive;
 
       const isNarrowViewport = window.matchMedia("(max-width: 980px)").matches;
-      const defaultPanelRect = isNarrowViewport ? null : this.getDefaultPanelRect();
-      if (isNarrowViewport) {
-        this.root.style.width = "";
-        this.root.style.height = "";
-      } else if (
-        this.settings.panelSize &&
-        Number.isFinite(this.settings.panelSize.width) &&
-        Number.isFinite(this.settings.panelSize.height)
-      ) {
-        const panelFrame = this.getPanelFrameRect();
-        const maxPanelHeight = Math.max(
-          MIN_PANEL_HEIGHT,
-          panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2
-        );
-        const boundedWidth = Math.max(
-          MIN_PANEL_WIDTH,
-          Math.min(panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2, Number(this.settings.panelSize.width))
-        );
-        const boundedHeight = Math.max(
-          MIN_PANEL_HEIGHT,
-          Math.min(maxPanelHeight, Number(this.settings.panelSize.height))
-        );
-        this.root.style.width = Math.round(boundedWidth) + "px";
-        this.root.style.height = Math.round(boundedHeight) + "px";
-      } else if (defaultPanelRect) {
-        this.root.style.width = defaultPanelRect.width + "px";
-        this.root.style.height = defaultPanelRect.height + "px";
-      } else {
-        this.root.style.width = "";
-        this.root.style.height = "";
+      const defaultPanelRect = !preservePanelPlacement && !isNarrowViewport ? this.getDefaultPanelRect() : null;
+      if (!preservePanelPlacement) {
+        if (isNarrowViewport) {
+          this.root.style.width = "";
+          this.root.style.height = "";
+        } else if (
+          this.settings.panelSize &&
+          Number.isFinite(this.settings.panelSize.width) &&
+          Number.isFinite(this.settings.panelSize.height) &&
+          this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
+        ) {
+          const panelFrame = this.getPanelFrameRect();
+          const maxPanelHeight = Math.max(
+            MIN_PANEL_HEIGHT,
+            panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2
+          );
+          const boundedWidth = Math.max(
+            MIN_PANEL_WIDTH,
+            Math.min(panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2, Number(this.settings.panelSize.width))
+          );
+          const boundedHeight = Math.max(
+            MIN_PANEL_HEIGHT,
+            Math.min(maxPanelHeight, Number(this.settings.panelSize.height))
+          );
+          this.root.style.width = Math.round(boundedWidth) + "px";
+          this.root.style.height = Math.round(boundedHeight) + "px";
+        } else if (defaultPanelRect) {
+          this.root.style.width = defaultPanelRect.width + "px";
+          this.root.style.height = defaultPanelRect.height + "px";
+        } else {
+          this.root.style.width = "";
+          this.root.style.height = "";
+        }
       }
 
       const panelOpacity = Number(this.settings.panelOpacity || 55);
@@ -727,6 +935,18 @@
       if (this.futurePreviewInput) {
         this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
       }
+      if (this.caseFixInput) {
+        this.caseFixInput.checked = this.settings.caseFixEnabled !== false;
+      }
+      if (this.layoutLockButton) {
+        const locked = Boolean(this.settings.layoutLocked);
+        this.layoutLockButton.classList.toggle("is-active", locked);
+        this.layoutLockButton.textContent = locked ? "Locked" : "Lock";
+        this.layoutLockButton.title = locked
+          ? "Panel layout is saved across videos"
+          : "Save panel size, position, text size, and Next layout across videos";
+        this.layoutLockButton.setAttribute("aria-pressed", locked ? "true" : "false");
+      }
       if (this.timelineModeButton) {
         this.timelineModeButton.classList.toggle("is-active", timelineActive);
         this.timelineModeButton.textContent = timelineActive ? "Panel" : "Timeline";
@@ -743,35 +963,48 @@
           this.themeSelect.value = themeName;
         }
       }
-      if (this.themeColorInput) {
-        const color = this.getCustomThemeColor();
-        if (this.themeColorInput.value.toLowerCase() !== color) {
-          this.themeColorInput.value = color;
-        }
-        this.themeColorInput.disabled = this.getThemeName() !== "custom";
+      if (this.themeColorSwatch) {
+        this.themeColorSwatch.style.background = this.getThemeName() === "custom"
+          ? this.getCustomThemeColor()
+          : this.getActiveTheme().accent;
       }
+      if (this.themeColorButton) {
+        this.themeColorButton.classList.toggle("is-active", this.getThemeName() === "custom");
+      }
+      this.updateColorPickerIndicator();
+      this.updateColorPickerPosition();
       this.applyFuturePreviewHeight();
       if (this.stickToBottom) {
         this.scrollToBottom();
       }
 
-      if (this.persistLayout && this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
-        this.applySavedPanelPosition();
-      } else if (defaultPanelRect) {
-        this.root.style.left = defaultPanelRect.left + "px";
-        this.root.style.top = defaultPanelRect.top + "px";
-        this.root.style.right = "auto";
-        this.root.style.bottom = "auto";
-      } else {
-        this.root.style.left = "";
-        this.root.style.top = "";
-        this.root.style.right = "";
-        this.root.style.bottom = "";
+      if (!preservePanelPlacement) {
+        if (
+          this.persistLayout &&
+          this.settings.panelPosition &&
+          Number.isFinite(this.settings.panelPosition.left) &&
+          Number.isFinite(this.settings.panelPosition.top) &&
+          this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
+        ) {
+          this.applySavedPanelPosition();
+        } else if (defaultPanelRect) {
+          this.root.style.left = defaultPanelRect.left + "px";
+          this.root.style.top = defaultPanelRect.top + "px";
+          this.root.style.right = "auto";
+          this.root.style.bottom = "auto";
+        } else {
+          this.root.style.left = "";
+          this.root.style.top = "";
+          this.root.style.right = "";
+          this.root.style.bottom = "";
+        }
       }
 
       this.updatePanelFade();
       this.applyLauncherPosition();
-      this.normalizeSavedPanelPosition();
+      if (!preservePanelPlacement) {
+        this.normalizeSavedPanelPosition();
+      }
       this.updatePanelFade();
       this.updateTimelineLayer();
       this.updateJumpBottomVisibility();
@@ -813,6 +1046,103 @@
       return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#ded6c3";
     }
 
+    isRestorablePanelLayout(position, size) {
+      if (!position || !size) {
+        return false;
+      }
+      const width = Number(size.width);
+      const height = Number(size.height);
+      const left = Number(position.left);
+      const top = Number(position.top);
+      if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(left) || !Number.isFinite(top)) {
+        return false;
+      }
+      const cramped = width < MIN_RESTORED_PANEL_WIDTH || height < MIN_RESTORED_PANEL_HEIGHT;
+      const pinnedTopLeft = left <= DEFAULT_PANEL_MARGIN * 2 && top <= DEFAULT_PANEL_MARGIN * 2;
+      return !(cramped && pinnedTopLeft);
+    }
+
+    toggleColorPicker() {
+      if (!this.colorPickerPopover) {
+        return;
+      }
+      const nextOpen = Boolean(this.colorPickerPopover.hidden);
+      this.colorPickerPopover.hidden = !nextOpen;
+      this.themeColorButton.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+      if (nextOpen) {
+        this.updateColorPickerPosition();
+        this.updateColorPickerIndicator();
+      }
+    }
+
+    closeColorPicker() {
+      if (!this.colorPickerPopover) {
+        return;
+      }
+      this.colorPickerPopover.hidden = true;
+      if (this.themeColorButton) {
+        this.themeColorButton.setAttribute("aria-expanded", "false");
+      }
+    }
+
+    pickColorFromWheel(event) {
+      if (!this.colorWheel) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = this.colorWheel.getBoundingClientRect();
+      const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+      const dx = event.clientX - rect.left - rect.width / 2;
+      const dy = event.clientY - rect.top - rect.height / 2;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const saturation = Math.max(0, Math.min(1, distance / radius));
+      const hue = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+      const color = this.hsvToHex(hue, saturation, 0.92);
+      this.updateSettings({ themeName: "custom", customThemeColor: color });
+      if (this.colorPickerPopover) {
+        this.colorPickerPopover.hidden = false;
+        this.updateColorPickerPosition();
+      }
+      if (this.themeColorButton) {
+        this.themeColorButton.setAttribute("aria-expanded", "true");
+      }
+    }
+
+    updateColorPickerIndicator() {
+      if (!this.colorPickerIndicator || !this.colorWheel) {
+        return;
+      }
+      const hsv = this.hexToHsv(this.getCustomThemeColor());
+      const radiusPercent = Math.max(0, Math.min(1, hsv.s)) * 50;
+      const radians = hsv.h * Math.PI / 180;
+      const left = 50 + Math.sin(radians) * radiusPercent;
+      const top = 50 - Math.cos(radians) * radiusPercent;
+      this.colorPickerIndicator.style.left = left.toFixed(1) + "%";
+      this.colorPickerIndicator.style.top = top.toFixed(1) + "%";
+      this.colorPickerIndicator.style.background = this.getCustomThemeColor();
+    }
+
+    updateColorPickerPosition() {
+      if (!this.colorPickerPopover || !this.themeColorButton || this.colorPickerPopover.hidden) {
+        return;
+      }
+      const rect = this.themeColorButton.getBoundingClientRect();
+      const popoverWidth = this.colorPickerPopover.offsetWidth || 132;
+      const popoverHeight = this.colorPickerPopover.offsetHeight || 132;
+      const margin = 8;
+      const left = Math.max(
+        margin,
+        Math.min(window.innerWidth - popoverWidth - margin, rect.left)
+      );
+      const top = Math.max(
+        margin,
+        Math.min(window.innerHeight - popoverHeight - margin, rect.bottom + 6)
+      );
+      this.colorPickerPopover.style.left = Math.round(left) + "px";
+      this.colorPickerPopover.style.top = Math.round(top) + "px";
+    }
+
     hexToRgb(hex) {
       const value = String(hex || "").replace("#", "");
       if (!/^[0-9a-f]{6}$/i.test(value)) {
@@ -823,6 +1153,52 @@
         parseInt(value.slice(2, 4), 16),
         parseInt(value.slice(4, 6), 16)
       ];
+    }
+
+    hsvToHex(hue, saturation, value) {
+      const h = ((Number(hue) % 360) + 360) % 360;
+      const s = Math.max(0, Math.min(1, Number(saturation)));
+      const v = Math.max(0, Math.min(1, Number(value)));
+      const chroma = v * s;
+      const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1));
+      const match = v - chroma;
+      let rgb = [0, 0, 0];
+      if (h < 60) {
+        rgb = [chroma, x, 0];
+      } else if (h < 120) {
+        rgb = [x, chroma, 0];
+      } else if (h < 180) {
+        rgb = [0, chroma, x];
+      } else if (h < 240) {
+        rgb = [0, x, chroma];
+      } else if (h < 300) {
+        rgb = [x, 0, chroma];
+      } else {
+        rgb = [chroma, 0, x];
+      }
+      return this.rgbToHex(rgb.map((channel) => Math.round((channel + match) * 255)));
+    }
+
+    hexToHsv(hex) {
+      const rgb = this.hexToRgb(hex).map((value) => Math.max(0, Math.min(255, value)) / 255);
+      const max = Math.max(rgb[0], rgb[1], rgb[2]);
+      const min = Math.min(rgb[0], rgb[1], rgb[2]);
+      const delta = max - min;
+      let hue = 0;
+      if (delta !== 0) {
+        if (max === rgb[0]) {
+          hue = 60 * (((rgb[1] - rgb[2]) / delta) % 6);
+        } else if (max === rgb[1]) {
+          hue = 60 * ((rgb[2] - rgb[0]) / delta + 2);
+        } else {
+          hue = 60 * ((rgb[0] - rgb[1]) / delta + 4);
+        }
+      }
+      return {
+        h: (hue + 360) % 360,
+        s: max === 0 ? 0 : delta / max,
+        v: max
+      };
     }
 
     mixColor(left, right, amount) {
@@ -997,15 +1373,10 @@
     resetPanelDefaults() {
       const defaults = settingsStore && settingsStore.DEFAULTS ? settingsStore.DEFAULTS : {};
       this.updateSettings({
-        panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 55,
         textScale: Number.isFinite(defaults.textScale) ? defaults.textScale : 120,
-        themeName: defaults.themeName || "stone",
-        customThemeColor: defaults.customThemeColor || "#ded6c3",
         panelPosition: null,
         panelSize: null,
-        futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : 150,
-        futurePreviewEnabled: defaults.futurePreviewEnabled !== false,
-        fadeTowardVideoCenter: defaults.fadeTowardVideoCenter !== false,
+        futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : DEFAULT_FUTURE_PREVIEW_HEIGHT,
         videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 84,
         videoCenterFadeMidpoint: Number.isFinite(defaults.videoCenterFadeMidpoint) ? defaults.videoCenterFadeMidpoint : 50,
         videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 12,
@@ -1020,11 +1391,25 @@
         return;
       }
       const savedHeight = Number(this.settings.futurePreviewHeight);
-      const defaultHeight = settingsStore && settingsStore.DEFAULTS ? Number(settingsStore.DEFAULTS.futurePreviewHeight) : 150;
-      const panelHeight = this.root.getBoundingClientRect().height || 0;
-      const maxByPanel = panelHeight ? Math.max(78, Math.min(360, Math.round(panelHeight * 0.46))) : 360;
-      const nextHeight = Math.max(52, Math.min(maxByPanel, Number.isFinite(savedHeight) ? savedHeight : defaultHeight || 150));
+      const defaultHeight = settingsStore && settingsStore.DEFAULTS
+        ? Number(settingsStore.DEFAULTS.futurePreviewHeight)
+        : DEFAULT_FUTURE_PREVIEW_HEIGHT;
+      const maxByPanel = this.getMaxFuturePreviewHeight();
+      const nextHeight = Math.max(
+        MIN_FUTURE_PREVIEW_HEIGHT,
+        Math.min(maxByPanel, Number.isFinite(savedHeight) ? savedHeight : defaultHeight || DEFAULT_FUTURE_PREVIEW_HEIGHT)
+      );
       this.root.style.setProperty("--dc-future-preview-height", Math.round(nextHeight) + "px");
+    }
+
+    getMaxFuturePreviewHeight() {
+      if (!this.root) {
+        return MAX_FUTURE_PREVIEW_HEIGHT;
+      }
+      const panelHeight = this.root.getBoundingClientRect().height || 0;
+      return panelHeight
+        ? Math.max(MIN_FUTURE_PREVIEW_HEIGHT, Math.min(MAX_FUTURE_PREVIEW_HEIGHT, Math.round(panelHeight * 0.46)))
+        : MAX_FUTURE_PREVIEW_HEIGHT;
     }
 
     getYouTubeFrameRect() {
@@ -1494,14 +1879,46 @@
       if (event.target.closest("button, input, select, label, option")) {
         return;
       }
+      this.startPanelDrag(event);
+    }
 
+    shouldStartPanelMove(event) {
+      if (!this.root || !(event.target instanceof Element)) {
+        return false;
+      }
+      if (event.button !== 0) {
+        return false;
+      }
+      if (event.target.closest(".dc-header")) {
+        return false;
+      }
+      if (event.target.closest(".dc-resize-handle, .dc-list-viewport, .dc-footer, button, input, select, label, option")) {
+        return false;
+      }
+      return event.target === this.root;
+    }
+
+    startPanelDrag(event) {
+      if (!this.root) {
+        return;
+      }
       const rect = this.getElementLocalRect(this.root);
       this.root.style.left = rect.left + "px";
       this.root.style.top = rect.top + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
+      const captureTarget = event.currentTarget instanceof Element ? event.currentTarget : this.root;
+      if (captureTarget && typeof captureTarget.setPointerCapture === "function") {
+        try {
+          captureTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Capture is best effort; global listeners still keep dragging reliable.
+        }
+      }
 
       this.dragState = {
+        captureTarget: captureTarget,
+        pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         startLeft: rect.left,
@@ -1510,7 +1927,12 @@
 
       const onMove = (moveEvent) => this.handleDragMove(moveEvent);
       let cleanupPointerListeners = null;
-      const onUp = () => {
+      const onUp = (upEvent) => {
+        this.suppressPageClickUntil = Date.now() + 250;
+        if (upEvent) {
+          upEvent.preventDefault();
+          upEvent.stopPropagation();
+        }
         if (cleanupPointerListeners) {
           cleanupPointerListeners();
         }
@@ -1552,6 +1974,15 @@
       const top = Number.parseInt(this.root.style.top || "0", 10);
       const width = this.root.offsetWidth || 360;
       const height = this.root.offsetHeight || 320;
+      const captureTarget = this.dragState.captureTarget;
+      const pointerId = this.dragState.pointerId;
+      if (captureTarget && typeof captureTarget.releasePointerCapture === "function") {
+        try {
+          captureTarget.releasePointerCapture(pointerId);
+        } catch {
+          // Capture may already be released by the browser.
+        }
+      }
       this.dragState = null;
       this.updateSettings({
         panelPosition: this.localToPlayerPanelPosition(
@@ -1563,11 +1994,84 @@
       });
     }
 
-    handleResizePointerDown(event, corner) {
+    handleFutureDividerPointerDown(event) {
       if (!this.root) {
         return;
       }
-      if (!corner || corner.indexOf("-") < 0) {
+      if (event.button !== 0) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      const section = target ? target.closest(".dc-future-section") : null;
+      if (!(section instanceof Element)) {
+        return;
+      }
+      const currentHeight =
+        section.getBoundingClientRect().height ||
+        Number(this.settings.futurePreviewHeight) ||
+        DEFAULT_FUTURE_PREVIEW_HEIGHT;
+      this.futureDividerDragState = {
+        startY: event.clientY,
+        startHeight: currentHeight,
+        latestHeight: currentHeight
+      };
+
+      const onMove = (moveEvent) => this.handleFutureDividerMove(moveEvent);
+      let cleanupPointerListeners = null;
+      const onUp = (upEvent) => {
+        if (cleanupPointerListeners) {
+          cleanupPointerListeners();
+        }
+        if (upEvent) {
+          upEvent.preventDefault();
+          upEvent.stopPropagation();
+        }
+        this.finishFutureDividerDrag();
+      };
+      cleanupPointerListeners = this.trackActivePointerListeners(() => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      });
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    handleFutureDividerMove(event) {
+      if (!this.root || !this.futureDividerDragState) {
+        return;
+      }
+      const deltaY = event.clientY - this.futureDividerDragState.startY;
+      const maxHeight = this.getMaxFuturePreviewHeight();
+      const nextHeight = Math.max(
+        MIN_FUTURE_PREVIEW_HEIGHT,
+        Math.min(maxHeight, this.futureDividerDragState.startHeight - deltaY)
+      );
+      this.futureDividerDragState.latestHeight = nextHeight;
+      this.root.style.setProperty("--dc-future-preview-height", Math.round(nextHeight) + "px");
+    }
+
+    finishFutureDividerDrag() {
+      if (!this.futureDividerDragState) {
+        return;
+      }
+      const nextHeight = Math.round(this.futureDividerDragState.latestHeight);
+      this.futureDividerDragState = null;
+      this.updateSettings({ futurePreviewHeight: nextHeight });
+    }
+
+    handleResizePointerDown(event, zone) {
+      if (!this.root) {
+        return;
+      }
+      if (event.button !== 0) {
+        return;
+      }
+      if (!this.isResizeZone(zone)) {
         return;
       }
 
@@ -1576,9 +2080,19 @@
       this.root.style.top = rect.top + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
+      const captureTarget = event.currentTarget instanceof Element ? event.currentTarget : null;
+      if (captureTarget && typeof captureTarget.setPointerCapture === "function") {
+        try {
+          captureTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is a best-effort guard against resize releases clicking the video.
+        }
+      }
 
       this.resizeState = {
-        corner: corner,
+        zone: zone,
+        captureTarget: captureTarget,
+        pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         latestX: event.clientX,
@@ -1592,7 +2106,12 @@
 
       const onMove = (moveEvent) => this.handleResizeMove(moveEvent);
       let cleanupPointerListeners = null;
-      const onUp = () => {
+      const onUp = (upEvent) => {
+        this.suppressPageClickUntil = Date.now() + 350;
+        if (upEvent) {
+          upEvent.preventDefault();
+          upEvent.stopPropagation();
+        }
         if (cleanupPointerListeners) {
           cleanupPointerListeners();
         }
@@ -1601,12 +2120,27 @@
       cleanupPointerListeners = this.trackActivePointerListeners(() => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
       });
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
       event.preventDefault();
       event.stopPropagation();
+    }
+
+    isResizeZone(zone) {
+      return [
+        "top",
+        "right",
+        "bottom",
+        "left",
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right"
+      ].includes(zone);
     }
 
     handleResizeMove(event) {
@@ -1633,11 +2167,24 @@
       const deltaY = state.latestY - state.startY;
       const rightEdge = state.startLeft + state.startWidth;
       const bottomEdge = state.startTop + state.startHeight;
-      const resizesLeft = state.corner.indexOf("left") >= 0;
-      const resizesTop = state.corner.indexOf("top") >= 0;
+      const zone = String(state.zone || "");
+      const resizesLeft = zone.indexOf("left") >= 0;
+      const resizesRight = zone.indexOf("right") >= 0;
+      const resizesTop = zone.indexOf("top") >= 0;
+      const resizesBottom = zone.indexOf("bottom") >= 0;
 
-      let nextWidth = resizesLeft ? state.startWidth - deltaX : state.startWidth + deltaX;
-      let nextHeight = resizesTop ? state.startHeight - deltaY : state.startHeight + deltaY;
+      let nextWidth = state.startWidth;
+      let nextHeight = state.startHeight;
+      if (resizesLeft) {
+        nextWidth = state.startWidth - deltaX;
+      } else if (resizesRight) {
+        nextWidth = state.startWidth + deltaX;
+      }
+      if (resizesTop) {
+        nextHeight = state.startHeight - deltaY;
+      } else if (resizesBottom) {
+        nextHeight = state.startHeight + deltaY;
+      }
 
       const panelFrame = state.frameBounds || this.getPanelFrameRect();
       const maxWidth = Math.max(MIN_PANEL_WIDTH, panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2);
@@ -1673,6 +2220,15 @@
       const top = Number.parseInt(this.root.style.top || "0", 10);
       const width = Number.parseInt(this.root.style.width || "0", 10);
       const height = Number.parseInt(this.root.style.height || "0", 10);
+      const captureTarget = this.resizeState.captureTarget;
+      const pointerId = this.resizeState.pointerId;
+      if (captureTarget && typeof captureTarget.releasePointerCapture === "function") {
+        try {
+          captureTarget.releasePointerCapture(pointerId);
+        } catch {
+          // Capture may already be released by the browser.
+        }
+      }
       this.resizeState = null;
       this.updateSettings({
         panelPosition: this.localToPlayerPanelPosition(
@@ -1958,6 +2514,72 @@
       return distance <= BOTTOM_PROXIMITY_PX * factor;
     }
 
+    getCurrentCaptionIndex() {
+      if (!Array.isArray(this.chunks) || !this.chunks.length) {
+        return -1;
+      }
+      if (Number.isInteger(this.activeIndex) && this.activeIndex >= 0 && this.activeIndex < this.chunks.length) {
+        return this.activeIndex;
+      }
+      const time = Number(this.playbackTime);
+      if (!Number.isFinite(time)) {
+        return -1;
+      }
+      let nearestPrevious = -1;
+      for (let index = 0; index < this.chunks.length; index += 1) {
+        const chunk = this.chunks[index];
+        const start = Number(chunk && chunk.start);
+        const end = Number(chunk && chunk.end);
+        if (!Number.isFinite(start)) {
+          continue;
+        }
+        if (start <= time) {
+          nearestPrevious = index;
+        }
+        if (start <= time && (!Number.isFinite(end) || time <= end + 0.35)) {
+          return index;
+        }
+        if (start > time) {
+          break;
+        }
+      }
+      return nearestPrevious;
+    }
+
+    scrollToCurrentCaption() {
+      const index = this.getCurrentCaptionIndex();
+      if (index < 0) {
+        return;
+      }
+      this.ensureIndexVisible(index);
+    }
+
+    jumpToLatestCaption() {
+      if (!Array.isArray(this.chunks) || !this.chunks.length) {
+        return;
+      }
+      const index = this.chunks.length - 1;
+      if (typeof this.options.onSeek === "function") {
+        this.options.onSeek(index, { seekLeadSeconds: 0, ensureVisible: true });
+      }
+      this.scrollToBottom();
+    }
+
+    isIndexVisible(index) {
+      if (!this.listViewport || !this.windowContainer || index < 0) {
+        return false;
+      }
+      const item = this.windowContainer.querySelector("[data-index='" + index + "']");
+      if (!item) {
+        return false;
+      }
+      const rowTop = item.offsetTop;
+      const rowBottom = rowTop + item.offsetHeight;
+      const viewTop = this.listViewport.scrollTop;
+      const viewBottom = viewTop + (this.listViewport.clientHeight || 1);
+      return rowTop >= viewTop && rowBottom <= viewBottom;
+    }
+
     scrollToBottom() {
       if (!this.listViewport) {
         return;
@@ -2000,13 +2622,19 @@
     }
 
     updateJumpBottomVisibility() {
-      if (!this.jumpBottomButton || !this.listViewport || !this.root) {
+      if (!this.jumpControls || !this.jumpCurrentButton || !this.jumpLatestButton || !this.listViewport || !this.root) {
         return;
       }
       const isClosed = this.root.style.display === "none";
-      const shouldShow =
-        !isClosed && this.chunks.length > 0 && !this.isNearBottom(1.4);
-      this.jumpBottomButton.classList.toggle("is-hidden", !shouldShow);
+      const currentIndex = this.getCurrentCaptionIndex();
+      const hasChunks = this.chunks.length > 0;
+      const currentVisible = currentIndex >= 0 ? this.isIndexVisible(currentIndex) : this.isNearBottom(1.4);
+      const shouldShow = !isClosed;
+      this.jumpCurrentButton.disabled = !hasChunks || currentVisible;
+      this.jumpCurrentButton.title = currentVisible ? "Current caption is visible" : "Scroll to the current caption";
+      this.jumpLatestButton.disabled = !hasChunks;
+      this.jumpLatestButton.title = hasChunks ? "Seek to the latest reached caption" : "No latest caption yet";
+      this.jumpControls.classList.toggle("is-hidden", !shouldShow);
     }
 
     scheduleWindowRender(skipIfQueued) {
@@ -2033,36 +2661,34 @@
         this.topSpacer.style.height = "0px";
         this.bottomSpacer.style.height = "0px";
         this.windowContainer.replaceChildren();
-        this.currentFutureKey = "";
+        this.replaceFutureSection(0, 0);
         return;
       }
 
       const start = 0;
       const end = chunkCount - 1;
       const futureKey = this.getFutureRenderKey();
+      const caseFixEnabled = this.settings.caseFixEnabled !== false;
       const canAppendSingleChunk =
         chunkCount > 0 &&
         this.currentWindowStart === start &&
         end === this.currentWindowEnd + 1 &&
         this.currentWindowEnd >= start - 1 &&
-        this.windowContainer.childElementCount > 0;
+        this.windowContainer.childElementCount > 0 &&
+        this.currentCaseFixEnabled === caseFixEnabled;
       const shouldRebuild =
         start !== this.currentWindowStart ||
         end !== this.currentWindowEnd ||
         futureCount !== this.currentFutureCount ||
-        this.futureCollapsed !== this.currentFutureCollapsed;
+        this.futureCollapsed !== this.currentFutureCollapsed ||
+        this.currentCaseFixEnabled !== caseFixEnabled;
       this.topSpacer.style.height = "0px";
       this.bottomSpacer.style.height = "0px";
 
       if (canAppendSingleChunk) {
         const chunk = this.chunks[end];
         const nextButton = this.createChunkButton(chunk, end, false);
-        const futureSection = this.windowContainer.querySelector(".dc-future-section");
-        if (futureSection) {
-          this.windowContainer.insertBefore(nextButton, futureSection);
-        } else {
-          this.windowContainer.append(nextButton);
-        }
+        this.windowContainer.append(nextButton);
         this.currentWindowEnd = end;
         this.replaceFutureSection(futureCount, chunkCount);
         this.updateActiveClass();
@@ -2084,6 +2710,7 @@
       this.currentFutureCount = futureCount;
       this.currentFutureCollapsed = this.futureCollapsed;
       this.currentFutureKey = futureKey;
+      this.currentCaseFixEnabled = caseFixEnabled;
 
       const fragment = document.createDocumentFragment();
       for (let index = start; index <= end; index += 1) {
@@ -2091,17 +2718,15 @@
         fragment.append(this.createChunkButton(chunk, index, false));
       }
 
-      if (futureCount) {
-        fragment.append(this.createFutureSection(futureCount, chunkCount));
-      }
-
       this.windowContainer.replaceChildren(fragment);
+      this.replaceFutureSection(futureCount, chunkCount);
     }
 
     getFutureRenderKey() {
       const source = Array.isArray(this.futureChunks) ? this.futureChunks : [];
+      const caseFixFlag = this.settings.caseFixEnabled !== false ? "case-on" : "case-off";
       return source
-        .map((chunk) => [chunk && chunk.actualIndex, chunk && chunk.start, chunk && chunk.end, chunk && chunk.text].join(":"))
+        .map((chunk) => [caseFixFlag, chunk && chunk.actualIndex, chunk && chunk.start, chunk && chunk.end, this.getChunkDisplayText(chunk)].join(":"))
         .join("|");
     }
 
@@ -2133,12 +2758,18 @@
       if (!this.windowContainer) {
         return;
       }
-      const existing = this.windowContainer.querySelector(".dc-future-section");
+      const parent = this.windowContainer.parentElement || this.windowContainer;
+      const existing = parent.querySelector(".dc-future-section");
       if (existing) {
         existing.remove();
       }
       if (futureCount) {
-        this.windowContainer.append(this.createFutureSection(futureCount, chunkCount));
+        const nextSection = this.createFutureSection(futureCount, chunkCount);
+        if (this.bottomSpacer && this.bottomSpacer.parentElement === parent) {
+          parent.insertBefore(nextSection, this.bottomSpacer);
+        } else {
+          parent.append(nextSection);
+        }
       }
       this.currentFutureCount = futureCount;
       this.currentFutureCollapsed = this.futureCollapsed;
@@ -2175,11 +2806,24 @@
       return item;
     }
 
+    getChunkDisplayText(chunk) {
+      const raw = chunk && typeof chunk.rawText === "string"
+        ? chunk.rawText
+        : chunk && typeof chunk.text === "string" ? chunk.text : "";
+      if (!raw) {
+        return "";
+      }
+      if (this.settings.caseFixEnabled === false || !captionText || typeof captionText.softenAllCapsCaption !== "function") {
+        return raw;
+      }
+      return captionText.softenAllCapsCaption(raw);
+    }
+
     renderChunkText(textElement, chunk, isActive, playbackTimeOverride) {
       if (!textElement) {
         return;
       }
-      const text = chunk && typeof chunk.text === "string" ? chunk.text : "";
+      const text = this.getChunkDisplayText(chunk);
       if (!isActive || !bubbleState || typeof bubbleState.getReadingGlowRange !== "function") {
         textElement.textContent = text;
         return;

@@ -18,16 +18,21 @@ The extension does not:
 
 The extension stores only local preference settings in extension storage:
 - preference schema version for safe future migrations;
-- panel opacity/transparency;
-- text size;
 - panel theme preset and custom theme color;
+- panel opacity/transparency;
+- Fade setting, which makes the panel more transparent toward the center of the associated video;
+- panel open/closed state;
+- Layout Lock preference.
+
+When Layout Lock is enabled, the extension also stores the user's local panel layout preferences:
+- text size;
 - panel position and size;
 - next-up preview height;
 - whether Future / Next Up previews are enabled;
-- whether the panel fades toward the center of the associated video;
-- internal timeline scrub mode preference, which is off by default in this release;
-- launcher/pill position;
-- panel open/closed state.
+- whether Case Fix is enabled for all-caps captions.
+- launcher/pill position.
+
+When Layout Lock is off, layout preferences reset for each YouTube video/session. Timeline scrub mode remains hidden and off by default in this release.
 
 These settings remain on the user's browser profile unless removed by uninstalling the extension or clearing extension storage.
 

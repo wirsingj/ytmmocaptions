@@ -4,6 +4,7 @@
 
   const STORAGE_KEY = "dialogueCaptions.settings.v1";
   const SCHEMA_VERSION = 1;
+  let saveQueue = Promise.resolve();
   const DEFAULTS = Object.freeze({
     schemaVersion: SCHEMA_VERSION,
     panelOpacity: 55,
@@ -12,12 +13,14 @@
     customThemeColor: "#ded6c3",
     panelPosition: null,
     panelSize: null,
-    futurePreviewHeight: 150,
+    futurePreviewHeight: 96,
     futurePreviewEnabled: true,
+    caseFixEnabled: true,
     fadeTowardVideoCenter: true,
     videoCenterFadeStrength: 84,
     videoCenterFadeMidpoint: 50,
     videoCenterFadeMinOpacity: 12,
+    layoutLocked: false,
     timelineModeEnabled: false,
     launcherPosition: null,
     panelClosed: true
@@ -143,20 +146,68 @@
       panelSize: normalizePanelSize(source.panelSize),
       futurePreviewHeight: normalizeFuturePreviewHeight(source.futurePreviewHeight),
       futurePreviewEnabled: typeof source.futurePreviewEnabled === "boolean" ? source.futurePreviewEnabled : DEFAULTS.futurePreviewEnabled,
+      caseFixEnabled: typeof source.caseFixEnabled === "boolean" ? source.caseFixEnabled : DEFAULTS.caseFixEnabled,
       fadeTowardVideoCenter: typeof source.fadeTowardVideoCenter === "boolean" ? source.fadeTowardVideoCenter : DEFAULTS.fadeTowardVideoCenter,
       videoCenterFadeStrength: normalizeVideoCenterFadeStrength(source.videoCenterFadeStrength),
       videoCenterFadeMidpoint: normalizeVideoCenterFadeMidpoint(source.videoCenterFadeMidpoint),
       videoCenterFadeMinOpacity: normalizeVideoCenterFadeMinOpacity(source.videoCenterFadeMinOpacity),
+      layoutLocked: typeof source.layoutLocked === "boolean" ? source.layoutLocked : DEFAULTS.layoutLocked,
       timelineModeEnabled: typeof source.timelineModeEnabled === "boolean" ? source.timelineModeEnabled : DEFAULTS.timelineModeEnabled,
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),
       panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed
     };
   }
 
+  function toStoredSettings(settings) {
+    const normalized = normalizeSettings(settings);
+    const stored = {
+      schemaVersion: SCHEMA_VERSION,
+      panelOpacity: normalized.panelOpacity,
+      themeName: normalized.themeName,
+      customThemeColor: normalized.customThemeColor,
+      fadeTowardVideoCenter: normalized.fadeTowardVideoCenter,
+      layoutLocked: normalized.layoutLocked,
+      panelClosed: normalized.panelClosed
+    };
+    if (normalized.layoutLocked) {
+      stored.textScale = normalized.textScale;
+      stored.panelPosition = normalized.panelPosition;
+      stored.panelSize = normalized.panelSize;
+      stored.futurePreviewHeight = normalized.futurePreviewHeight;
+      stored.futurePreviewEnabled = normalized.futurePreviewEnabled;
+      stored.caseFixEnabled = normalized.caseFixEnabled;
+      stored.launcherPosition = normalized.launcherPosition;
+      stored.panelClosed = normalized.panelClosed;
+    }
+    return stored;
+  }
+
+  function fromStoredSettings(settings) {
+    const normalized = normalizeSettings(settings);
+    if (normalized.layoutLocked) {
+      return normalized;
+    }
+    return normalizeSettings({
+      ...normalized,
+      textScale: DEFAULTS.textScale,
+      panelPosition: null,
+      panelSize: null,
+      futurePreviewHeight: DEFAULTS.futurePreviewHeight,
+      futurePreviewEnabled: DEFAULTS.futurePreviewEnabled,
+      caseFixEnabled: DEFAULTS.caseFixEnabled,
+      videoCenterFadeStrength: DEFAULTS.videoCenterFadeStrength,
+      videoCenterFadeMidpoint: DEFAULTS.videoCenterFadeMidpoint,
+      videoCenterFadeMinOpacity: DEFAULTS.videoCenterFadeMinOpacity,
+      timelineModeEnabled: DEFAULTS.timelineModeEnabled,
+      launcherPosition: null
+    });
+  }
+
   async function load() {
     try {
+      await flush();
       const data = await platform.storageGet(STORAGE_KEY);
-      return normalizeSettings(data ? data[STORAGE_KEY] : null);
+      return fromStoredSettings(data ? data[STORAGE_KEY] : null);
     } catch (error) {
       console.warn("[Dialogue Captions] Failed to read settings from extension storage.", error);
       return { ...DEFAULTS };
@@ -165,18 +216,49 @@
 
   async function save(nextSettings) {
     const normalized = normalizeSettings(nextSettings);
-    try {
-      await platform.storageSet({ [STORAGE_KEY]: normalized });
-    } catch (error) {
-      console.warn("[Dialogue Captions] Failed to save settings to extension storage.", error);
-    }
-    return normalized;
+    const stored = toStoredSettings(normalized);
+    saveQueue = saveQueue
+      .catch(() => {})
+      .then(async () => {
+        try {
+          await platform.storageSet({ [STORAGE_KEY]: stored });
+        } catch (error) {
+          console.warn("[Dialogue Captions] Failed to save settings to extension storage.", error);
+        }
+        return normalized;
+      });
+    return saveQueue;
+  }
+
+  async function savePatch(patch) {
+    const source = patch && typeof patch === "object" ? patch : {};
+    saveQueue = saveQueue
+      .catch(() => {})
+      .then(async () => {
+        try {
+          const data = await platform.storageGet(STORAGE_KEY);
+          const current = fromStoredSettings(data ? data[STORAGE_KEY] : null);
+          const normalized = normalizeSettings({ ...current, ...source });
+          await platform.storageSet({ [STORAGE_KEY]: toStoredSettings(normalized) });
+          return normalized;
+        } catch (error) {
+          console.warn("[Dialogue Captions] Failed to patch settings in extension storage.", error);
+          return normalizeSettings(source);
+        }
+      });
+    return saveQueue;
+  }
+
+  async function flush() {
+    return saveQueue.catch(() => {});
   }
 
   app.settingsStore = {
     DEFAULTS,
     load,
     save,
+    savePatch,
+    flush,
     normalizeSettings
   };
 })(window);

@@ -68,6 +68,24 @@ exports.run = async function runChunkerTests(ctx) {
     assert.equal(chunks[0].reason, "sentence-target");
   });
 
+  await runCase("medium transcript chunks stay below paragraph length on natural sentence boundaries", () => {
+    const cues = [
+      { start: 0, end: 4, text: "First the speaker sets up a fairly normal thought with enough detail to read comfortably." },
+      { start: 4.1, end: 8.5, text: "Then they add a second sentence that still belongs with the first point and lands clearly." },
+      { start: 8.6, end: 13.2, text: "A third sentence starts the next idea and should not turn the bubble into a paragraph." },
+      { start: 13.3, end: 17.5, text: "It continues briefly, but the earlier period gives the chunker a clean place to breathe." },
+      { start: 17.6, end: 21.4, text: "Finally a follow up sentence remains available for the next bubble instead." }
+    ];
+    const chunks = chunker.chunkCues(cues, "medium");
+
+    assert.ok(chunks.length >= 2);
+    assert.ok(chunks[0].metrics.duration <= 20);
+    assert.ok(chunks[0].metrics.chars <= 300);
+    assert.equal(chunks[0].reason, "sentence-target");
+    assert.ok(chunks[0].text.endsWith("."));
+    assert.ok(!chunks[0].text.includes("Finally a follow up"));
+  });
+
   await runCase("chunker stabilizes rapid-fire fragments without desyncing starts", () => {
     const cues = [
       { start: 10, end: 10.4, text: "look" },

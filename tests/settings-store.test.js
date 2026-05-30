@@ -1,16 +1,26 @@
 exports.run = async function runSettingsStoreTests(ctx) {
   const { assert, loadModule, runCase } = ctx;
 
-  function makeStore(overrides, storedSettings) {
+  function makeStore(overrides, storedSettings, options) {
     const saved = {};
+    let currentStored = storedSettings || null;
+    let pendingStorageSet = null;
     const platform = {
       async storageGet() {
-        return storedSettings
-          ? { "dialogueCaptions.settings.v1": storedSettings }
+        return currentStored
+          ? { "dialogueCaptions.settings.v1": currentStored }
           : {};
       },
       async storageSet(values) {
+        if (options && options.deferStorageSet) {
+          await new Promise((resolve) => {
+            pendingStorageSet = resolve;
+          });
+        }
         Object.assign(saved, values);
+        if (values && values["dialogueCaptions.settings.v1"]) {
+          currentStored = values["dialogueCaptions.settings.v1"];
+        }
       }
     };
     const module = loadModule("settings-store.js", {
@@ -24,6 +34,13 @@ exports.run = async function runSettingsStoreTests(ctx) {
     return {
       store,
       saved,
+      releaseStorageSet() {
+        if (pendingStorageSet) {
+          const release = pendingStorageSet;
+          pendingStorageSet = null;
+          release();
+        }
+      },
       normalize(input) {
         return store.normalizeSettings({ ...(overrides || {}), ...(input || {}) });
       }
@@ -66,6 +83,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(result.panelSize, { width: 280, height: 220 });
     assert.equal(result.futurePreviewHeight, 360);
     assert.equal(result.futurePreviewEnabled, false);
+    assert.equal(result.caseFixEnabled, true);
     assert.equal(result.fadeTowardVideoCenter, false);
     assert.equal(result.videoCenterFadeStrength, 90);
     assert.equal(result.videoCenterFadeMidpoint, 80);
@@ -82,12 +100,14 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.textScale, 120);
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");
-    assert.equal(result.futurePreviewHeight, 150);
+    assert.equal(result.futurePreviewHeight, 96);
     assert.equal(result.futurePreviewEnabled, true);
+    assert.equal(result.caseFixEnabled, true);
     assert.equal(result.fadeTowardVideoCenter, true);
     assert.equal(result.videoCenterFadeStrength, 84);
     assert.equal(result.videoCenterFadeMidpoint, 50);
     assert.equal(result.videoCenterFadeMinOpacity, 12);
+    assert.equal(result.layoutLocked, false);
     assert.equal(result.timelineModeEnabled, false);
     assert.equal(result.schemaVersion, 1);
   });
@@ -118,10 +138,14 @@ exports.run = async function runSettingsStoreTests(ctx) {
       customThemeColor: "#336699",
       futurePreviewHeight: 42,
       futurePreviewEnabled: false,
+      caseFixEnabled: false,
       fadeTowardVideoCenter: false,
       videoCenterFadeStrength: -5,
       videoCenterFadeMidpoint: 10,
       videoCenterFadeMinOpacity: 99,
+      layoutLocked: false,
+      panelPosition: { anchor: "player", left: 42, top: 80 },
+      panelSize: { width: 620, height: 340 },
       timelineModeEnabled: true,
       plan: "legacy-ignored",
       featureOverrides: { oldGate: true },
@@ -136,10 +160,12 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.customThemeColor, "#336699");
     assert.equal(persisted.futurePreviewHeight, 52);
     assert.equal(persisted.futurePreviewEnabled, false);
+    assert.equal(persisted.caseFixEnabled, false);
     assert.equal(persisted.fadeTowardVideoCenter, false);
     assert.equal(persisted.videoCenterFadeStrength, 0);
     assert.equal(persisted.videoCenterFadeMidpoint, 20);
     assert.equal(persisted.videoCenterFadeMinOpacity, 70);
+    assert.equal(persisted.layoutLocked, false);
     assert.equal(persisted.timelineModeEnabled, true);
     assert.equal(persisted.schemaVersion, 1);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "plan"), false);
@@ -148,7 +174,214 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "chunkSize"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "keyboardStepSeconds"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "autoScroll"), false);
-    assert.ok(saved["dialogueCaptions.settings.v1"]);
+    const stored = saved["dialogueCaptions.settings.v1"];
+    assert.ok(stored);
+    assert.equal(stored.panelOpacity, 12);
+    assert.equal(stored.themeName, "ocean");
+    assert.equal(stored.customThemeColor, "#336699");
+    assert.equal(stored.fadeTowardVideoCenter, false);
+    assert.equal(stored.layoutLocked, false);
+    assert.equal(stored.panelClosed, true);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "textScale"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "panelPosition"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "panelSize"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "futurePreviewHeight"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "futurePreviewEnabled"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "caseFixEnabled"), false);
+  });
+
+  await runCase("settings patch save keeps unlocked layout changes session-local", async () => {
+    const { store, saved } = makeStore(null, {
+      panelOpacity: 42,
+      textScale: 120,
+      themeName: "custom",
+      customThemeColor: "#44aa99",
+      layoutLocked: false,
+      panelPosition: { anchor: "player", left: 14, top: 22 },
+      panelClosed: false
+    });
+    const afterOpacity = await store.savePatch({ panelOpacity: 88 });
+    assert.equal(afterOpacity.panelOpacity, 88);
+    assert.equal(afterOpacity.themeName, "custom");
+    assert.equal(afterOpacity.customThemeColor, "#44aa99");
+
+    const afterLayout = await store.savePatch({ panelPosition: { anchor: "player", left: 120, top: 34 } });
+    assert.equal(afterLayout.panelOpacity, 88);
+    assert.equal(afterLayout.themeName, "custom");
+    assert.equal(afterLayout.customThemeColor, "#44aa99");
+    assert.deepEqual(afterLayout.panelPosition, { anchor: "player", left: 120, top: 34 });
+    assert.equal(saved["dialogueCaptions.settings.v1"].panelOpacity, 88);
+    assert.equal(saved["dialogueCaptions.settings.v1"].customThemeColor, "#44aa99");
+    assert.equal(saved["dialogueCaptions.settings.v1"].panelClosed, false);
+    assert.equal(Object.prototype.hasOwnProperty.call(saved["dialogueCaptions.settings.v1"], "panelPosition"), false);
+  });
+
+  await runCase("settings patch save persists full layout when layout lock is enabled", async () => {
+    const { store, saved } = makeStore(null, {
+      panelOpacity: 48,
+      themeName: "stone",
+      customThemeColor: "#ded6c3"
+    });
+    const locked = await store.savePatch({
+      panelOpacity: 72,
+      themeName: "custom",
+      customThemeColor: "#445566",
+      fadeTowardVideoCenter: false,
+      layoutLocked: true,
+      textScale: 145,
+      panelPosition: { anchor: "player", left: 88, top: 44 },
+      panelSize: { width: 640, height: 360 },
+      futurePreviewHeight: 150,
+      futurePreviewEnabled: false,
+      caseFixEnabled: false,
+      launcherPosition: { left: 12, top: 34 },
+      panelClosed: false
+    });
+
+    assert.equal(locked.layoutLocked, true);
+    assert.equal(locked.textScale, 145);
+    assert.deepEqual(locked.panelPosition, { anchor: "player", left: 88, top: 44 });
+    assert.deepEqual(locked.panelSize, { width: 640, height: 360 });
+    assert.equal(locked.futurePreviewHeight, 150);
+    assert.equal(locked.futurePreviewEnabled, false);
+    assert.equal(locked.caseFixEnabled, false);
+    assert.deepEqual(locked.launcherPosition, { left: 12, top: 34 });
+    assert.equal(locked.panelClosed, false);
+
+    const stored = saved["dialogueCaptions.settings.v1"];
+    assert.equal(stored.layoutLocked, true);
+    assert.equal(stored.textScale, 145);
+    assert.deepEqual(stored.panelPosition, { anchor: "player", left: 88, top: 44 });
+    assert.deepEqual(stored.panelSize, { width: 640, height: 360 });
+    assert.equal(stored.futurePreviewHeight, 150);
+    assert.equal(stored.futurePreviewEnabled, false);
+    assert.equal(stored.caseFixEnabled, false);
+    assert.deepEqual(stored.launcherPosition, { left: 12, top: 34 });
+    assert.equal(stored.panelClosed, false);
+  });
+
+  await runCase("locked layout survives follow-up geometry patch saves", async () => {
+    const { store, saved } = makeStore(null, {
+      panelOpacity: 70,
+      themeName: "custom",
+      customThemeColor: "#445566",
+      fadeTowardVideoCenter: true,
+      layoutLocked: true,
+      textScale: 135,
+      panelPosition: { anchor: "player", left: 30, top: 40 },
+      panelSize: { width: 560, height: 330 },
+      futurePreviewHeight: 125,
+      futurePreviewEnabled: true,
+      panelClosed: false
+    });
+
+    const persisted = await store.savePatch({
+      panelPosition: { anchor: "player", left: 144, top: 70 }
+    });
+
+    assert.equal(persisted.layoutLocked, true);
+    assert.equal(persisted.panelClosed, false);
+    assert.equal(persisted.textScale, 135);
+    assert.deepEqual(persisted.panelSize, { width: 560, height: 330 });
+    assert.deepEqual(persisted.panelPosition, { anchor: "player", left: 144, top: 70 });
+    assert.equal(saved["dialogueCaptions.settings.v1"].panelClosed, false);
+    assert.deepEqual(saved["dialogueCaptions.settings.v1"].panelPosition, { anchor: "player", left: 144, top: 70 });
+  });
+
+  await runCase("stored local color opacity and open state survive a fresh settings store", async () => {
+    const first = makeStore();
+    await first.store.savePatch({
+      panelOpacity: 86,
+      themeName: "custom",
+      customThemeColor: "#bb2222",
+      fadeTowardVideoCenter: false,
+      panelClosed: false
+    });
+
+    const second = makeStore(null, first.saved["dialogueCaptions.settings.v1"]);
+    const loaded = await second.store.load();
+    assert.equal(loaded.panelOpacity, 86);
+    assert.equal(loaded.themeName, "custom");
+    assert.equal(loaded.customThemeColor, "#bb2222");
+    assert.equal(loaded.fadeTowardVideoCenter, false);
+    assert.equal(loaded.caseFixEnabled, true);
+    assert.equal(loaded.panelClosed, false);
+    assert.equal(loaded.layoutLocked, false);
+    assert.equal(loaded.panelPosition, null);
+    assert.equal(loaded.panelSize, null);
+  });
+
+  await runCase("locked layout survives a fresh settings store", async () => {
+    const first = makeStore();
+    await first.store.savePatch({
+      panelOpacity: 91,
+      themeName: "custom",
+      customThemeColor: "#992211",
+      fadeTowardVideoCenter: true,
+      panelClosed: false,
+      layoutLocked: true,
+      textScale: 150,
+      panelPosition: { anchor: "player", left: 120, top: 72 },
+      panelSize: { width: 620, height: 410 },
+      futurePreviewHeight: 180,
+      futurePreviewEnabled: false,
+      caseFixEnabled: false,
+      launcherPosition: { left: 18, top: 24 }
+    });
+
+    const second = makeStore(null, first.saved["dialogueCaptions.settings.v1"]);
+    const loaded = await second.store.load();
+    assert.equal(loaded.panelOpacity, 91);
+    assert.equal(loaded.themeName, "custom");
+    assert.equal(loaded.customThemeColor, "#992211");
+    assert.equal(loaded.fadeTowardVideoCenter, true);
+    assert.equal(loaded.panelClosed, false);
+    assert.equal(loaded.layoutLocked, true);
+    assert.equal(loaded.textScale, 150);
+    assert.deepEqual(loaded.panelPosition, { anchor: "player", left: 120, top: 72 });
+    assert.deepEqual(loaded.panelSize, { width: 620, height: 410 });
+    assert.equal(loaded.futurePreviewHeight, 180);
+    assert.equal(loaded.futurePreviewEnabled, false);
+    assert.equal(loaded.caseFixEnabled, false);
+    assert.deepEqual(loaded.launcherPosition, { left: 18, top: 24 });
+  });
+
+  await runCase("settings load waits for pending local preference writes", async () => {
+    const { store, releaseStorageSet } = makeStore(null, {
+      panelOpacity: 35,
+      themeName: "stone",
+      customThemeColor: "#ded6c3"
+    }, { deferStorageSet: true });
+
+    const savePromise = store.savePatch({
+      panelOpacity: 92,
+      themeName: "custom",
+      customThemeColor: "#2255aa"
+    });
+    const loadPromise = store.load();
+    await Promise.resolve();
+    releaseStorageSet();
+
+    const loaded = await loadPromise;
+    await savePromise;
+    assert.equal(loaded.panelOpacity, 92);
+    assert.equal(loaded.themeName, "custom");
+    assert.equal(loaded.customThemeColor, "#2255aa");
+  });
+
+  await runCase("settings flush waits for pending extension storage writes", async () => {
+    const { store, releaseStorageSet } = makeStore(null, {
+      panelOpacity: 35
+    }, { deferStorageSet: true });
+
+    const savePromise = store.savePatch({ panelOpacity: 64 });
+    const flushPromise = store.flush();
+    await Promise.resolve();
+    releaseStorageSet();
+
+    await flushPromise;
+    const saved = await savePromise;
+    assert.equal(saved.panelOpacity, 64);
   });
 
   await runCase("settings load migrates legacy preferences and drops transient video state", async () => {
@@ -163,6 +396,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       futurePreviewHeight: 205,
       futurePreviewEnabled: false,
       fadeTowardVideoCenter: false,
+      layoutLocked: false,
       videoCenterFadeStrength: 77,
       videoCenterFadeMidpoint: 52,
       videoCenterFadeMinOpacity: 18,
@@ -179,19 +413,20 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(loaded.schemaVersion, 1);
     assert.equal(loaded.panelClosed, false);
     assert.equal(loaded.panelOpacity, 77);
-    assert.equal(loaded.textScale, 145);
+    assert.equal(loaded.textScale, 120);
     assert.equal(loaded.themeName, "ember");
     assert.equal(loaded.customThemeColor, "#aa5500");
-    assert.deepEqual(loaded.panelPosition, { left: 45, top: 80 });
-    assert.deepEqual(loaded.panelSize, { width: 640, height: 420 });
-    assert.equal(loaded.futurePreviewHeight, 205);
-    assert.equal(loaded.futurePreviewEnabled, false);
+    assert.equal(loaded.panelPosition, null);
+    assert.equal(loaded.panelSize, null);
+    assert.equal(loaded.futurePreviewHeight, 96);
+    assert.equal(loaded.futurePreviewEnabled, true);
     assert.equal(loaded.fadeTowardVideoCenter, false);
-    assert.equal(loaded.videoCenterFadeStrength, 77);
-    assert.equal(loaded.videoCenterFadeMidpoint, 52);
-    assert.equal(loaded.videoCenterFadeMinOpacity, 18);
-    assert.equal(loaded.timelineModeEnabled, true);
-    assert.deepEqual(loaded.launcherPosition, { left: 15, top: 300 });
+    assert.equal(loaded.videoCenterFadeStrength, 84);
+    assert.equal(loaded.videoCenterFadeMidpoint, 50);
+    assert.equal(loaded.videoCenterFadeMinOpacity, 12);
+    assert.equal(loaded.layoutLocked, false);
+    assert.equal(loaded.timelineModeEnabled, false);
+    assert.equal(loaded.launcherPosition, null);
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "chunkSize"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "keyboardStepSeconds"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "autoScroll"), false);

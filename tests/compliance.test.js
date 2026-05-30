@@ -182,9 +182,18 @@ exports.run = async function runComplianceTests(ctx) {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "page-bridge.js"), "utf8");
     assert.ok(!source.includes('"XSRF_TOKEN"'));
     assert.ok(source.includes('host !== "www.youtube.com"'));
-    assert.ok(source.includes('path.endsWith("/api/timedtext")'));
+    assert.ok(source.includes('path === "/api/timedtext"'));
     assert.ok(source.includes('path === "/youtubei/v1/get_transcript"'));
     assert.ok(source.includes('path === "/youtubei/v1/get_panel"'));
+  });
+
+  await runCase("transcript fetch fallback uses the same YouTube allowlist", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "transcript.js"), "utf8");
+    assert.ok(source.includes('parsed.hostname !== "www.youtube.com"'));
+    assert.ok(source.includes('path === "/api/timedtext"'));
+    assert.ok(source.includes('path === "/youtubei/v1/get_transcript"'));
+    assert.ok(source.includes('path === "/youtubei/v1/get_panel"'));
+    assert.ok(source.includes('error: "blocked_request"'));
   });
 
   await runCase("global keyboard is pointer-over-panel only", () => {
@@ -313,20 +322,49 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("activePointerCleanupFns"));
     assert.ok(panelSource.includes("cleanupActivePointerListeners()"));
     assert.ok(panelSource.includes("trackActivePointerListeners"));
+    assert.ok(panelSource.includes('window.addEventListener("pointercancel"'));
+    assert.ok(panelSource.includes('window.removeEventListener("pointercancel"'));
     assert.ok(panelSource.includes("this.dragState = null;"));
     assert.ok(panelSource.includes("this.resizeState = null;"));
+    assert.ok(panelSource.includes("this.futureDividerDragState = null;"));
     assert.ok(panelSource.includes("this.launcherDragState = null;"));
   });
 
-  await runCase("future preview UI uses a static divider and visually ghosted rows", () => {
+  await runCase("panel exposes natural edge and corner resize handles", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes('"top", "right", "bottom", "left"'));
+    assert.ok(panelSource.includes("data-resize-zone"));
+    assert.ok(panelSource.includes("isResizeZone(zone)"));
+    assert.ok(panelSource.includes("resizesRight"));
+    assert.ok(panelSource.includes("resizesBottom"));
+    assert.ok(css.includes(".dc-resize-top,"));
+    assert.ok(css.includes(".dc-resize-left,"));
+    assert.ok(css.includes("cursor: ew-resize"));
+    assert.ok(css.includes("cursor: ns-resize"));
+  });
+
+  await runCase("panel rejects cramped top-left locked layout snapshots", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    assert.ok(panelSource.includes("MIN_RESTORED_PANEL_WIDTH"));
+    assert.ok(panelSource.includes("MIN_RESTORED_PANEL_HEIGHT"));
+    assert.ok(panelSource.includes("isRestorablePanelLayout"));
+    assert.ok(panelSource.includes("cramped && pinnedTopLeft"));
+    assert.ok(panelSource.includes("!this.isRestorablePanelLayout(rect, rect)"));
+  });
+
+  await runCase("future preview UI uses a movable divider and visually ghosted rows", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("dc-future-divider"));
     assert.ok(panelSource.includes("dc-future-section"));
     assert.ok(panelSource.includes("futurePreviewEnabled"));
     assert.ok(panelSource.includes("dc-future-toggle-input"));
-    assert.ok(!panelSource.includes("handleFutureDividerPointerDown"));
-    assert.ok(!panelSource.includes("futureDividerDragState"));
+    assert.ok(panelSource.includes("shouldPreservePanelPlacement"));
+    assert.ok(panelSource.includes("preservePanelPlacement: this.shouldPreservePanelPlacement(patch)"));
+    assert.ok(panelSource.includes("!preservePanelPlacement"));
+    assert.ok(panelSource.includes("handleFutureDividerPointerDown"));
+    assert.ok(panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
     assert.ok(panelSource.includes('role", "separator"'));
     assert.ok(!panelSource.includes('divider.textContent = "Next up"'));
@@ -336,14 +374,43 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!css.includes(".dc-chunk-seek-icon"));
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes(".dc-future-section"));
-    assert.ok(css.includes("max-height: min(var(--dc-future-preview-height"));
+    assert.ok(css.includes("justify-content: flex-end"));
+    assert.ok(css.includes("height: var(--dc-future-preview-height"));
     assert.ok(css.includes("display: block;"));
     assert.ok(css.includes("grid-template-columns: auto minmax(0, 1fr)"));
     assert.ok(css.includes("border-style: solid"));
     assert.ok(css.includes("text-overflow: ellipsis"));
     assert.ok(css.includes("white-space: nowrap"));
-    assert.ok(css.includes("cursor: default"));
-    assert.ok(css.includes("pointer-events: none"));
+    assert.ok(css.includes("cursor: ns-resize"));
+    assert.ok(css.includes("touch-action: none"));
+  });
+
+  await runCase("panel reset preserves the selected theme", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const resetStart = panelSource.indexOf("resetPanelDefaults() {");
+    const resetEnd = panelSource.indexOf("applyFuturePreviewHeight()", resetStart);
+    assert.ok(resetStart >= 0);
+    assert.ok(resetEnd > resetStart);
+    const resetBody = panelSource.slice(resetStart, resetEnd);
+    assert.ok(!resetBody.includes("panelOpacity"));
+    assert.ok(!resetBody.includes("fadeTowardVideoCenter"));
+    assert.ok(!resetBody.includes("futurePreviewEnabled"));
+    assert.ok(!resetBody.includes("caseFixEnabled"));
+    assert.ok(resetBody.includes("panelPosition: null"));
+    assert.ok(!resetBody.includes("themeName"));
+    assert.ok(!resetBody.includes("customThemeColor"));
+  });
+
+  await runCase("panel header includes themed brand mark without red asset dependency", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes("dc-brand-mark"));
+    assert.ok(panelSource.includes("dc-brand-play"));
+    assert.ok(panelSource.includes("dc-brand-bubble"));
+    assert.ok(css.includes(".dc-brand-mark"));
+    assert.ok(css.includes("rgba(var(--dc-accent-rgb)"));
+    assert.ok(!css.includes("#ff0000"));
+    assert.ok(!css.includes("#f00"));
   });
 
   await runCase("reading glow cannot persist without an active timing range", () => {
@@ -362,8 +429,25 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('aria-label", "Panel theme"'));
     assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
     assert.ok(panelSource.includes('opacityWrap.textContent = "Opacity"'));
+    assert.ok(panelSource.includes('jumpLabel.textContent = "Jump to"'));
+    assert.ok(panelSource.includes('this.jumpCurrentButton.textContent = "Current"'));
+    assert.ok(panelSource.includes('this.jumpLatestButton.textContent = "Latest"'));
+    assert.ok(panelSource.includes("jumpToLatestCaption"));
+    assert.ok(panelSource.includes("seekLeadSeconds: 0"));
     assert.ok(panelSource.includes("dc-theme-select"));
+    assert.ok(panelSource.includes("dc-color-popover"));
+    assert.ok(panelSource.includes("pickColorFromWheel"));
+    assert.ok(panelSource.includes("Math.atan2(dx, -dy)"));
+    assert.ok(panelSource.includes("Math.sin(radians)"));
+    assert.ok(panelSource.includes("50 - Math.cos(radians)"));
+    assert.ok(panelSource.includes("document.body.append(this.colorPickerPopover)"));
+    assert.ok(!panelSource.includes('type = "color"'));
+    assert.ok(panelSource.includes("getPersistenceSnapshot()"));
     assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
+    assert.ok(!css.includes("::-webkit-color-swatch"));
+    assert.ok(css.includes("position: fixed;"));
+    assert.ok(css.includes("z-index: 2147483646"));
+    assert.ok(css.includes(".dc-color-wheel"));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 
@@ -403,17 +487,21 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("autoScroll"));
     assert.ok(source.includes("futurePreviewHeight"));
     assert.ok(source.includes("futurePreviewEnabled"));
+    assert.ok(source.includes("caseFixEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
+    assert.ok(source.includes("layoutLocked"));
+    assert.ok(source.includes("toStoredSettings"));
     assert.ok(source.includes("timelineModeEnabled"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
-    assert.ok(privacy.includes("next-up preview height"));
-    assert.ok(privacy.includes("whether Future / Next Up previews are enabled"));
-    assert.ok(privacy.includes("timeline scrub mode"));
-    assert.ok(privacy.includes("whether the panel fades toward the center"));
+    assert.ok(privacy.includes("opacity"));
+    assert.ok(privacy.includes("Fade"));
+    assert.ok(privacy.includes("Case Fix"));
+    assert.ok(privacy.includes("Layout Lock"));
+    assert.ok(privacy.includes("Fade setting"));
   });
 
   await runCase("generic video experiment is source-only and not in release manifests", () => {

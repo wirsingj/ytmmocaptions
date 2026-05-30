@@ -19,11 +19,11 @@
       tinyFragmentChars: 54
     }),
     medium: Object.freeze({
-      targetChars: 240,
-      softMaxChars: 330,
-      hardMaxChars: 460,
-      preferredDuration: 13,
-      hardMaxDuration: 24,
+      targetChars: 220,
+      softMaxChars: 300,
+      hardMaxChars: 420,
+      preferredDuration: 12,
+      hardMaxDuration: 20,
       softPauseSeconds: 1.35,
       hardPauseSeconds: 2.7,
       tinyFragmentChars: 68

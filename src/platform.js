@@ -1,9 +1,20 @@
 (function initPlatform(scope) {
   const app = (scope.DialogueCaptions = scope.DialogueCaptions || {});
-  const browserApi = typeof scope.browser !== "undefined" ? scope.browser : null;
-  const chromeApi = typeof scope.chrome !== "undefined" ? scope.chrome : null;
+  const browserApi = getExtensionApi("browser");
+  const chromeApi = getExtensionApi("chrome");
   const browserStorageLocal = browserApi && browserApi.storage && browserApi.storage.local;
   const chromeStorageLocal = chromeApi && chromeApi.storage && chromeApi.storage.local;
+
+  function getExtensionApi(name) {
+    const root = typeof globalThis !== "undefined" ? globalThis : null;
+    if (root && root[name]) {
+      return root[name];
+    }
+    if (scope && scope[name]) {
+      return scope[name];
+    }
+    return null;
+  }
 
   function callStorage(methodName, payload, fallbackValue) {
     if (browserStorageLocal && typeof browserStorageLocal[methodName] === "function") {

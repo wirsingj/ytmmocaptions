@@ -191,6 +191,7 @@ exports.run = async function runPageBridgeTests(ctx) {
       ["http://www.youtube.com/api/timedtext", { method: "GET" }],
       ["https://evil.example/api/timedtext", { method: "GET" }],
       ["https://m.youtube.com/api/timedtext", { method: "GET" }],
+      ["https://www.youtube.com/anything/api/timedtext", { method: "GET" }],
       ["https://www.youtube.com/feeds/videos.xml", { method: "GET" }],
       ["https://www.youtube.com/api/timedtext", { method: "PUT" }]
     ];

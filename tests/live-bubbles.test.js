@@ -150,6 +150,23 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(initBody.includes("if (this.panel)"));
   });
 
+  await runCase("route changes wait for pending settings writes before reloading panel", () => {
+    const routeStart = source.indexOf("    async reconcileRoute()");
+    const routeBody = source.slice(routeStart, source.indexOf("    teardownApp()", routeStart));
+    assert.ok(routeBody.includes("settingsStore.flush"));
+    assert.ok(routeBody.indexOf("await settingsStore.flush()") < routeBody.indexOf("new DialogueCaptionsApp(videoId)"));
+  });
+
+  await runCase("panel open state is snapshotted on teardown and page hide", () => {
+    assert.ok(source.includes("persistPanelSnapshot()"));
+    const destroyStart = source.indexOf("    destroy()");
+    const destroyBody = source.slice(destroyStart, source.indexOf("    ensurePageBridgeForWatchPage()", destroyStart));
+    assert.ok(destroyBody.includes("this.persistPanelSnapshot();"));
+    assert.ok(source.includes('window.addEventListener("pagehide", onPageHide)'));
+    assert.ok(source.includes('window.addEventListener("beforeunload", onPageHide)'));
+    assert.ok(source.includes("persistActivePanelState()"));
+  });
+
   await runCase("live capture avoids repeated expensive caption reads during steady playback", () => {
     assert.ok(source.includes("liveLastBackfillBucketIndex"));
     assert.ok(source.includes("nowMs - Number(this.liveLastBackfillAt || 0) < 900"));
@@ -230,6 +247,10 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("this.transcriptUpgradeAttempts >= 8"));
     assert.ok(source.includes("Full caption timeline loaded. Next up previews are available."));
     assert.ok(source.includes("this.disableLiveCaptureMode();"));
+  });
+
+  await runCase("panel seek callback forwards options for latest jump", () => {
+    assert.ok(source.includes("onSeek: (target, options) => this.seekToChunk(target, options)"));
   });
 
   await runCase("unavailable transcript clears stale current future and timeline state", () => {

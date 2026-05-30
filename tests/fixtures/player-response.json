@@ -3,7 +3,7 @@
     "playerCaptionsTracklistRenderer": {
       "captionTracks": [
         {
-          "baseUrl": "https://example.com/api/timedtext?v=abc123",
+          "baseUrl": "https://www.youtube.com/api/timedtext?v=abc123",
           "languageCode": "en",
           "kind": ""
         }

@@ -46,7 +46,10 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
 - Future / Next Up previews can be turned on or off.
-- Panel preferences persist across YouTube videos: open/closed state, panel size/position, Future / Next Up setting and preview height, pill position, opacity, center fade, text size, and local-only theme/color choice.
+- Case Fix can be turned off when all-caps captions are intentional, such as music videos.
+- Color, opacity, center fade, and panel open/closed state persist across YouTube videos using extension storage.
+- Layout Lock can also persist panel size/position, text size, Future / Next Up setting, Case Fix setting, and preview height.
+- With Layout Lock off, panel layout resets for each video/session.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.
 
 Timeline Scrub mode remains experimental and is hidden from the normal release UI.

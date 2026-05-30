@@ -74,6 +74,7 @@ function loadModule(fileName, options = {}) {
       }
   };
 
+  Object.assign(sandbox, options.globalProps || {});
   sandbox.globalThis = sandbox;
   vm.runInNewContext(source, sandbox, { filename: scriptPath });
   return sandbox.window.DialogueCaptions;

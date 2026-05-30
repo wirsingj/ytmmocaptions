@@ -202,6 +202,7 @@
             "videoCenterFadeStrength",
             "videoCenterFadeMidpoint",
             "videoCenterFadeMinOpacity",
+            "layoutLocked",
             "timelineModeEnabled",
             "futurePreviewEnabled",
             "futurePreviewHeight"
@@ -211,7 +212,16 @@
             }
           });
           this.settings = settingsStore.normalizeSettings({ ...this.settings, ...allowed });
-          settingsStore.save(this.settings);
+          if (typeof settingsStore.savePatch === "function") {
+            settingsStore.savePatch(allowed.layoutLocked === true ? this.settings : allowed).then((persisted) => {
+              this.settings = settingsStore.normalizeSettings({ ...persisted, ...this.settings });
+              if (this.panel && this.panel.settings !== this.settings) {
+                this.panel.settings = this.settings;
+              }
+            });
+          } else {
+            settingsStore.save(this.settings);
+          }
         }
       });
       this.panel.mount();

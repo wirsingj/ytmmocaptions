@@ -30,6 +30,34 @@ exports.run = async function runCaptionTextTests(ctx) {
     );
   });
 
+  await runCase("caption text softens all-caps captions into readable sentence case", () => {
+    const captionText = loadCaptionText();
+    assert.equal(
+      captionText.cleanCandidate("HEY EVERYONE. I DON'T KNOW WHY THIS IS SO LOUD TODAY."),
+      "Hey everyone. I don't know why this is so loud today."
+    );
+    assert.equal(
+      captionText.cleanCandidate("Stephen: FAVORITE SMELL. Matt: COFFEE MIXED WITH BACON IN THE MORNING."),
+      "Stephen: Favorite smell. Matt: Coffee mixed with bacon in the morning."
+    );
+    assert.equal(
+      captionText.cleanCandidate("STEPHEN: FAVORITE SMELL. MATT: COFFEE MIXED WITH BACON IN THE MORNING."),
+      "Stephen: Favorite smell. Matt: Coffee mixed with bacon in the morning."
+    );
+    assert.equal(
+      captionText.cleanCandidate("This mixed-case caption should stay as authored."),
+      "This mixed-case caption should stay as authored."
+    );
+  });
+
+  await runCase("caption text can leave all-caps captions alone", () => {
+    const captionText = loadCaptionText();
+    assert.equal(
+      captionText.cleanCandidate("HEY EVERYONE. I DON'T KNOW WHY THIS IS SO LOUD TODAY.", { caseFixEnabled: false }),
+      "HEY EVERYONE. I DON'T KNOW WHY THIS IS SO LOUD TODAY."
+    );
+  });
+
   await runCase("caption text splits long thoughts on natural breaks", () => {
     const captionText = loadCaptionText();
     const parts = captionText.splitByNaturalBreaks(
