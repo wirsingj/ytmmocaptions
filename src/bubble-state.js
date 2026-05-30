@@ -29,6 +29,7 @@
     const seekStart = Math.max(0, asNumber(source.seekStart, start));
     const locked = Boolean(source.locked);
     const text = cleanWith(cleanText, source.text);
+    const rawText = cleanWith(cleanText, source.rawText || source.text);
     return {
       id: "",
       sourceId: source.sourceId ? String(source.sourceId) : "",
@@ -39,6 +40,7 @@
       ts_start: start,
       ts_stop: end,
       text: text,
+      rawText: rawText,
       tokens: normalizeBubbleTokens(source.tokens, text, start, end),
       locked: locked,
       immutable: locked

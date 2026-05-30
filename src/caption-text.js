@@ -200,7 +200,11 @@
     return collapsed ? collapseRepeatedSentences(collapsed) : "";
   }
 
-  function cleanCandidate(input) {
+  function shouldApplyCaseFix(options) {
+    return !options || options.caseFixEnabled !== false;
+  }
+
+  function cleanCandidate(input, options) {
     const normalized = normalizeText(sanitizeOverlayText(input));
     if (!normalized) {
       return "";
@@ -214,7 +218,8 @@
     ) {
       return "";
     }
-    return softenAllCapsCaption(collapseOverlaySpam(normalized));
+    const collapsed = collapseOverlaySpam(normalized);
+    return shouldApplyCaseFix(options) ? softenAllCapsCaption(collapsed) : collapsed;
   }
 
   function isHighOverlap(leftText, rightText) {
@@ -245,11 +250,11 @@
     return overlap / Math.max(leftTokens.length, rightTokens.length) >= 0.8;
   }
 
-  function dedupeCandidates(candidates) {
+  function dedupeCandidates(candidates, options) {
     const source = Array.isArray(candidates) ? candidates : [];
     const selected = [];
     for (let index = 0; index < source.length; index += 1) {
-      const candidate = cleanCandidate(source[index]);
+      const candidate = cleanCandidate(source[index], options);
       if (!candidate) {
         continue;
       }

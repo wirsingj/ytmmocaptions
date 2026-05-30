@@ -392,7 +392,7 @@
     }
 
     cleanCaptionCandidateText(input) {
-      return captionText.cleanCandidate(input);
+      return captionText.cleanCandidate(input, { caseFixEnabled: false });
     }
 
     collapseOverlaySpamIfNeeded(input) {
@@ -412,7 +412,7 @@
     }
 
     dedupeCaptionCandidates(candidates) {
-      return captionText.dedupeCandidates(candidates);
+      return captionText.dedupeCandidates(candidates, { caseFixEnabled: false });
     }
 
     mergeLiveCaptionText(previousText, nextText) {
@@ -896,8 +896,9 @@
 
       if (existingIndex >= 0) {
         const existingCue = this.cues[existingIndex];
-        const merged = this.mergeLiveCaptionText(existingCue.text, normalized);
-        if (merged === existingCue.text) {
+        const existingRaw = this.cleanCaptionCandidateText(existingCue.rawText || existingCue.text);
+        const rawMerged = this.mergeLiveCaptionText(existingRaw, normalized);
+        if (rawMerged === existingRaw) {
           return false;
         }
         this.cues[existingIndex] = {
@@ -906,7 +907,8 @@
           anchorStart: Number.isFinite(existingCue.anchorStart)
             ? Math.min(Number(existingCue.anchorStart), sampleAnchor)
             : sampleAnchor,
-          text: merged,
+          text: rawMerged,
+          rawText: rawMerged,
           tokens: this.mergeCueTokens(existingCue.tokens, tokens)
         };
         return true;
@@ -917,6 +919,7 @@
         end: bucketEnd,
         anchorStart: sampleAnchor,
         text: normalized,
+        rawText: normalized,
         tokens: tokens
       });
       this.cues.sort((left, right) => left.start - right.start);
@@ -1874,7 +1877,9 @@
       const buckets = new Map();
       for (let cueIndex = 0; cueIndex < source.length; cueIndex += 1) {
         const cue = source[cueIndex];
-        const text = this.cleanCaptionCandidateText(cue && cue.text ? cue.text : "");
+        const cueText = cue && (cue.rawText || cue.text) ? cue.rawText || cue.text : "";
+        const rawText = this.cleanCaptionCandidateText(cueText);
+        const text = rawText;
         if (!text) {
           continue;
         }
@@ -1894,11 +1899,13 @@
             end: Math.max(bucketEnd, cueEnd),
             seekStart: cueAnchor,
             text: text,
+            rawText: rawText,
             tokens: cueTokens
           });
           continue;
         }
-        existing.text = this.mergeLiveCaptionText(existing.text, text);
+        existing.rawText = this.mergeLiveCaptionText(existing.rawText || existing.text, rawText);
+        existing.text = existing.rawText;
         existing.end = Math.max(existing.end, bucketEnd, cueEnd);
         existing.tokens = this.mergeCueTokens(existing.tokens, cueTokens);
         if (Number.isFinite(cueAnchor)) {
@@ -1913,7 +1920,7 @@
         if (!bucket || !bucket.text) {
           continue;
         }
-        const text = bucket.text;
+        const text = this.cleanCaptionCandidateText(bucket.rawText || bucket.text);
         if (!text) {
           continue;
         }
@@ -1923,6 +1930,7 @@
           end: bucket.end,
           seekStart: Number.isFinite(bucket.seekStart) ? bucket.seekStart : bucket.start,
           text: text,
+          rawText: bucket.rawText || text,
           tokens: bucket.tokens || []
         });
       }
@@ -1935,13 +1943,15 @@
         const tokens = this.normalizeCaptionTokens(chunk.tokens);
         const firstTokenStart = tokens.length ? Number(tokens[0].start) : Number.NaN;
         const start = Math.max(0, Number(chunk.start || 0));
+        const rawText = this.cleanCaptionCandidateText(chunk.rawText || chunk.text);
         return {
           ...chunk,
           id: index,
           start,
           end: Math.max(start + 0.25, Number(chunk.end || start + 0.25)),
           seekStart: Number.isFinite(firstTokenStart) ? Math.max(0, firstTokenStart) : start,
-          text: this.cleanCaptionCandidateText(chunk.text),
+          rawText,
+          text: rawText,
           tokens,
           sourceType: "transcript"
         };
@@ -2069,16 +2079,18 @@
 
     createLiveBubbleFromChunk(chunk) {
       const bucketIndex = this.getLiveChunkBucketIndex(chunk);
+      const rawText = this.cleanCaptionCandidateText(chunk.rawText || chunk.text);
+      const text = rawText;
       return {
         uid: this.getNextLiveBubbleUid(),
         id: this.liveBubbles.length,
         start: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0),
         end: Number(chunk.end || 0),
         seekStart: Number.isFinite(chunk.seekStart) ? Number(chunk.seekStart) : Number(chunk.start || 0),
-        text: this.cleanCaptionCandidateText(chunk.text),
+        text,
         locked: false,
         bucketIndexes: [bucketIndex],
-        bucketTexts: { [bucketIndex]: this.cleanCaptionCandidateText(chunk.text) },
+        bucketTexts: { [bucketIndex]: rawText },
         bucketStarts: { [bucketIndex]: Number(chunk.start || 0) },
         bucketEnds: { [bucketIndex]: Number(chunk.end || 0) },
         bucketTokens: { [bucketIndex]: this.normalizeCaptionTokens(chunk.tokens) },
@@ -2115,7 +2127,7 @@
         seekStart = Math.min(seekStart, Number(bubble.bucketSeekStarts && bubble.bucketSeekStarts[bucketIndex]));
         tokens = this.mergeCueTokens(tokens, bubble.bucketTokens ? bubble.bucketTokens[bucketIndex] : []);
       }
-      bubble.text = this.cleanCaptionCandidateText(text);
+      bubble.text = text;
       bubble.start = Number.isFinite(seekStart) ? seekStart : Number.isFinite(start) ? start : 0;
       bubble.seekStart = bubble.start;
       bubble.end = Math.max(bubble.start + 0.25, Number.isFinite(end) ? end : bubble.start + 0.25);
@@ -2130,7 +2142,7 @@
       if (!bubble.bucketIndexes.includes(bucketIndex)) {
         bubble.bucketIndexes.push(bucketIndex);
       }
-      bubble.bucketTexts[bucketIndex] = this.cleanCaptionCandidateText(chunk.text);
+      bubble.bucketTexts[bucketIndex] = this.cleanCaptionCandidateText(chunk.rawText || chunk.text);
       bubble.bucketStarts[bucketIndex] = Number(chunk.start || 0);
       bubble.bucketEnds[bucketIndex] = Number(chunk.end || 0);
       bubble.bucketTokens[bucketIndex] = this.normalizeCaptionTokens(chunk.tokens);
@@ -2204,7 +2216,9 @@
 
       for (let index = 0; index < source.length; index += 1) {
         const chunk = source[index];
-        const text = this.cleanCaptionCandidateText(chunk && chunk.text ? chunk.text : "");
+        const chunkText = chunk && (chunk.rawText || chunk.text) ? chunk.rawText || chunk.text : "";
+        const rawText = this.cleanCaptionCandidateText(chunkText);
+        const text = rawText;
         if (!chunk || !text) {
           continue;
         }
@@ -2214,8 +2228,11 @@
         if (existingBubble) {
           if (!existingBubble.locked) {
             const previousBubble = this.getPreviousLiveBubble(existingBubble);
-            const nextChunk = previousBubble ? this.trimLiveChunkAgainstPrevious(previousBubble.text, { ...chunk, text }) : { ...chunk, text };
+            const nextChunk = previousBubble
+              ? this.trimLiveChunkAgainstPrevious(previousBubble.text, { ...chunk, text, rawText })
+              : { ...chunk, text, rawText };
             if (nextChunk.text) {
+              nextChunk.rawText = this.cleanCaptionCandidateText(nextChunk.text);
               this.appendBucketToLiveBubble(existingBubble, nextChunk);
             }
           }
@@ -2224,16 +2241,17 @@
 
         const activeBubble = this.liveBubbles[this.liveBubbles.length - 1];
         if (!activeBubble) {
-          const firstBubble = this.createLiveBubbleFromChunk({ ...chunk, text: text });
+          const firstBubble = this.createLiveBubbleFromChunk({ ...chunk, text, rawText });
           this.liveBubbles.push(firstBubble);
           this.liveBucketToBubble.set(bucketIndex, firstBubble);
           continue;
         }
 
-        const nextChunk = this.trimLiveChunkAgainstPrevious(activeBubble.text, { ...chunk, text });
+        const nextChunk = this.trimLiveChunkAgainstPrevious(activeBubble.text, { ...chunk, text, rawText });
         if (!nextChunk.text) {
           continue;
         }
+        nextChunk.rawText = this.cleanCaptionCandidateText(nextChunk.text);
 
         if (activeBubble.locked || this.shouldStartNewLiveBubble(activeBubble, nextChunk)) {
           this.lockLiveBubble(activeBubble);

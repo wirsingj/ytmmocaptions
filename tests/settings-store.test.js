@@ -83,6 +83,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(result.panelSize, { width: 280, height: 220 });
     assert.equal(result.futurePreviewHeight, 360);
     assert.equal(result.futurePreviewEnabled, false);
+    assert.equal(result.caseFixEnabled, true);
     assert.equal(result.fadeTowardVideoCenter, false);
     assert.equal(result.videoCenterFadeStrength, 90);
     assert.equal(result.videoCenterFadeMidpoint, 80);
@@ -101,6 +102,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.customThemeColor, "#ded6c3");
     assert.equal(result.futurePreviewHeight, 96);
     assert.equal(result.futurePreviewEnabled, true);
+    assert.equal(result.caseFixEnabled, true);
     assert.equal(result.fadeTowardVideoCenter, true);
     assert.equal(result.videoCenterFadeStrength, 84);
     assert.equal(result.videoCenterFadeMidpoint, 50);
@@ -136,6 +138,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       customThemeColor: "#336699",
       futurePreviewHeight: 42,
       futurePreviewEnabled: false,
+      caseFixEnabled: false,
       fadeTowardVideoCenter: false,
       videoCenterFadeStrength: -5,
       videoCenterFadeMidpoint: 10,
@@ -157,6 +160,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.customThemeColor, "#336699");
     assert.equal(persisted.futurePreviewHeight, 52);
     assert.equal(persisted.futurePreviewEnabled, false);
+    assert.equal(persisted.caseFixEnabled, false);
     assert.equal(persisted.fadeTowardVideoCenter, false);
     assert.equal(persisted.videoCenterFadeStrength, 0);
     assert.equal(persisted.videoCenterFadeMidpoint, 20);
@@ -183,6 +187,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "panelSize"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "futurePreviewHeight"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "futurePreviewEnabled"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "caseFixEnabled"), false);
   });
 
   await runCase("settings patch save keeps unlocked layout changes session-local", async () => {
@@ -228,6 +233,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelSize: { width: 640, height: 360 },
       futurePreviewHeight: 150,
       futurePreviewEnabled: false,
+      caseFixEnabled: false,
       launcherPosition: { left: 12, top: 34 },
       panelClosed: false
     });
@@ -238,6 +244,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(locked.panelSize, { width: 640, height: 360 });
     assert.equal(locked.futurePreviewHeight, 150);
     assert.equal(locked.futurePreviewEnabled, false);
+    assert.equal(locked.caseFixEnabled, false);
     assert.deepEqual(locked.launcherPosition, { left: 12, top: 34 });
     assert.equal(locked.panelClosed, false);
 
@@ -248,6 +255,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(stored.panelSize, { width: 640, height: 360 });
     assert.equal(stored.futurePreviewHeight, 150);
     assert.equal(stored.futurePreviewEnabled, false);
+    assert.equal(stored.caseFixEnabled, false);
     assert.deepEqual(stored.launcherPosition, { left: 12, top: 34 });
     assert.equal(stored.panelClosed, false);
   });
@@ -296,6 +304,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(loaded.themeName, "custom");
     assert.equal(loaded.customThemeColor, "#bb2222");
     assert.equal(loaded.fadeTowardVideoCenter, false);
+    assert.equal(loaded.caseFixEnabled, true);
     assert.equal(loaded.panelClosed, false);
     assert.equal(loaded.layoutLocked, false);
     assert.equal(loaded.panelPosition, null);
@@ -316,6 +325,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelSize: { width: 620, height: 410 },
       futurePreviewHeight: 180,
       futurePreviewEnabled: false,
+      caseFixEnabled: false,
       launcherPosition: { left: 18, top: 24 }
     });
 
@@ -332,6 +342,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(loaded.panelSize, { width: 620, height: 410 });
     assert.equal(loaded.futurePreviewHeight, 180);
     assert.equal(loaded.futurePreviewEnabled, false);
+    assert.equal(loaded.caseFixEnabled, false);
     assert.deepEqual(loaded.launcherPosition, { left: 18, top: 24 });
   });
 

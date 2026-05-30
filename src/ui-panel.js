@@ -5,6 +5,7 @@
   const bubbleState = app.bubbleState;
   const settingsStore = app.settingsStore;
   const timelineScrub = app.timelineScrub;
+  const captionText = app.captionText;
 
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
@@ -13,6 +14,8 @@
   const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
+  const MIN_RESTORED_PANEL_WIDTH = 340;
+  const MIN_RESTORED_PANEL_HEIGHT = 250;
   const DEFAULT_PANEL_MAX_WIDTH = 680;
   const DEFAULT_PANEL_MAX_HEIGHT = 500;
   const DEFAULT_PANEL_MARGIN = 12;
@@ -112,6 +115,7 @@
       this.colorPickerIndicator = null;
       this.centerFadeInput = null;
       this.futurePreviewInput = null;
+      this.caseFixInput = null;
       this.timelineModeButton = null;
       this.timelineFeatureEnabled = TIMELINE_MODE_EXPERIMENT_ENABLED;
       this.layoutLockButton = null;
@@ -142,6 +146,7 @@
       this.currentFutureCount = -1;
       this.currentFutureCollapsed = false;
       this.currentFutureKey = "";
+      this.currentCaseFixEnabled = null;
       this.dragState = null;
       this.resizeState = null;
       this.futureDividerDragState = null;
@@ -322,6 +327,16 @@
       this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
       futurePreviewWrap.append(this.futurePreviewInput);
 
+      const caseFixWrap = document.createElement("label");
+      caseFixWrap.className = "dc-case-fix-toggle-wrap";
+      caseFixWrap.title = "Soften all-caps captions into sentence case";
+      caseFixWrap.textContent = "Case Fix";
+      this.caseFixInput = document.createElement("input");
+      this.caseFixInput.type = "checkbox";
+      this.caseFixInput.className = "dc-case-fix-toggle-input";
+      this.caseFixInput.checked = this.settings.caseFixEnabled !== false;
+      caseFixWrap.append(this.caseFixInput);
+
       this.timelineModeButton = document.createElement("button");
       this.timelineModeButton.type = "button";
       this.timelineModeButton.className = "dc-btn dc-btn-timeline";
@@ -378,7 +393,14 @@
       this.jumpBottomButton.className = "dc-jump-bottom is-hidden";
       this.jumpBottomButton.textContent = "Jump to Current";
       this.jumpBottomButton.title = "Scroll to the current caption";
-      footer.append(futurePreviewWrap, this.jumpBottomButton);
+      const footerToggles = document.createElement("div");
+      footerToggles.className = "dc-footer-toggles";
+      const footerDivider = document.createElement("span");
+      footerDivider.className = "dc-footer-divider";
+      footerDivider.setAttribute("aria-hidden", "true");
+      footerDivider.textContent = "|";
+      footerToggles.append(futurePreviewWrap, footerDivider, caseFixWrap);
+      footer.append(footerToggles, this.jumpBottomButton);
 
       this.body.append(this.statusEl, this.listViewport, footer);
       this.root.append(header, this.body);
@@ -661,6 +683,13 @@
       };
       this.addListener(this.futurePreviewInput, "change", onFuturePreviewChange);
 
+      const onCaseFixChange = () => {
+        this.updateSettings({ caseFixEnabled: Boolean(this.caseFixInput.checked) });
+        this.scheduleWindowRender();
+        this.renderTimelineScrub();
+      };
+      this.addListener(this.caseFixInput, "change", onCaseFixChange);
+
       const onListPointerDown = (event) => {
         const target = event.target;
         if (target instanceof Element && target.closest(".dc-future-divider")) {
@@ -779,6 +808,9 @@
         return snapshot;
       }
       const rect = this.getElementLocalRect(this.root);
+      if (!this.isRestorablePanelLayout(rect, rect)) {
+        return snapshot;
+      }
       snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
       snapshot.panelSize = {
         width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
@@ -827,7 +859,8 @@
       } else if (
         this.settings.panelSize &&
         Number.isFinite(this.settings.panelSize.width) &&
-        Number.isFinite(this.settings.panelSize.height)
+        Number.isFinite(this.settings.panelSize.height) &&
+        this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
       ) {
         const panelFrame = this.getPanelFrameRect();
         const maxPanelHeight = Math.max(
@@ -874,6 +907,9 @@
       if (this.futurePreviewInput) {
         this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
       }
+      if (this.caseFixInput) {
+        this.caseFixInput.checked = this.settings.caseFixEnabled !== false;
+      }
       if (this.layoutLockButton) {
         const locked = Boolean(this.settings.layoutLocked);
         this.layoutLockButton.classList.toggle("is-active", locked);
@@ -914,7 +950,13 @@
         this.scrollToBottom();
       }
 
-      if (this.persistLayout && this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
+      if (
+        this.persistLayout &&
+        this.settings.panelPosition &&
+        Number.isFinite(this.settings.panelPosition.left) &&
+        Number.isFinite(this.settings.panelPosition.top) &&
+        this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
+      ) {
         this.applySavedPanelPosition();
       } else if (defaultPanelRect) {
         this.root.style.left = defaultPanelRect.left + "px";
@@ -970,6 +1012,22 @@
     getCustomThemeColor() {
       const color = String(this.settings.customThemeColor || "#ded6c3").trim();
       return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#ded6c3";
+    }
+
+    isRestorablePanelLayout(position, size) {
+      if (!position || !size) {
+        return false;
+      }
+      const width = Number(size.width);
+      const height = Number(size.height);
+      const left = Number(position.left);
+      const top = Number(position.top);
+      if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(left) || !Number.isFinite(top)) {
+        return false;
+      }
+      const cramped = width < MIN_RESTORED_PANEL_WIDTH || height < MIN_RESTORED_PANEL_HEIGHT;
+      const pinnedTopLeft = left <= DEFAULT_PANEL_MARGIN * 2 && top <= DEFAULT_PANEL_MARGIN * 2;
+      return !(cramped && pinnedTopLeft);
     }
 
     toggleColorPicker() {
@@ -2552,17 +2610,20 @@
       const start = 0;
       const end = chunkCount - 1;
       const futureKey = this.getFutureRenderKey();
+      const caseFixEnabled = this.settings.caseFixEnabled !== false;
       const canAppendSingleChunk =
         chunkCount > 0 &&
         this.currentWindowStart === start &&
         end === this.currentWindowEnd + 1 &&
         this.currentWindowEnd >= start - 1 &&
-        this.windowContainer.childElementCount > 0;
+        this.windowContainer.childElementCount > 0 &&
+        this.currentCaseFixEnabled === caseFixEnabled;
       const shouldRebuild =
         start !== this.currentWindowStart ||
         end !== this.currentWindowEnd ||
         futureCount !== this.currentFutureCount ||
-        this.futureCollapsed !== this.currentFutureCollapsed;
+        this.futureCollapsed !== this.currentFutureCollapsed ||
+        this.currentCaseFixEnabled !== caseFixEnabled;
       this.topSpacer.style.height = "0px";
       this.bottomSpacer.style.height = "0px";
 
@@ -2591,6 +2652,7 @@
       this.currentFutureCount = futureCount;
       this.currentFutureCollapsed = this.futureCollapsed;
       this.currentFutureKey = futureKey;
+      this.currentCaseFixEnabled = caseFixEnabled;
 
       const fragment = document.createDocumentFragment();
       for (let index = start; index <= end; index += 1) {
@@ -2604,8 +2666,9 @@
 
     getFutureRenderKey() {
       const source = Array.isArray(this.futureChunks) ? this.futureChunks : [];
+      const caseFixFlag = this.settings.caseFixEnabled !== false ? "case-on" : "case-off";
       return source
-        .map((chunk) => [chunk && chunk.actualIndex, chunk && chunk.start, chunk && chunk.end, chunk && chunk.text].join(":"))
+        .map((chunk) => [caseFixFlag, chunk && chunk.actualIndex, chunk && chunk.start, chunk && chunk.end, this.getChunkDisplayText(chunk)].join(":"))
         .join("|");
     }
 
@@ -2685,11 +2748,24 @@
       return item;
     }
 
+    getChunkDisplayText(chunk) {
+      const raw = chunk && typeof chunk.rawText === "string"
+        ? chunk.rawText
+        : chunk && typeof chunk.text === "string" ? chunk.text : "";
+      if (!raw) {
+        return "";
+      }
+      if (this.settings.caseFixEnabled === false || !captionText || typeof captionText.softenAllCapsCaption !== "function") {
+        return raw;
+      }
+      return captionText.softenAllCapsCaption(raw);
+    }
+
     renderChunkText(textElement, chunk, isActive, playbackTimeOverride) {
       if (!textElement) {
         return;
       }
-      const text = chunk && typeof chunk.text === "string" ? chunk.text : "";
+      const text = this.getChunkDisplayText(chunk);
       if (!isActive || !bubbleState || typeof bubbleState.getReadingGlowRange !== "function") {
         textElement.textContent = text;
         return;

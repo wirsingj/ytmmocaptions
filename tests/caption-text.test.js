@@ -50,6 +50,14 @@ exports.run = async function runCaptionTextTests(ctx) {
     );
   });
 
+  await runCase("caption text can leave all-caps captions alone", () => {
+    const captionText = loadCaptionText();
+    assert.equal(
+      captionText.cleanCandidate("HEY EVERYONE. I DON'T KNOW WHY THIS IS SO LOUD TODAY.", { caseFixEnabled: false }),
+      "HEY EVERYONE. I DON'T KNOW WHY THIS IS SO LOUD TODAY."
+    );
+  });
+
   await runCase("caption text splits long thoughts on natural breaks", () => {
     const captionText = loadCaptionText();
     const parts = captionText.splitByNaturalBreaks(

@@ -15,6 +15,7 @@
     panelSize: null,
     futurePreviewHeight: 96,
     futurePreviewEnabled: true,
+    caseFixEnabled: true,
     fadeTowardVideoCenter: true,
     videoCenterFadeStrength: 84,
     videoCenterFadeMidpoint: 50,
@@ -145,6 +146,7 @@
       panelSize: normalizePanelSize(source.panelSize),
       futurePreviewHeight: normalizeFuturePreviewHeight(source.futurePreviewHeight),
       futurePreviewEnabled: typeof source.futurePreviewEnabled === "boolean" ? source.futurePreviewEnabled : DEFAULTS.futurePreviewEnabled,
+      caseFixEnabled: typeof source.caseFixEnabled === "boolean" ? source.caseFixEnabled : DEFAULTS.caseFixEnabled,
       fadeTowardVideoCenter: typeof source.fadeTowardVideoCenter === "boolean" ? source.fadeTowardVideoCenter : DEFAULTS.fadeTowardVideoCenter,
       videoCenterFadeStrength: normalizeVideoCenterFadeStrength(source.videoCenterFadeStrength),
       videoCenterFadeMidpoint: normalizeVideoCenterFadeMidpoint(source.videoCenterFadeMidpoint),
@@ -173,6 +175,7 @@
       stored.panelSize = normalized.panelSize;
       stored.futurePreviewHeight = normalized.futurePreviewHeight;
       stored.futurePreviewEnabled = normalized.futurePreviewEnabled;
+      stored.caseFixEnabled = normalized.caseFixEnabled;
       stored.launcherPosition = normalized.launcherPosition;
       stored.panelClosed = normalized.panelClosed;
     }
@@ -191,6 +194,7 @@
       panelSize: null,
       futurePreviewHeight: DEFAULTS.futurePreviewHeight,
       futurePreviewEnabled: DEFAULTS.futurePreviewEnabled,
+      caseFixEnabled: DEFAULTS.caseFixEnabled,
       videoCenterFadeStrength: DEFAULTS.videoCenterFadeStrength,
       videoCenterFadeMidpoint: DEFAULTS.videoCenterFadeMidpoint,
       videoCenterFadeMinOpacity: DEFAULTS.videoCenterFadeMinOpacity,

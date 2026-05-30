@@ -814,7 +814,21 @@
   border-top: 1px solid var(--dc-border-soft);
 }
 
-.dc-future-toggle-wrap {
+.dc-footer-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.dc-footer-divider {
+  color: rgba(var(--dc-muted-rgb), 0.38);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.dc-future-toggle-wrap,
+.dc-case-fix-toggle-wrap {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -825,7 +839,8 @@
   white-space: nowrap;
 }
 
-.dc-future-toggle-input {
+.dc-future-toggle-input,
+.dc-case-fix-toggle-input {
   width: 12px;
   height: 12px;
   accent-color: var(--dc-accent);

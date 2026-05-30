@@ -333,6 +333,15 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("cursor: ns-resize"));
   });
 
+  await runCase("panel rejects cramped top-left locked layout snapshots", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    assert.ok(panelSource.includes("MIN_RESTORED_PANEL_WIDTH"));
+    assert.ok(panelSource.includes("MIN_RESTORED_PANEL_HEIGHT"));
+    assert.ok(panelSource.includes("isRestorablePanelLayout"));
+    assert.ok(panelSource.includes("cramped && pinnedTopLeft"));
+    assert.ok(panelSource.includes("!this.isRestorablePanelLayout(rect, rect)"));
+  });
+
   await runCase("future preview UI uses a movable divider and visually ghosted rows", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
@@ -454,6 +463,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("autoScroll"));
     assert.ok(source.includes("futurePreviewHeight"));
     assert.ok(source.includes("futurePreviewEnabled"));
+    assert.ok(source.includes("caseFixEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
     assert.ok(source.includes("layoutLocked"));
     assert.ok(source.includes("toStoredSettings"));
@@ -465,6 +475,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
     assert.ok(privacy.includes("opacity"));
     assert.ok(privacy.includes("Fade"));
+    assert.ok(privacy.includes("Case Fix"));
     assert.ok(privacy.includes("Layout Lock"));
     assert.ok(privacy.includes("Fade setting"));
   });

@@ -28,7 +28,8 @@ When Layout Lock is enabled, the extension also stores the user's local panel la
 - text size;
 - panel position and size;
 - next-up preview height;
-- whether Future / Next Up previews are enabled.
+- whether Future / Next Up previews are enabled;
+- whether Case Fix is enabled for all-caps captions.
 - launcher/pill position.
 
 When Layout Lock is off, layout preferences reset for each YouTube video/session. Timeline scrub mode remains hidden and off by default in this release.
