@@ -249,6 +249,10 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("this.disableLiveCaptureMode();"));
   });
 
+  await runCase("panel seek callback forwards options for latest jump", () => {
+    assert.ok(source.includes("onSeek: (target, options) => this.seekToChunk(target, options)"));
+  });
+
   await runCase("unavailable transcript clears stale current future and timeline state", () => {
     const failureStart = source.indexOf("if (!response || !response.ok)");
     const failureBody = source.slice(failureStart, source.indexOf("if (response.videoId !== this.videoId)", failureStart));

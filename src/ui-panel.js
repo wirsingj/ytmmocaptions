@@ -772,7 +772,7 @@
         this.updateJumpBottomVisibility();
       };
       const onJumpLatest = () => {
-        this.scrollToBottom();
+        this.jumpToLatestCaption();
         this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
@@ -2540,6 +2540,17 @@
       this.ensureIndexVisible(index);
     }
 
+    jumpToLatestCaption() {
+      if (!Array.isArray(this.chunks) || !this.chunks.length) {
+        return;
+      }
+      const index = this.chunks.length - 1;
+      if (typeof this.options.onSeek === "function") {
+        this.options.onSeek(index, { seekLeadSeconds: 0, ensureVisible: true });
+      }
+      this.scrollToBottom();
+    }
+
     isIndexVisible(index) {
       if (!this.listViewport || !this.windowContainer || index < 0) {
         return false;
@@ -2604,12 +2615,11 @@
       const currentIndex = this.getCurrentCaptionIndex();
       const hasChunks = this.chunks.length > 0;
       const currentVisible = currentIndex >= 0 ? this.isIndexVisible(currentIndex) : this.isNearBottom(1.4);
-      const latestVisible = this.isNearBottom(0.35);
       const shouldShow = !isClosed;
       this.jumpCurrentButton.disabled = !hasChunks || currentVisible;
       this.jumpCurrentButton.title = currentVisible ? "Current caption is visible" : "Scroll to the current caption";
-      this.jumpLatestButton.disabled = !hasChunks || latestVisible;
-      this.jumpLatestButton.title = latestVisible ? "Latest caption is visible" : "Scroll to the latest caption";
+      this.jumpLatestButton.disabled = !hasChunks;
+      this.jumpLatestButton.title = hasChunks ? "Seek to the latest reached caption" : "No latest caption yet";
       this.jumpControls.classList.toggle("is-hidden", !shouldShow);
     }
 

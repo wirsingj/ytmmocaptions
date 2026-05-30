@@ -94,7 +94,7 @@
       }
       this.panel = new DialoguePanel({
         settings: this.settings,
-        onSeek: (index) => this.seekToChunk(index),
+        onSeek: (target, options) => this.seekToChunk(target, options),
         onSettingsChange: (settings, patch) => this.onSettingsChanged(settings, patch)
       });
       this.panel.mount();

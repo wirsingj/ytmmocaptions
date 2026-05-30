@@ -421,6 +421,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('jumpLabel.textContent = "Jump to"'));
     assert.ok(panelSource.includes('this.jumpCurrentButton.textContent = "Current"'));
     assert.ok(panelSource.includes('this.jumpLatestButton.textContent = "Latest"'));
+    assert.ok(panelSource.includes("jumpToLatestCaption"));
+    assert.ok(panelSource.includes("seekLeadSeconds: 0"));
     assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(panelSource.includes("dc-color-popover"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
