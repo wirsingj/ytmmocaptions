@@ -728,12 +728,12 @@
   grid-template-columns: 0 minmax(0, 1fr);
   column-gap: 0;
   border-style: solid;
-  border-color: rgba(var(--dc-muted-rgb), 0.08);
+  border-color: rgba(var(--dc-muted-rgb), 0.13);
   background:
-    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.008), transparent 45%),
-    rgba(var(--dc-card-rgb), 0.12);
-  color: rgba(var(--dc-text-rgb), 0.42);
-  opacity: 0.5;
+    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.014), transparent 45%),
+    rgba(var(--dc-card-rgb), 0.2);
+  color: rgba(var(--dc-text-rgb), 0.7);
+  opacity: 0.78;
   font-size: 0.86em;
 }
 
@@ -749,7 +749,7 @@
 }
 
 .dc-chunk-future .dc-chunk-time {
-  opacity: 0.48;
+  opacity: 0.68;
   font-size: calc(9px * var(--dc-text-scale));
   line-height: 1.2;
 }
@@ -765,12 +765,12 @@
 }
 
 .dc-chunk-future:hover {
-  border-color: rgba(var(--dc-muted-rgb), 0.18);
-  color: rgba(var(--dc-text-rgb), 0.68);
-  opacity: 0.76;
+  border-color: rgba(var(--dc-muted-rgb), 0.2);
+  color: rgba(var(--dc-text-rgb), 0.78);
+  opacity: 0.86;
   background:
     radial-gradient(circle at left center, rgba(var(--dc-accent-rgb), 0.04), transparent 48%),
-    rgba(var(--dc-panel-rgb), 0.28);
+    rgba(var(--dc-panel-rgb), 0.32);
 }
 
 .dc-chunk-seek-icon {
