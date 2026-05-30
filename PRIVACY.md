@@ -21,6 +21,7 @@ The extension stores only local preference settings in extension storage:
 - panel theme preset and custom theme color;
 - panel opacity/transparency;
 - Fade setting, which makes the panel more transparent toward the center of the associated video;
+- panel open/closed state;
 - Layout Lock preference.
 
 When Layout Lock is enabled, the extension also stores the user's local panel layout preferences:
@@ -28,7 +29,7 @@ When Layout Lock is enabled, the extension also stores the user's local panel la
 - panel position and size;
 - next-up preview height;
 - whether Future / Next Up previews are enabled.
-- panel open/closed state and launcher/pill position.
+- launcher/pill position.
 
 When Layout Lock is off, layout preferences reset for each YouTube video/session. Timeline scrub mode remains hidden and off by default in this release.
 

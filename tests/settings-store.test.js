@@ -177,6 +177,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(stored.customThemeColor, "#336699");
     assert.equal(stored.fadeTowardVideoCenter, false);
     assert.equal(stored.layoutLocked, false);
+    assert.equal(stored.panelClosed, true);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "textScale"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "panelPosition"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "panelSize"), false);
@@ -191,7 +192,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
       themeName: "custom",
       customThemeColor: "#44aa99",
       layoutLocked: false,
-      panelPosition: { anchor: "player", left: 14, top: 22 }
+      panelPosition: { anchor: "player", left: 14, top: 22 },
+      panelClosed: false
     });
     const afterOpacity = await store.savePatch({ panelOpacity: 88 });
     assert.equal(afterOpacity.panelOpacity, 88);
@@ -205,6 +207,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(afterLayout.panelPosition, { anchor: "player", left: 120, top: 34 });
     assert.equal(saved["dialogueCaptions.settings.v1"].panelOpacity, 88);
     assert.equal(saved["dialogueCaptions.settings.v1"].customThemeColor, "#44aa99");
+    assert.equal(saved["dialogueCaptions.settings.v1"].panelClosed, false);
     assert.equal(Object.prototype.hasOwnProperty.call(saved["dialogueCaptions.settings.v1"], "panelPosition"), false);
   });
 
@@ -327,7 +330,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     });
     const loaded = await store.load();
     assert.equal(loaded.schemaVersion, 1);
-    assert.equal(loaded.panelClosed, true);
+    assert.equal(loaded.panelClosed, false);
     assert.equal(loaded.panelOpacity, 77);
     assert.equal(loaded.textScale, 120);
     assert.equal(loaded.themeName, "ember");

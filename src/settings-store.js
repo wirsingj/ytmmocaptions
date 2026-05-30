@@ -164,7 +164,8 @@
       themeName: normalized.themeName,
       customThemeColor: normalized.customThemeColor,
       fadeTowardVideoCenter: normalized.fadeTowardVideoCenter,
-      layoutLocked: normalized.layoutLocked
+      layoutLocked: normalized.layoutLocked,
+      panelClosed: normalized.panelClosed
     };
     if (normalized.layoutLocked) {
       stored.textScale = normalized.textScale;
@@ -194,8 +195,7 @@
       videoCenterFadeMidpoint: DEFAULTS.videoCenterFadeMidpoint,
       videoCenterFadeMinOpacity: DEFAULTS.videoCenterFadeMinOpacity,
       timelineModeEnabled: DEFAULTS.timelineModeEnabled,
-      launcherPosition: null,
-      panelClosed: DEFAULTS.panelClosed
+      launcherPosition: null
     });
   }
 

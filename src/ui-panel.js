@@ -141,6 +141,7 @@
       this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.launcherSuppressClickUntil = 0;
+      this.suppressPageClickUntil = 0;
       this.resizeHandles = [];
       this.pointerInside = false;
       this.stickToBottom = true;
@@ -506,6 +507,18 @@
         }
       };
       this.addListener(this.root, "pointerdown", onPanelPointerDown);
+
+      const onPageClick = (event) => {
+        if (Date.now() >= this.suppressPageClickUntil) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === "function") {
+          event.stopImmediatePropagation();
+        }
+      };
+      this.addListener(window, "click", onPageClick, { capture: true });
 
       const onPointerEnter = () => {
         this.pointerInside = true;
@@ -1689,9 +1702,19 @@
       this.root.style.top = rect.top + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
+      const captureTarget = event.currentTarget instanceof Element ? event.currentTarget : null;
+      if (captureTarget && typeof captureTarget.setPointerCapture === "function") {
+        try {
+          captureTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is a best-effort guard against resize releases clicking the video.
+        }
+      }
 
       this.resizeState = {
         corner: corner,
+        captureTarget: captureTarget,
+        pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         latestX: event.clientX,
@@ -1705,7 +1728,12 @@
 
       const onMove = (moveEvent) => this.handleResizeMove(moveEvent);
       let cleanupPointerListeners = null;
-      const onUp = () => {
+      const onUp = (upEvent) => {
+        this.suppressPageClickUntil = Date.now() + 350;
+        if (upEvent) {
+          upEvent.preventDefault();
+          upEvent.stopPropagation();
+        }
         if (cleanupPointerListeners) {
           cleanupPointerListeners();
         }
@@ -1786,6 +1814,15 @@
       const top = Number.parseInt(this.root.style.top || "0", 10);
       const width = Number.parseInt(this.root.style.width || "0", 10);
       const height = Number.parseInt(this.root.style.height || "0", 10);
+      const captureTarget = this.resizeState.captureTarget;
+      const pointerId = this.resizeState.pointerId;
+      if (captureTarget && typeof captureTarget.releasePointerCapture === "function") {
+        try {
+          captureTarget.releasePointerCapture(pointerId);
+        } catch {
+          // Capture may already be released by the browser.
+        }
+      }
       this.resizeState = null;
       this.updateSettings({
         panelPosition: this.localToPlayerPanelPosition(
