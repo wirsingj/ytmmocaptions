@@ -201,7 +201,7 @@
 
   async function load() {
     try {
-      await saveQueue.catch(() => {});
+      await flush();
       const data = await platform.storageGet(STORAGE_KEY);
       return fromStoredSettings(data ? data[STORAGE_KEY] : null);
     } catch (error) {
@@ -245,11 +245,16 @@
     return saveQueue;
   }
 
+  async function flush() {
+    return saveQueue.catch(() => {});
+  }
+
   app.settingsStore = {
     DEFAULTS,
     load,
     save,
     savePatch,
+    flush,
     normalizeSettings
   };
 })(window);

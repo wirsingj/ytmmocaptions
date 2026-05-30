@@ -552,6 +552,7 @@
         this.updateSettings({ panelOpacity: Number(this.opacityInput.value) });
       };
       this.addListener(this.opacityInput, "input", onOpacityInput);
+      this.addListener(this.opacityInput, "change", onOpacityInput);
 
       const onThemeChange = () => {
         this.updateSettings({ themeName: this.themeSelect.value || "stone" });
@@ -562,11 +563,13 @@
         this.updateSettings({ themeName: "custom", customThemeColor: this.themeColorInput.value || "#ded6c3" });
       };
       this.addListener(this.themeColorInput, "input", onThemeColorInput);
+      this.addListener(this.themeColorInput, "change", onThemeColorInput);
 
       const onTextScaleInput = () => {
         this.updateSettings({ textScale: Number(this.textScaleInput.value) });
       };
       this.addListener(this.textScaleInput, "input", onTextScaleInput);
+      this.addListener(this.textScaleInput, "change", onTextScaleInput);
 
       const onCenterFadeChange = () => {
         this.updateSettings({ fadeTowardVideoCenter: Boolean(this.centerFadeInput.checked) });

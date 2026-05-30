@@ -2878,6 +2878,12 @@
       const currentNonce = this.loadNonce;
 
       this.teardownApp();
+      if (settingsStore && typeof settingsStore.flush === "function") {
+        await settingsStore.flush();
+        if (this.destroyed || currentNonce !== this.loadNonce) {
+          return;
+        }
+      }
       const runningApp = new DialogueCaptionsApp(videoId);
       this.app = runningApp;
 

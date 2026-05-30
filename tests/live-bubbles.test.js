@@ -150,6 +150,13 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(initBody.includes("if (this.panel)"));
   });
 
+  await runCase("route changes wait for pending settings writes before reloading panel", () => {
+    const routeStart = source.indexOf("    async reconcileRoute()");
+    const routeBody = source.slice(routeStart, source.indexOf("    teardownApp()", routeStart));
+    assert.ok(routeBody.includes("settingsStore.flush"));
+    assert.ok(routeBody.indexOf("await settingsStore.flush()") < routeBody.indexOf("new DialogueCaptionsApp(videoId)"));
+  });
+
   await runCase("live capture avoids repeated expensive caption reads during steady playback", () => {
     assert.ok(source.includes("liveLastBackfillBucketIndex"));
     assert.ok(source.includes("nowMs - Number(this.liveLastBackfillAt || 0) < 900"));

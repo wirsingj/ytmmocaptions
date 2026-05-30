@@ -358,6 +358,21 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(loaded.customThemeColor, "#2255aa");
   });
 
+  await runCase("settings flush waits for pending extension storage writes", async () => {
+    const { store, releaseStorageSet } = makeStore(null, {
+      panelOpacity: 35
+    }, { deferStorageSet: true });
+
+    const savePromise = store.savePatch({ panelOpacity: 64 });
+    const flushPromise = store.flush();
+    await Promise.resolve();
+    releaseStorageSet();
+
+    await flushPromise;
+    const saved = await savePromise;
+    assert.equal(saved.panelOpacity, 64);
+  });
+
   await runCase("settings load migrates legacy preferences and drops transient video state", async () => {
     const { store } = makeStore(null, {
       panelClosed: false,
