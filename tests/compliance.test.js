@@ -337,6 +337,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!css.includes(".dc-chunk-seek-icon"));
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes(".dc-future-section"));
+    assert.ok(css.includes("justify-content: flex-end"));
     assert.ok(css.includes("height: var(--dc-future-preview-height"));
     assert.ok(css.includes("display: block;"));
     assert.ok(css.includes("grid-template-columns: auto minmax(0, 1fr)"));

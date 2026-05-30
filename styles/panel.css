@@ -645,7 +645,10 @@
 }
 
 .dc-list-content {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 100%;
 }
 
 .dc-footer {

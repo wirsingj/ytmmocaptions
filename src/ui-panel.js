@@ -2184,7 +2184,7 @@
         this.topSpacer.style.height = "0px";
         this.bottomSpacer.style.height = "0px";
         this.windowContainer.replaceChildren();
-        this.currentFutureKey = "";
+        this.replaceFutureSection(0, 0);
         return;
       }
 
@@ -2208,12 +2208,7 @@
       if (canAppendSingleChunk) {
         const chunk = this.chunks[end];
         const nextButton = this.createChunkButton(chunk, end, false);
-        const futureSection = this.windowContainer.querySelector(".dc-future-section");
-        if (futureSection) {
-          this.windowContainer.insertBefore(nextButton, futureSection);
-        } else {
-          this.windowContainer.append(nextButton);
-        }
+        this.windowContainer.append(nextButton);
         this.currentWindowEnd = end;
         this.replaceFutureSection(futureCount, chunkCount);
         this.updateActiveClass();
@@ -2242,11 +2237,8 @@
         fragment.append(this.createChunkButton(chunk, index, false));
       }
 
-      if (futureCount) {
-        fragment.append(this.createFutureSection(futureCount, chunkCount));
-      }
-
       this.windowContainer.replaceChildren(fragment);
+      this.replaceFutureSection(futureCount, chunkCount);
     }
 
     getFutureRenderKey() {
@@ -2284,12 +2276,18 @@
       if (!this.windowContainer) {
         return;
       }
-      const existing = this.windowContainer.querySelector(".dc-future-section");
+      const parent = this.windowContainer.parentElement || this.windowContainer;
+      const existing = parent.querySelector(".dc-future-section");
       if (existing) {
         existing.remove();
       }
       if (futureCount) {
-        this.windowContainer.append(this.createFutureSection(futureCount, chunkCount));
+        const nextSection = this.createFutureSection(futureCount, chunkCount);
+        if (this.bottomSpacer && this.bottomSpacer.parentElement === parent) {
+          parent.insertBefore(nextSection, this.bottomSpacer);
+        } else {
+          parent.append(nextSection);
+        }
       }
       this.currentFutureCount = futureCount;
       this.currentFutureCollapsed = this.futureCollapsed;
