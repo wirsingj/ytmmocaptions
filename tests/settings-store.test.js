@@ -82,7 +82,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.textScale, 120);
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");
-    assert.equal(result.futurePreviewHeight, 150);
+    assert.equal(result.futurePreviewHeight, 96);
     assert.equal(result.futurePreviewEnabled, true);
     assert.equal(result.fadeTowardVideoCenter, true);
     assert.equal(result.videoCenterFadeStrength, 84);

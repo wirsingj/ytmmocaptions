@@ -20,6 +20,9 @@
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
   const LAUNCHER_CONTROL_BAR_GAP = 54;
+  const DEFAULT_FUTURE_PREVIEW_HEIGHT = 96;
+  const MIN_FUTURE_PREVIEW_HEIGHT = 52;
+  const MAX_FUTURE_PREVIEW_HEIGHT = 360;
   // Timeline mode is intentionally shipped dormant until it gets a focused UX pass.
   const TIMELINE_MODE_EXPERIMENT_ENABLED = false;
   const THEME_PRESETS = Object.freeze({
@@ -134,6 +137,7 @@
       this.currentFutureKey = "";
       this.dragState = null;
       this.resizeState = null;
+      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.launcherSuppressClickUntil = 0;
       this.resizeHandles = [];
@@ -327,8 +331,8 @@
       this.jumpBottomButton = document.createElement("button");
       this.jumpBottomButton.type = "button";
       this.jumpBottomButton.className = "dc-jump-bottom is-hidden";
-      this.jumpBottomButton.textContent = "Jump to Latest";
-      this.jumpBottomButton.title = "Scroll to newest dialogue";
+      this.jumpBottomButton.textContent = "Jump to Current";
+      this.jumpBottomButton.title = "Scroll to the current caption";
       footer.append(futurePreviewWrap, this.jumpBottomButton);
 
       this.body.append(this.statusEl, this.listViewport, footer);
@@ -460,6 +464,7 @@
       }
       this.dragState = null;
       this.resizeState = null;
+      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.cancelResizeFrames();
     }
@@ -536,6 +541,14 @@
       };
       this.addListener(this.futurePreviewInput, "change", onFuturePreviewChange);
 
+      const onListPointerDown = (event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest(".dc-future-divider")) {
+          this.handleFutureDividerPointerDown(event);
+        }
+      };
+      this.addListener(this.listViewport, "pointerdown", onListPointerDown);
+
       const onTimelineToggle = () => {
         if (!this.timelineFeatureEnabled) {
           return;
@@ -592,11 +605,7 @@
       this.addListener(this.timelineTrack, "pointerleave", onTimelineLeave);
 
       const onJumpBottom = () => {
-        if (this.chunks.length > 0) {
-          const latestIndex = this.chunks.length - 1;
-          this.activeIndex = latestIndex;
-        }
-        this.scrollToBottom();
+        this.scrollToCurrentCaption();
         this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
@@ -1003,7 +1012,7 @@
         customThemeColor: defaults.customThemeColor || "#ded6c3",
         panelPosition: null,
         panelSize: null,
-        futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : 150,
+        futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : DEFAULT_FUTURE_PREVIEW_HEIGHT,
         futurePreviewEnabled: defaults.futurePreviewEnabled !== false,
         fadeTowardVideoCenter: defaults.fadeTowardVideoCenter !== false,
         videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 84,
@@ -1020,11 +1029,25 @@
         return;
       }
       const savedHeight = Number(this.settings.futurePreviewHeight);
-      const defaultHeight = settingsStore && settingsStore.DEFAULTS ? Number(settingsStore.DEFAULTS.futurePreviewHeight) : 150;
-      const panelHeight = this.root.getBoundingClientRect().height || 0;
-      const maxByPanel = panelHeight ? Math.max(78, Math.min(360, Math.round(panelHeight * 0.46))) : 360;
-      const nextHeight = Math.max(52, Math.min(maxByPanel, Number.isFinite(savedHeight) ? savedHeight : defaultHeight || 150));
+      const defaultHeight = settingsStore && settingsStore.DEFAULTS
+        ? Number(settingsStore.DEFAULTS.futurePreviewHeight)
+        : DEFAULT_FUTURE_PREVIEW_HEIGHT;
+      const maxByPanel = this.getMaxFuturePreviewHeight();
+      const nextHeight = Math.max(
+        MIN_FUTURE_PREVIEW_HEIGHT,
+        Math.min(maxByPanel, Number.isFinite(savedHeight) ? savedHeight : defaultHeight || DEFAULT_FUTURE_PREVIEW_HEIGHT)
+      );
       this.root.style.setProperty("--dc-future-preview-height", Math.round(nextHeight) + "px");
+    }
+
+    getMaxFuturePreviewHeight() {
+      if (!this.root) {
+        return MAX_FUTURE_PREVIEW_HEIGHT;
+      }
+      const panelHeight = this.root.getBoundingClientRect().height || 0;
+      return panelHeight
+        ? Math.max(MIN_FUTURE_PREVIEW_HEIGHT, Math.min(MAX_FUTURE_PREVIEW_HEIGHT, Math.round(panelHeight * 0.46)))
+        : MAX_FUTURE_PREVIEW_HEIGHT;
     }
 
     getYouTubeFrameRect() {
@@ -1563,6 +1586,67 @@
       });
     }
 
+    handleFutureDividerPointerDown(event) {
+      if (!this.root) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      const section = target ? target.closest(".dc-future-section") : null;
+      if (!(section instanceof Element)) {
+        return;
+      }
+      const currentHeight =
+        section.getBoundingClientRect().height ||
+        Number(this.settings.futurePreviewHeight) ||
+        DEFAULT_FUTURE_PREVIEW_HEIGHT;
+      this.futureDividerDragState = {
+        startY: event.clientY,
+        startHeight: currentHeight,
+        latestHeight: currentHeight
+      };
+
+      const onMove = (moveEvent) => this.handleFutureDividerMove(moveEvent);
+      let cleanupPointerListeners = null;
+      const onUp = () => {
+        if (cleanupPointerListeners) {
+          cleanupPointerListeners();
+        }
+        this.finishFutureDividerDrag();
+      };
+      cleanupPointerListeners = this.trackActivePointerListeners(() => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      });
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    handleFutureDividerMove(event) {
+      if (!this.root || !this.futureDividerDragState) {
+        return;
+      }
+      const deltaY = event.clientY - this.futureDividerDragState.startY;
+      const maxHeight = this.getMaxFuturePreviewHeight();
+      const nextHeight = Math.max(
+        MIN_FUTURE_PREVIEW_HEIGHT,
+        Math.min(maxHeight, this.futureDividerDragState.startHeight - deltaY)
+      );
+      this.futureDividerDragState.latestHeight = nextHeight;
+      this.root.style.setProperty("--dc-future-preview-height", Math.round(nextHeight) + "px");
+    }
+
+    finishFutureDividerDrag() {
+      if (!this.futureDividerDragState) {
+        return;
+      }
+      const nextHeight = Math.round(this.futureDividerDragState.latestHeight);
+      this.futureDividerDragState = null;
+      this.updateSettings({ futurePreviewHeight: nextHeight });
+    }
+
     handleResizePointerDown(event, corner) {
       if (!this.root) {
         return;
@@ -1958,6 +2042,61 @@
       return distance <= BOTTOM_PROXIMITY_PX * factor;
     }
 
+    getCurrentCaptionIndex() {
+      if (!Array.isArray(this.chunks) || !this.chunks.length) {
+        return -1;
+      }
+      if (Number.isInteger(this.activeIndex) && this.activeIndex >= 0 && this.activeIndex < this.chunks.length) {
+        return this.activeIndex;
+      }
+      const time = Number(this.playbackTime);
+      if (!Number.isFinite(time)) {
+        return -1;
+      }
+      let nearestPrevious = -1;
+      for (let index = 0; index < this.chunks.length; index += 1) {
+        const chunk = this.chunks[index];
+        const start = Number(chunk && chunk.start);
+        const end = Number(chunk && chunk.end);
+        if (!Number.isFinite(start)) {
+          continue;
+        }
+        if (start <= time) {
+          nearestPrevious = index;
+        }
+        if (start <= time && (!Number.isFinite(end) || time <= end + 0.35)) {
+          return index;
+        }
+        if (start > time) {
+          break;
+        }
+      }
+      return nearestPrevious;
+    }
+
+    scrollToCurrentCaption() {
+      const index = this.getCurrentCaptionIndex();
+      if (index < 0) {
+        return;
+      }
+      this.ensureIndexVisible(index);
+    }
+
+    isIndexVisible(index) {
+      if (!this.listViewport || !this.windowContainer || index < 0) {
+        return false;
+      }
+      const item = this.windowContainer.querySelector("[data-index='" + index + "']");
+      if (!item) {
+        return false;
+      }
+      const rowTop = item.offsetTop;
+      const rowBottom = rowTop + item.offsetHeight;
+      const viewTop = this.listViewport.scrollTop;
+      const viewBottom = viewTop + (this.listViewport.clientHeight || 1);
+      return rowTop >= viewTop && rowBottom <= viewBottom;
+    }
+
     scrollToBottom() {
       if (!this.listViewport) {
         return;
@@ -2004,8 +2143,11 @@
         return;
       }
       const isClosed = this.root.style.display === "none";
+      const currentIndex = this.getCurrentCaptionIndex();
       const shouldShow =
-        !isClosed && this.chunks.length > 0 && !this.isNearBottom(1.4);
+        !isClosed &&
+        this.chunks.length > 0 &&
+        (currentIndex >= 0 ? !this.isIndexVisible(currentIndex) : !this.isNearBottom(1.4));
       this.jumpBottomButton.classList.toggle("is-hidden", !shouldShow);
     }
 

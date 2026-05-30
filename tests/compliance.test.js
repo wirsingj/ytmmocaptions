@@ -315,18 +315,19 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("trackActivePointerListeners"));
     assert.ok(panelSource.includes("this.dragState = null;"));
     assert.ok(panelSource.includes("this.resizeState = null;"));
+    assert.ok(panelSource.includes("this.futureDividerDragState = null;"));
     assert.ok(panelSource.includes("this.launcherDragState = null;"));
   });
 
-  await runCase("future preview UI uses a static divider and visually ghosted rows", () => {
+  await runCase("future preview UI uses a movable divider and visually ghosted rows", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("dc-future-divider"));
     assert.ok(panelSource.includes("dc-future-section"));
     assert.ok(panelSource.includes("futurePreviewEnabled"));
     assert.ok(panelSource.includes("dc-future-toggle-input"));
-    assert.ok(!panelSource.includes("handleFutureDividerPointerDown"));
-    assert.ok(!panelSource.includes("futureDividerDragState"));
+    assert.ok(panelSource.includes("handleFutureDividerPointerDown"));
+    assert.ok(panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
     assert.ok(panelSource.includes('role", "separator"'));
     assert.ok(!panelSource.includes('divider.textContent = "Next up"'));
@@ -336,14 +337,14 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!css.includes(".dc-chunk-seek-icon"));
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes(".dc-future-section"));
-    assert.ok(css.includes("max-height: min(var(--dc-future-preview-height"));
+    assert.ok(css.includes("height: var(--dc-future-preview-height"));
     assert.ok(css.includes("display: block;"));
     assert.ok(css.includes("grid-template-columns: auto minmax(0, 1fr)"));
     assert.ok(css.includes("border-style: solid"));
     assert.ok(css.includes("text-overflow: ellipsis"));
     assert.ok(css.includes("white-space: nowrap"));
-    assert.ok(css.includes("cursor: default"));
-    assert.ok(css.includes("pointer-events: none"));
+    assert.ok(css.includes("cursor: ns-resize"));
+    assert.ok(css.includes("touch-action: none"));
   });
 
   await runCase("reading glow cannot persist without an active timing range", () => {

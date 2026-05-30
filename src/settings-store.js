@@ -12,7 +12,7 @@
     customThemeColor: "#ded6c3",
     panelPosition: null,
     panelSize: null,
-    futurePreviewHeight: 150,
+    futurePreviewHeight: 96,
     futurePreviewEnabled: true,
     fadeTowardVideoCenter: true,
     videoCenterFadeStrength: 84,
