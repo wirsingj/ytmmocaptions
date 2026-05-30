@@ -482,6 +482,8 @@ exports.run = async function runComplianceTests(ctx) {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("isAnchorUsablyVisible()"));
     assert.ok(panelSource.includes("is-anchor-offscreen"));
+    assert.ok(panelSource.includes("getVisibleYouTubeFrameRect()"));
+    assert.ok(panelSource.includes("visibleHeight >= panelHeight + DEFAULT_PANEL_MARGIN * 2"));
     assert.ok(panelSource.includes("right: 0,"));
     assert.ok(panelSource.includes("bottom: 0"));
     assert.ok(css.includes(".dc-panel.is-anchor-offscreen"));

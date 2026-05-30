@@ -1036,10 +1036,20 @@
     }
 
     isAnchorUsablyVisible() {
-      const frame = this.getYouTubeFrameRect();
+      const frame = this.getVisibleYouTubeFrameRect();
       const width = frame.right - frame.left;
       const height = frame.bottom - frame.top;
-      return width >= 80 && height >= 56 && frame.bottom > 0 && frame.top < window.innerHeight;
+      return width >= 80 && height >= 56;
+    }
+
+    getVisibleYouTubeFrameRect() {
+      const frame = this.getYouTubeFrameRect();
+      return {
+        left: Math.max(0, frame.left),
+        top: Math.max(0, frame.top),
+        right: Math.min(window.innerWidth, frame.right),
+        bottom: Math.min(window.innerHeight, frame.bottom)
+      };
     }
 
     clampPositionToRect(left, top, width, height, bounds, margin) {
@@ -1065,11 +1075,18 @@
     }
 
     getPanelFrameRect() {
-      return this.getYouTubeFrameRect();
+      return this.getVisibleYouTubeFrameRect();
     }
 
     refreshAnchorLayout() {
-      const anchorVisible = this.isAnchorUsablyVisible();
+      const frame = this.getPanelFrameRect();
+      const visibleWidth = frame.right - frame.left;
+      const visibleHeight = frame.bottom - frame.top;
+      const panelWidth = this.root ? this.root.offsetWidth || MIN_PANEL_WIDTH : MIN_PANEL_WIDTH;
+      const panelHeight = this.root ? this.root.offsetHeight || MIN_PANEL_HEIGHT : MIN_PANEL_HEIGHT;
+      const anchorVisible = this.isAnchorUsablyVisible() &&
+        visibleWidth >= panelWidth + DEFAULT_PANEL_MARGIN * 2 &&
+        visibleHeight >= panelHeight + DEFAULT_PANEL_MARGIN * 2;
       if (this.root) {
         this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
       }
