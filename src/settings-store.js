@@ -59,10 +59,14 @@
     if (!Number.isFinite(left) || !Number.isFinite(top)) {
       return null;
     }
-    return {
+    const normalized = {
       left: Math.max(0, Math.round(left)),
       top: Math.max(0, Math.round(top))
     };
+    if (value.anchor === "player") {
+      normalized.anchor = "player";
+    }
+    return normalized;
   }
 
   function normalizePanelSize(value) {

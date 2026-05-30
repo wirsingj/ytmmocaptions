@@ -51,7 +51,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
   await runCase("settings normalization sanitizes position objects", () => {
     const { normalize } = makeStore();
     const result = normalize({
-      panelPosition: { left: -50, top: 20.4 },
+      panelPosition: { anchor: "player", left: -50, top: 20.4 },
       panelSize: { width: 200, height: 150 },
       futurePreviewHeight: 999,
       futurePreviewEnabled: false,
@@ -62,7 +62,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       timelineModeEnabled: true,
       launcherPosition: { left: 12.6, top: -3 }
     });
-    assert.deepEqual(result.panelPosition, { left: 0, top: 20 });
+    assert.deepEqual(result.panelPosition, { anchor: "player", left: 0, top: 20 });
     assert.deepEqual(result.panelSize, { width: 280, height: 220 });
     assert.equal(result.futurePreviewHeight, 360);
     assert.equal(result.futurePreviewEnabled, false);

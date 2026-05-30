@@ -728,10 +728,7 @@
       }
 
       if (this.persistLayout && this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
-        this.root.style.left = this.settings.panelPosition.left + "px";
-        this.root.style.top = this.settings.panelPosition.top + "px";
-        this.root.style.right = "auto";
-        this.root.style.bottom = "auto";
+        this.applySavedPanelPosition();
       } else if (defaultPanelRect) {
         this.root.style.left = defaultPanelRect.left + "px";
         this.root.style.top = defaultPanelRect.top + "px";
@@ -770,9 +767,9 @@
       setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.98);
       setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84);
       setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.98);
-      setAlpha("--dc-panel-fade-light", 0.002 + eased * 0.018);
-      setAlpha("--dc-panel-fade-shadow", 0.014 + eased * 0.18);
-      setAlpha("--dc-panel-fade-shadow-soft", (0.014 + eased * 0.18) * 0.56);
+      setAlpha("--dc-panel-fade-light", 0);
+      setAlpha("--dc-panel-fade-shadow", 0);
+      setAlpha("--dc-panel-fade-shadow-soft", 0);
       setAlpha("--dc-card-alpha", 0.2 + eased * 0.8);
       setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.74);
       this.root.style.opacity = "1";
@@ -927,18 +924,15 @@
       this.root.style.setProperty("--dc-fade-x", fadeX.toFixed(1) + "%");
       this.root.style.setProperty("--dc-fade-y", fadeY.toFixed(1) + "%");
       const enabled = this.settings.fadeTowardVideoCenter !== false;
-      const strength = enabled ? Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100 : 0;
-      const midpoint = Math.max(20, Math.min(80, Number(this.settings.videoCenterFadeMidpoint || 50)));
-      const minimum = Math.max(0.08, Math.min(0.7, Number(this.settings.videoCenterFadeMinOpacity || 12) / 100));
+      const strength = Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100;
       const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 55)));
       const opacityBlend = (opacityPercent - 10) / 90;
-      const opacitySolidityFloor = 0.08 + opacityBlend * 0.77;
-      const fadeAlpha = minimum + (1 - minimum) * (1 - strength);
-      const centerAlpha = enabled ? Math.max(fadeAlpha, opacitySolidityFloor) : 1;
-      const midAlpha = enabled ? Math.min(1, centerAlpha + (1 - centerAlpha) * 0.38) : 1;
+      const centerAlpha = enabled ? Math.min(1, 0.5 + opacityBlend * 0.35 + (1 - strength) * 0.1) : 1;
+      const midAlpha = enabled ? centerAlpha + (1 - centerAlpha) * 0.56 : 1;
       this.root.style.setProperty("--dc-center-mask-alpha", centerAlpha.toFixed(3));
       this.root.style.setProperty("--dc-center-mask-mid-alpha", midAlpha.toFixed(3));
-      this.root.style.setProperty("--dc-center-mask-midpoint", midpoint.toFixed(0) + "%");
+      this.root.style.setProperty("--dc-edge-mask-alpha", "1");
+      this.root.style.setProperty("--dc-center-mask-midpoint", "50%");
     }
 
     getDefaultPanelRect() {
@@ -1010,10 +1004,10 @@
         const anchorRect = this.anchorElement.getBoundingClientRect();
         if (anchorRect.width >= 160 && anchorRect.height >= 90) {
           return {
-            left: Math.max(0, anchorRect.left),
-            top: Math.max(0, anchorRect.top),
-            right: Math.min(window.innerWidth, anchorRect.right),
-            bottom: Math.min(window.innerHeight, anchorRect.bottom)
+            left: anchorRect.left,
+            top: anchorRect.top,
+            right: anchorRect.right,
+            bottom: anchorRect.bottom
           };
         }
       }
@@ -1026,10 +1020,10 @@
         const rect = element.getBoundingClientRect();
         if (rect.width >= 160 && rect.height >= 90) {
           return {
-            left: Math.max(0, rect.left),
-            top: Math.max(0, rect.top),
-            right: Math.min(window.innerWidth, rect.right),
-            bottom: Math.min(window.innerHeight, rect.bottom)
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom
           };
         }
       }
@@ -1115,6 +1109,42 @@
 
     clampPanelPosition(left, top, width, height) {
       return this.clampPositionToRect(left, top, width, height, this.getPanelFrameRect(), DEFAULT_PANEL_MARGIN);
+    }
+
+    panelPositionToViewport(width, height) {
+      if (!this.settings.panelPosition) {
+        return null;
+      }
+      const position = this.settings.panelPosition;
+      const frame = this.getPanelFrameRect();
+      const sourceLeft = position.anchor === "player" ? frame.left + Number(position.left) : Number(position.left);
+      const sourceTop = position.anchor === "player" ? frame.top + Number(position.top) : Number(position.top);
+      return this.clampPanelPosition(sourceLeft, sourceTop, width, height);
+    }
+
+    viewportToPlayerPanelPosition(left, top, width, height) {
+      const frame = this.getPanelFrameRect();
+      const clamped = this.clampPanelPosition(left, top, width, height);
+      return {
+        anchor: "player",
+        left: Math.max(0, Math.round(clamped.left - frame.left)),
+        top: Math.max(0, Math.round(clamped.top - frame.top))
+      };
+    }
+
+    applySavedPanelPosition() {
+      if (!this.root || !this.settings.panelPosition) {
+        return;
+      }
+      const rect = this.root.getBoundingClientRect();
+      const positioned = this.panelPositionToViewport(rect.width, rect.height);
+      if (!positioned) {
+        return;
+      }
+      this.root.style.left = positioned.left + "px";
+      this.root.style.top = positioned.top + "px";
+      this.root.style.right = "auto";
+      this.root.style.bottom = "auto";
     }
 
     clampLauncherPosition(left, top, width, height) {
@@ -1363,24 +1393,24 @@
         return;
       }
       const rect = this.root.getBoundingClientRect();
-      const clamped = this.clampPanelPosition(
-        this.settings.panelPosition.left,
-        this.settings.panelPosition.top,
-        rect.width,
-        rect.height
-      );
+      const clamped = this.panelPositionToViewport(rect.width, rect.height);
+      if (!clamped) {
+        return;
+      }
       this.root.style.left = clamped.left + "px";
       this.root.style.top = clamped.top + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
+      const nextPosition = this.viewportToPlayerPanelPosition(clamped.left, clamped.top, rect.width, rect.height);
 
       const changed =
-        clamped.left !== Number(this.settings.panelPosition.left) ||
-        clamped.top !== Number(this.settings.panelPosition.top);
+        this.settings.panelPosition.anchor !== "player" ||
+        nextPosition.left !== Number(this.settings.panelPosition.left) ||
+        nextPosition.top !== Number(this.settings.panelPosition.top);
       if (changed) {
         this.settings = {
           ...this.settings,
-          panelPosition: { left: clamped.left, top: clamped.top }
+          panelPosition: nextPosition
         };
         if (typeof this.options.onSettingsChange === "function") {
           this.options.onSettingsChange(this.settings, { panelPosition: this.settings.panelPosition });
@@ -1454,12 +1484,16 @@
       }
       const left = Number.parseInt(this.root.style.left || "0", 10);
       const top = Number.parseInt(this.root.style.top || "0", 10);
+      const width = this.root.offsetWidth || 360;
+      const height = this.root.offsetHeight || 320;
       this.dragState = null;
       this.updateSettings({
-        panelPosition: {
-          left: Number.isFinite(left) ? left : 0,
-          top: Number.isFinite(top) ? top : 0
-        }
+        panelPosition: this.viewportToPlayerPanelPosition(
+          Number.isFinite(left) ? left : 0,
+          Number.isFinite(top) ? top : 0,
+          width,
+          height
+        )
       });
     }
 
@@ -1575,10 +1609,12 @@
       const height = Number.parseInt(this.root.style.height || "0", 10);
       this.resizeState = null;
       this.updateSettings({
-        panelPosition: {
-          left: Number.isFinite(left) ? left : 0,
-          top: Number.isFinite(top) ? top : 0
-        },
+        panelPosition: this.viewportToPlayerPanelPosition(
+          Number.isFinite(left) ? left : 0,
+          Number.isFinite(top) ? top : 0,
+          Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
+          Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
+        ),
         panelSize: {
           width: Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
           height: Number.isFinite(height) ? height : MIN_PANEL_HEIGHT

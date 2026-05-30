@@ -24,11 +24,12 @@
   --dc-panel-alpha-mid: 0.3;
   --dc-panel-alpha-outer: 0.82;
   --dc-panel-alpha-base: 0.22;
-  --dc-panel-fade-light: 0.018;
-  --dc-panel-fade-shadow: 0.24;
-  --dc-panel-fade-shadow-soft: 0.15;
-  --dc-center-mask-alpha: 0.22;
-  --dc-center-mask-mid-alpha: 0.52;
+  --dc-panel-fade-light: 0;
+  --dc-panel-fade-shadow: 0;
+  --dc-panel-fade-shadow-soft: 0;
+  --dc-center-mask-alpha: 0.68;
+  --dc-center-mask-mid-alpha: 0.86;
+  --dc-edge-mask-alpha: 1;
   --dc-center-mask-midpoint: 50%;
   --dc-card-alpha: 0.62;
   --dc-card-current-alpha: 0.7;
@@ -43,22 +44,15 @@
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   border: 1px solid var(--dc-border);
   border-radius: 14px;
-  background:
-    radial-gradient(
-      ellipse at var(--dc-fade-x) var(--dc-fade-y),
-      rgba(var(--dc-panel-rgb), var(--dc-panel-alpha-inner)) 0%,
-      rgba(var(--dc-card-rgb), var(--dc-panel-alpha-mid)) 48%,
-      rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-outer)) 100%
-    ),
-    rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-base));
+  background: rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-base));
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   isolation: isolate;
-  -webkit-mask-image: radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-alpha)) 28%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) 72%, #000 100%);
-  mask-image: radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-alpha)) 28%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) 72%, #000 100%);
+  -webkit-mask-image: radial-gradient(ellipse 128% 112% at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-alpha)) 24%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) 62%, rgba(0, 0, 0, var(--dc-edge-mask-alpha)) 100%);
+  mask-image: radial-gradient(ellipse 128% 112% at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-alpha)) 24%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) 62%, rgba(0, 0, 0, var(--dc-edge-mask-alpha)) 100%);
 }
 
 .dc-panel.is-anchor-offscreen,
@@ -126,9 +120,7 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(var(--dc-accent-rgb), var(--dc-panel-fade-light)), transparent 58%),
-    radial-gradient(ellipse at calc(100% - var(--dc-fade-x)) calc(100% - var(--dc-fade-y)), rgba(0, 0, 0, var(--dc-panel-fade-shadow)), transparent 62%);
+  background: radial-gradient(ellipse 128% 112% at var(--dc-fade-x) var(--dc-fade-y), rgba(var(--dc-panel-rgb), var(--dc-panel-fade-shadow-soft)), transparent 72%);
 }
 
 .dc-panel::after {
@@ -137,11 +129,9 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(var(--dc-accent-rgb), var(--dc-panel-fade-light)), transparent 50%),
-    radial-gradient(ellipse at calc(100% - var(--dc-fade-x)) calc(100% - var(--dc-fade-y)), rgba(0, 0, 0, var(--dc-panel-fade-shadow-soft)), transparent 58%);
+  background: radial-gradient(ellipse 128% 112% at var(--dc-fade-x) var(--dc-fade-y), rgba(var(--dc-accent-rgb), var(--dc-panel-fade-light)), transparent 76%);
   mix-blend-mode: screen;
-  opacity: 0.95;
+  opacity: 0.64;
 }
 
 .dc-panel:focus {
