@@ -335,6 +335,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes(".dc-future-section"));
     assert.ok(css.includes("max-height: min(var(--dc-future-preview-height"));
+    assert.ok(css.includes("display: block;"));
+    assert.ok(css.includes("grid-template-columns: auto minmax(0, 1fr)"));
     assert.ok(css.includes("border-style: solid"));
     assert.ok(css.includes("text-overflow: ellipsis"));
     assert.ok(css.includes("white-space: nowrap"));

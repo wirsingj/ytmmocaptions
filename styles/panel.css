@@ -728,8 +728,7 @@
   min-height: 0;
   padding: 4px 7px;
   flex: 0 0 auto;
-  grid-template-columns: 0 minmax(0, 1fr);
-  column-gap: 0;
+  display: block;
   border-style: solid;
   border-color: rgba(var(--dc-muted-rgb), 0.13);
   background:
