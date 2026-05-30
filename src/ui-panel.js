@@ -927,8 +927,8 @@
       const strength = Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100;
       const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 55)));
       const opacityBlend = (opacityPercent - 10) / 90;
-      const centerAlpha = enabled ? Math.min(1, 0.5 + opacityBlend * 0.35 + (1 - strength) * 0.1) : 1;
-      const midAlpha = enabled ? centerAlpha + (1 - centerAlpha) * 0.56 : 1;
+      const centerAlpha = enabled ? Math.min(0.86, 0.36 + opacityBlend * 0.38 + (1 - strength) * 0.08) : 1;
+      const midAlpha = enabled ? centerAlpha + (1 - centerAlpha) * 0.46 : 1;
       this.root.style.setProperty("--dc-center-mask-alpha", centerAlpha.toFixed(3));
       this.root.style.setProperty("--dc-center-mask-mid-alpha", midAlpha.toFixed(3));
       this.root.style.setProperty("--dc-edge-mask-alpha", "1");
