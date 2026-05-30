@@ -4,6 +4,7 @@
 
   const STORAGE_KEY = "dialogueCaptions.settings.v1";
   const SCHEMA_VERSION = 1;
+  let saveQueue = Promise.resolve();
   const DEFAULTS = Object.freeze({
     schemaVersion: SCHEMA_VERSION,
     panelOpacity: 55,
@@ -165,18 +166,43 @@
 
   async function save(nextSettings) {
     const normalized = normalizeSettings(nextSettings);
-    try {
-      await platform.storageSet({ [STORAGE_KEY]: normalized });
-    } catch (error) {
-      console.warn("[Dialogue Captions] Failed to save settings to extension storage.", error);
-    }
-    return normalized;
+    saveQueue = saveQueue
+      .catch(() => {})
+      .then(async () => {
+        try {
+          await platform.storageSet({ [STORAGE_KEY]: normalized });
+        } catch (error) {
+          console.warn("[Dialogue Captions] Failed to save settings to extension storage.", error);
+        }
+        return normalized;
+      });
+    return saveQueue;
+  }
+
+  async function savePatch(patch) {
+    const source = patch && typeof patch === "object" ? patch : {};
+    saveQueue = saveQueue
+      .catch(() => {})
+      .then(async () => {
+        try {
+          const data = await platform.storageGet(STORAGE_KEY);
+          const current = normalizeSettings(data ? data[STORAGE_KEY] : null);
+          const normalized = normalizeSettings({ ...current, ...source });
+          await platform.storageSet({ [STORAGE_KEY]: normalized });
+          return normalized;
+        } catch (error) {
+          console.warn("[Dialogue Captions] Failed to patch settings in extension storage.", error);
+          return normalizeSettings(source);
+        }
+      });
+    return saveQueue;
   }
 
   app.settingsStore = {
     DEFAULTS,
     load,
     save,
+    savePatch,
     normalizeSettings
   };
 })(window);

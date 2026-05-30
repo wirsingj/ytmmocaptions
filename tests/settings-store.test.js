@@ -3,14 +3,18 @@ exports.run = async function runSettingsStoreTests(ctx) {
 
   function makeStore(overrides, storedSettings) {
     const saved = {};
+    let currentStored = storedSettings || null;
     const platform = {
       async storageGet() {
-        return storedSettings
-          ? { "dialogueCaptions.settings.v1": storedSettings }
+        return currentStored
+          ? { "dialogueCaptions.settings.v1": currentStored }
           : {};
       },
       async storageSet(values) {
         Object.assign(saved, values);
+        if (values && values["dialogueCaptions.settings.v1"]) {
+          currentStored = values["dialogueCaptions.settings.v1"];
+        }
       }
     };
     const module = loadModule("settings-store.js", {
@@ -149,6 +153,28 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "keyboardStepSeconds"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "autoScroll"), false);
     assert.ok(saved["dialogueCaptions.settings.v1"]);
+  });
+
+  await runCase("settings patch save preserves local preferences across layout updates", async () => {
+    const { store, saved } = makeStore(null, {
+      panelOpacity: 42,
+      textScale: 120,
+      themeName: "custom",
+      customThemeColor: "#44aa99",
+      panelPosition: { anchor: "player", left: 14, top: 22 }
+    });
+    const afterOpacity = await store.savePatch({ panelOpacity: 88 });
+    assert.equal(afterOpacity.panelOpacity, 88);
+    assert.equal(afterOpacity.themeName, "custom");
+    assert.equal(afterOpacity.customThemeColor, "#44aa99");
+
+    const afterLayout = await store.savePatch({ panelPosition: { anchor: "player", left: 120, top: 34 } });
+    assert.equal(afterLayout.panelOpacity, 88);
+    assert.equal(afterLayout.themeName, "custom");
+    assert.equal(afterLayout.customThemeColor, "#44aa99");
+    assert.deepEqual(afterLayout.panelPosition, { anchor: "player", left: 120, top: 34 });
+    assert.equal(saved["dialogueCaptions.settings.v1"].panelOpacity, 88);
+    assert.equal(saved["dialogueCaptions.settings.v1"].customThemeColor, "#44aa99");
   });
 
   await runCase("settings load migrates legacy preferences and drops transient video state", async () => {

@@ -2383,7 +2383,7 @@
 
     onSettingsChanged(nextSettings, patch) {
       const wasClosed = Boolean(this.settings.panelClosed);
-      this.persistSettings(nextSettings, true);
+      this.persistSettings(nextSettings, patch);
       const isClosed = Boolean(this.settings.panelClosed);
       const changedPanelClosed =
         patch && Object.prototype.hasOwnProperty.call(patch, "panelClosed") && wasClosed !== isClosed;
@@ -2406,10 +2406,18 @@
       }
     }
 
-    persistSettings(nextSettings, alreadyNormalized) {
-      this.settings = alreadyNormalized
-        ? settingsStore.normalizeSettings(nextSettings)
-        : settingsStore.normalizeSettings({ ...this.settings, ...nextSettings });
+    persistSettings(nextSettings, patch) {
+      const patchSource = patch && typeof patch === "object" ? patch : nextSettings;
+      this.settings = settingsStore.normalizeSettings(nextSettings);
+      if (settingsStore && typeof settingsStore.savePatch === "function") {
+        settingsStore.savePatch(patchSource).then((persisted) => {
+          this.settings = settingsStore.normalizeSettings({ ...persisted, ...this.settings });
+          if (this.panel && this.panel.settings !== this.settings) {
+            this.panel.settings = this.settings;
+          }
+        });
+        return;
+      }
       settingsStore.save(this.settings);
     }
 
