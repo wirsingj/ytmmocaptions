@@ -393,10 +393,13 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(panelSource.includes("dc-color-popover"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
+    assert.ok(panelSource.includes("document.body.append(this.colorPickerPopover)"));
     assert.ok(!panelSource.includes('type = "color"'));
     assert.ok(panelSource.includes("getPersistenceSnapshot()"));
     assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
     assert.ok(!css.includes("::-webkit-color-swatch"));
+    assert.ok(css.includes("position: fixed;"));
+    assert.ok(css.includes("z-index: 2147483646"));
     assert.ok(css.includes(".dc-color-wheel"));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });

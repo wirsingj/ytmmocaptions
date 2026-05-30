@@ -8,6 +8,7 @@
 
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
+  const COLOR_PICKER_ID = "dc-color-picker";
   const ACTIVE_PAGE_CLASS = "dc-panel-open";
   const BOTTOM_PROXIMITY_PX = 140;
   const MIN_PANEL_WIDTH = 280;
@@ -85,6 +86,7 @@
       this.instanceId = String(this.options.instanceId || "").replace(/[^a-z0-9_-]/gi, "");
       this.panelId = this.instanceId ? PANEL_ID + "-" + this.instanceId : PANEL_ID;
       this.launcherId = this.instanceId ? LAUNCHER_ID + "-" + this.instanceId : LAUNCHER_ID;
+      this.colorPickerId = this.instanceId ? COLOR_PICKER_ID + "-" + this.instanceId : COLOR_PICKER_ID;
       this.timelineId = this.instanceId ? "dc-timeline-" + this.instanceId : "dc-timeline";
       this.anchorElement = this.options.anchorElement instanceof Element ? this.options.anchorElement : null;
       this.persistLayout = this.options.persistLayout !== false;
@@ -258,7 +260,9 @@
       this.themeColorButton.append(this.themeColorSwatch);
 
       this.colorPickerPopover = document.createElement("div");
+      this.colorPickerPopover.id = this.colorPickerId;
       this.colorPickerPopover.className = "dc-color-popover";
+      this.colorPickerPopover.dataset.dcInstanceId = this.instanceId || "youtube";
       this.colorPickerPopover.hidden = true;
       this.colorPickerPopover.setAttribute("role", "dialog");
       this.colorPickerPopover.setAttribute("aria-label", "Pick custom theme color");
@@ -332,7 +336,6 @@
       controls.append(
         this.themeSelect,
         this.themeColorButton,
-        this.colorPickerPopover,
         opacityWrap,
         textScaleWrap,
         centerFadeWrap
@@ -386,6 +389,7 @@
         this.root.append(this.resizeHandles[index]);
       }
       (this.mountElement || document.body).append(this.root);
+      document.body.append(this.colorPickerPopover);
 
       this.timelineLayer = document.createElement("div");
       this.timelineLayer.id = this.timelineId;
@@ -446,6 +450,12 @@
         this.timelineTrack = null;
         this.timelineTooltip = null;
       }
+      if (this.colorPickerPopover) {
+        this.colorPickerPopover.remove();
+        this.colorPickerPopover = null;
+        this.colorWheel = null;
+        this.colorPickerIndicator = null;
+      }
       this.removeExistingUiNodes();
       if (this.mountElement) {
         this.mountElement.classList.remove("dc-player-host");
@@ -455,7 +465,9 @@
     }
 
     removeExistingUiNodes() {
-      const knownNodes = document.querySelectorAll("#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId);
+      const knownNodes = document.querySelectorAll(
+        "#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId + ", #" + this.colorPickerId
+      );
       knownNodes.forEach((node) => {
         if (node instanceof Element) {
           node.remove();
@@ -587,9 +599,16 @@
 
       const onThemeColorClick = (event) => {
         event.preventDefault();
+        event.stopPropagation();
         this.toggleColorPicker();
       };
       this.addListener(this.themeColorButton, "click", onThemeColorClick);
+
+      const onColorPickerPointerDown = (event) => {
+        event.stopPropagation();
+      };
+      this.addListener(this.colorPickerPopover, "pointerdown", onColorPickerPointerDown);
+      this.addListener(this.colorPickerPopover, "click", onColorPickerPointerDown);
 
       const onColorWheelPointer = (event) => {
         this.pickColorFromWheel(event);
@@ -612,13 +631,17 @@
         if (!this.colorPickerPopover || this.colorPickerPopover.hidden) {
           return;
         }
+        const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+        if (path.includes(this.colorPickerPopover) || path.includes(this.themeColorButton)) {
+          return;
+        }
         const target = event.target;
         if (target instanceof Element && (target.closest(".dc-color-popover") || target.closest(".dc-theme-color"))) {
           return;
         }
         this.closeColorPicker();
       };
-      this.addListener(document, "pointerdown", onColorPickerOutside, { capture: true });
+      this.addListener(document, "pointerdown", onColorPickerOutside);
 
       const onTextScaleInput = () => {
         this.updateSettings({ textScale: Number(this.textScaleInput.value) });
@@ -724,11 +747,13 @@
 
       const onResize = () => {
         this.applySettings();
+        this.updateColorPickerPosition();
       };
       this.addListener(window, "resize", onResize);
 
       const onWindowScroll = () => {
         this.refreshAnchorLayout();
+        this.updateColorPickerPosition();
       };
       this.addListener(window, "scroll", onWindowScroll, { passive: true });
 
@@ -881,6 +906,7 @@
         this.themeColorButton.classList.toggle("is-active", this.getThemeName() === "custom");
       }
       this.updateColorPickerIndicator();
+      this.updateColorPickerPosition();
       this.applyFuturePreviewHeight();
       if (this.stickToBottom) {
         this.scrollToBottom();
@@ -952,6 +978,7 @@
       this.colorPickerPopover.hidden = !nextOpen;
       this.themeColorButton.setAttribute("aria-expanded", nextOpen ? "true" : "false");
       if (nextOpen) {
+        this.updateColorPickerPosition();
         this.updateColorPickerIndicator();
       }
     }
@@ -981,6 +1008,13 @@
       const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
       const color = this.hsvToHex(hue, saturation, 0.92);
       this.updateSettings({ themeName: "custom", customThemeColor: color });
+      if (this.colorPickerPopover) {
+        this.colorPickerPopover.hidden = false;
+        this.updateColorPickerPosition();
+      }
+      if (this.themeColorButton) {
+        this.themeColorButton.setAttribute("aria-expanded", "true");
+      }
     }
 
     updateColorPickerIndicator() {
@@ -995,6 +1029,26 @@
       this.colorPickerIndicator.style.left = left.toFixed(1) + "%";
       this.colorPickerIndicator.style.top = top.toFixed(1) + "%";
       this.colorPickerIndicator.style.background = this.getCustomThemeColor();
+    }
+
+    updateColorPickerPosition() {
+      if (!this.colorPickerPopover || !this.themeColorButton || this.colorPickerPopover.hidden) {
+        return;
+      }
+      const rect = this.themeColorButton.getBoundingClientRect();
+      const popoverWidth = this.colorPickerPopover.offsetWidth || 132;
+      const popoverHeight = this.colorPickerPopover.offsetHeight || 132;
+      const margin = 8;
+      const left = Math.max(
+        margin,
+        Math.min(window.innerWidth - popoverWidth - margin, rect.left)
+      );
+      const top = Math.max(
+        margin,
+        Math.min(window.innerHeight - popoverHeight - margin, rect.bottom + 6)
+      );
+      this.colorPickerPopover.style.left = Math.round(left) + "px";
+      this.colorPickerPopover.style.top = Math.round(top) + "px";
     }
 
     hexToRgb(hex) {
