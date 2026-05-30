@@ -41,14 +41,15 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 - Bottom-left floating chat panel with scroll history.
 - Subtitle cues grouped into readable chunks.
 - Music/lyric-like captions split a little sooner so song lines do not become paragraph blobs.
-- Optional Timeline Scrub mode turns the playbar area into a transcript lens for hovering and seeking through caption chunks.
 - Hover the panel and press `Space` to go to the next chunk.
 - Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
 - Future / Next Up previews can be turned on or off.
-- Panel preferences persist across YouTube videos: open/closed state, panel size/position, Future / Next Up setting and preview height, pill position, opacity, center fade, timeline scrub mode, text size, and local-only theme/color choice.
+- Panel preferences persist across YouTube videos: open/closed state, panel size/position, Future / Next Up setting and preview height, pill position, opacity, center fade, text size, and local-only theme/color choice.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.
+
+Timeline Scrub mode remains experimental and is hidden from the normal release UI.
 
 ## Project Structure
 

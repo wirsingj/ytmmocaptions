@@ -18,14 +18,14 @@ The extension does not:
 
 The extension stores only local preference settings in extension storage:
 - preference schema version for safe future migrations;
-- panel background blend/transparency;
+- panel opacity/transparency;
 - text size;
 - panel theme preset and custom theme color;
 - panel position and size;
 - next-up preview height;
 - whether Future / Next Up previews are enabled;
 - whether the panel fades toward the center of the associated video;
-- timeline scrub mode preference;
+- internal timeline scrub mode preference, which is off by default in this release;
 - launcher/pill position;
 - panel open/closed state.
 

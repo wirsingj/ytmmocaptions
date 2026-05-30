@@ -20,6 +20,7 @@
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
   const LAUNCHER_CONTROL_BAR_GAP = 54;
+  // Timeline mode is intentionally shipped dormant until it gets a focused UX pass.
   const TIMELINE_MODE_EXPERIMENT_ENABLED = false;
   const THEME_PRESETS = Object.freeze({
     stone: {
@@ -177,7 +178,7 @@
       titleWrap.className = "dc-title-wrap";
       const title = document.createElement("h2");
       title.className = "dc-title";
-      title.textContent = "MMOCC";
+      title.textContent = "YTMMOCC";
       titleWrap.append(title);
 
       const controls = document.createElement("div");

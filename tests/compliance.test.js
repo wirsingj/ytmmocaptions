@@ -354,6 +354,7 @@ exports.run = async function runComplianceTests(ctx) {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes('aria-label", "MMO dialogue captions panel"'));
     assert.ok(panelSource.includes('aria-live", "polite"'));
+    assert.ok(panelSource.includes('title.textContent = "YTMMOCC"'));
     assert.ok(panelSource.includes('aria-label", "Panel theme"'));
     assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
     assert.ok(panelSource.includes('opacityWrap.textContent = "Opacity"'));
@@ -366,6 +367,8 @@ exports.run = async function runComplianceTests(ctx) {
     const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
     assert.ok(readme.includes("Hover the panel and press `Space`"));
     assert.ok(readme.includes("desktop Chrome and desktop Firefox only"));
+    assert.ok(readme.includes("Timeline Scrub mode remains experimental and is hidden from the normal release UI."));
+    assert.ok(!readme.includes("Optional Timeline Scrub mode turns"));
     assert.ok(!readme.includes("gecko_android"));
   });
 

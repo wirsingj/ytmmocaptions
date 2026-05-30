@@ -1,11 +1,11 @@
 # YTMMOCC Architecture Notes
 
-YTMMOCC is an MMO-style dialogue layer for existing video captions. YouTube is the known-good V1 implementation; V2 extends the same experience to standard HTML5 videos when the page exposes usable caption/subtitle tracks. The product should feel like a calm chat log over the video, not a dashboard, transcript exporter, analytics product, AI transcription tool, or replacement video player.
+YTMMOCC is an MMO-style dialogue layer for YouTube captions and transcripts. The 1.1.3 release is intentionally YouTube-only; generic HTML5 caption support is source-only experimental work and is not included in Chrome or Firefox runtime packages. The product should feel like a calm chat log over the video, not a dashboard, transcript exporter, analytics product, AI transcription tool, or replacement video player.
 
 ## Product North Star
 
-- The associated player's caption timeline is the source of truth.
-- YouTube uses the dedicated known-good acquisition path; generic HTML5 players use browser-exposed `TextTrack`/`VTTCue` data.
+- The associated YouTube player's caption timeline is the source of truth.
+- YouTube uses the dedicated known-good acquisition path.
 - Words belong to timestamped caption tokens.
 - Chat bubbles are stable grouped views over those tokens.
 - A locked bubble is immutable: its text and timing should not be rewritten later.
@@ -13,9 +13,9 @@ YTMMOCC is an MMO-style dialogue layer for existing video captions. YouTube is t
 - Reading glow should follow the same token timeline used to build bubbles.
 - Future captions, when available, are previews from the parsed caption timeline, not a second source of truth.
 
-## V2 Adapter Model
+## Quarantined Adapter Model
 
-V2 should stay adapter-based:
+Generic-player work should stay adapter-based when it resumes, but it is not part of the released extension yet:
 
 1. Discover eligible video players.
 2. Attach one controller/panel per eligible player.
@@ -51,8 +51,8 @@ All playback interactions should agree on one canonical current time from the as
 - Once a bubble is locked, treat it as immutable data.
 - Bubble records should be plain data objects with stable `id`, `start`, `end`, `text`, token timing, and lock state.
 - Re-seeking should not mutate locked bubbles or replay old words into new bubbles.
-- Future captions are previews from parsed transcript/chunk data when available.
-- The `NEXT UP` divider is static chrome, not a caption row and not clickable.
+- Future captions are compact previews from parsed transcript/chunk data when available.
+- Future preview chrome should stay visually secondary and must not rewrite active bubble text.
 
 ## UI Rules
 
@@ -73,7 +73,7 @@ All playback interactions should agree on one canonical current time from the as
 
 - No remote analytics or tracking.
 - No broad permissions.
-- V2 content scripts may run on normal HTTP/HTTPS pages to discover local HTML5 videos, but broad network host permissions are not added for generic pages.
+- Release content scripts run on YouTube only. Do not add generic HTTP/HTTPS matches unless a future release explicitly brings generic-player support back into scope.
 - No raw transcript storage by default.
 - Diagnostics stay local and opt-in.
 - Shared source must stay Chrome/Firefox safe. Browser-specific differences should live in manifests/build packaging unless there is a strong reason.
