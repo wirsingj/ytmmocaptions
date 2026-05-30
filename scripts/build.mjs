@@ -18,6 +18,19 @@ async function clearDir(dirPath) {
   await ensureDir(dirPath);
 }
 
+async function clearBuildTarget(dirPath) {
+  await ensureDir(dirPath);
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      await fs.rm(entryPath, { recursive: true, force: true });
+    } else if (entry.isFile() && ![".zip", ".xpi"].includes(path.extname(entry.name).toLowerCase())) {
+      await fs.rm(entryPath, { force: true });
+    }
+  }
+}
+
 async function copyDir(sourceDir, destinationDir) {
   await ensureDir(destinationDir);
   const entries = await fs.readdir(sourceDir, { withFileTypes: true });
@@ -65,7 +78,7 @@ async function copyManifestRuntimeFiles(targetRoot, manifest) {
 async function createTargetBuild(targetName, manifestSource) {
   const targetRoot = path.join(buildRoot, targetName);
   const manifest = await readJson(path.join(projectRoot, manifestSource));
-  await clearDir(targetRoot);
+  await clearBuildTarget(targetRoot);
 
   await copyManifestRuntimeFiles(targetRoot, manifest);
   await copyDir(path.join(projectRoot, "styles"), path.join(targetRoot, "styles"));

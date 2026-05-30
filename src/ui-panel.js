@@ -689,6 +689,22 @@
       }
     }
 
+    getPersistenceSnapshot() {
+      const snapshot = {
+        panelClosed: !this.root || this.root.style.display === "none"
+      };
+      if (!this.root || snapshot.panelClosed || !this.settings.layoutLocked) {
+        return snapshot;
+      }
+      const rect = this.getElementLocalRect(this.root);
+      snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
+      snapshot.panelSize = {
+        width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
+        height: Math.max(MIN_PANEL_HEIGHT, Math.round(rect.height))
+      };
+      return snapshot;
+    }
+
     scheduleSettledLayoutRefresh() {
       const delays = [350, 1200];
       for (let index = 0; index < delays.length; index += 1) {

@@ -125,6 +125,7 @@
     destroy() {
       this.destroyed = true;
       diagnostics.record("app:destroy", { liveCaptureEnabled: Boolean(this.liveCaptureEnabled) });
+      this.persistPanelSnapshot();
       this.abortTranscriptLoad();
 
       if (this.syncRafId) {
@@ -2413,15 +2414,26 @@
           : patch && typeof patch === "object" ? patch : nextSettings;
       this.settings = settingsStore.normalizeSettings(nextSettings);
       if (settingsStore && typeof settingsStore.savePatch === "function") {
-        settingsStore.savePatch(patchSource).then((persisted) => {
+        const savePromise = settingsStore.savePatch(patchSource).then((persisted) => {
           this.settings = settingsStore.normalizeSettings({ ...persisted, ...this.settings });
           if (this.panel && this.panel.settings !== this.settings) {
             this.panel.settings = this.settings;
           }
         });
-        return;
+        return savePromise;
       }
-      settingsStore.save(this.settings);
+      return settingsStore.save(this.settings);
+    }
+
+    persistPanelSnapshot() {
+      if (!this.panel || typeof this.panel.getPersistenceSnapshot !== "function") {
+        return null;
+      }
+      const snapshot = this.panel.getPersistenceSnapshot();
+      if (!snapshot || typeof snapshot !== "object") {
+        return null;
+      }
+      return this.persistSettings({ ...this.settings, ...snapshot }, snapshot);
     }
 
     getKeyboardStepSeconds() {
@@ -2813,7 +2825,12 @@
       const onVisibilityChange = () => {
         if (document.visibilityState === "visible") {
           this.reconcileRoute();
+        } else {
+          this.persistActivePanelState();
         }
+      };
+      const onPageHide = () => {
+        this.persistActivePanelState();
       };
 
       window.addEventListener("yt-navigate-finish", onRouteEvent);
@@ -2821,6 +2838,8 @@
       window.addEventListener("popstate", onRouteEvent);
       window.addEventListener("hashchange", onRouteEvent);
       window.addEventListener("pageshow", onRouteEvent);
+      window.addEventListener("pagehide", onPageHide);
+      window.addEventListener("beforeunload", onPageHide);
       document.addEventListener("visibilitychange", onVisibilityChange);
 
       this.cleanupFns.push(() => window.removeEventListener("yt-navigate-finish", onRouteEvent));
@@ -2828,6 +2847,8 @@
       this.cleanupFns.push(() => window.removeEventListener("popstate", onRouteEvent));
       this.cleanupFns.push(() => window.removeEventListener("hashchange", onRouteEvent));
       this.cleanupFns.push(() => window.removeEventListener("pageshow", onRouteEvent));
+      this.cleanupFns.push(() => window.removeEventListener("pagehide", onPageHide));
+      this.cleanupFns.push(() => window.removeEventListener("beforeunload", onPageHide));
       this.cleanupFns.push(() => document.removeEventListener("visibilitychange", onVisibilityChange));
 
       const intervalId = window.setInterval(onRouteEvent, 3000);
@@ -2905,6 +2926,12 @@
       if (this.app) {
         this.app.destroy();
         this.app = null;
+      }
+    }
+
+    persistActivePanelState() {
+      if (this.app && typeof this.app.persistPanelSnapshot === "function") {
+        this.app.persistPanelSnapshot();
       }
     }
   }

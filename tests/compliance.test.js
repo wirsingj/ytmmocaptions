@@ -391,6 +391,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
     assert.ok(panelSource.includes('opacityWrap.textContent = "Opacity"'));
     assert.ok(panelSource.includes("dc-theme-select"));
+    assert.ok(panelSource.includes("getPersistenceSnapshot()"));
     assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });

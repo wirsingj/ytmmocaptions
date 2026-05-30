@@ -157,6 +157,16 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(routeBody.indexOf("await settingsStore.flush()") < routeBody.indexOf("new DialogueCaptionsApp(videoId)"));
   });
 
+  await runCase("panel open state is snapshotted on teardown and page hide", () => {
+    assert.ok(source.includes("persistPanelSnapshot()"));
+    const destroyStart = source.indexOf("    destroy()");
+    const destroyBody = source.slice(destroyStart, source.indexOf("    ensurePageBridgeForWatchPage()", destroyStart));
+    assert.ok(destroyBody.includes("this.persistPanelSnapshot();"));
+    assert.ok(source.includes('window.addEventListener("pagehide", onPageHide)'));
+    assert.ok(source.includes('window.addEventListener("beforeunload", onPageHide)'));
+    assert.ok(source.includes("persistActivePanelState()"));
+  });
+
   await runCase("live capture avoids repeated expensive caption reads during steady playback", () => {
     assert.ok(source.includes("liveLastBackfillBucketIndex"));
     assert.ok(source.includes("nowMs - Number(this.liveLastBackfillAt || 0) < 900"));
