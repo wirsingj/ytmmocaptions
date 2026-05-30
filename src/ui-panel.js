@@ -98,12 +98,11 @@
       this.opacityInput = null;
       this.textScaleWrap = null;
       this.textScaleInput = null;
-      this.themeButtons = [];
+      this.themeSelect = null;
       this.themeColorInput = null;
       this.centerFadeInput = null;
       this.futurePreviewInput = null;
       this.timelineModeButton = null;
-      this.timelineRailPopover = null;
       this.timelineFeatureEnabled = TIMELINE_MODE_EXPERIMENT_ENABLED;
       this.timelineLayer = null;
       this.timelineTrack = null;
@@ -183,24 +182,6 @@
 
       const controls = document.createElement("div");
       controls.className = "dc-controls";
-      controls.setAttribute("aria-label", "Panel controls");
-
-      const createRailItem = (triggerText, title) => {
-        const item = document.createElement("div");
-        item.className = "dc-rail-item";
-        const trigger = document.createElement("button");
-        trigger.type = "button";
-        trigger.className = "dc-rail-trigger";
-        trigger.textContent = triggerText;
-        trigger.title = title;
-        trigger.setAttribute("aria-label", title);
-        const popover = document.createElement("div");
-        popover.className = "dc-rail-popover";
-        popover.setAttribute("role", "group");
-        popover.setAttribute("aria-label", title);
-        item.append(trigger, popover);
-        return { item, popover };
-      };
 
       this.closeButton = document.createElement("button");
       this.closeButton.type = "button";
@@ -214,35 +195,31 @@
       this.resetButton.textContent = "Reset";
       this.resetButton.title = "Reset panel size, position, transparency, and text size";
 
-      const themeRail = createRailItem("C", "Panel theme");
-      const themeSwatches = document.createElement("div");
-      themeSwatches.className = "dc-theme-swatches";
-      themeSwatches.setAttribute("aria-label", "Panel theme");
+      this.themeSelect = document.createElement("select");
+      this.themeSelect.className = "dc-theme-select";
+      this.themeSelect.title = "Panel theme";
+      this.themeSelect.setAttribute("aria-label", "Panel theme");
+      const themeOptions = [
+        ["stone", "Stone"],
+        ["ember", "Ember"],
+        ["forest", "Forest"],
+        ["ocean", "Ocean"],
+        ["violet", "Violet"],
+        ["custom", "Custom"]
+      ];
+      for (let index = 0; index < themeOptions.length; index += 1) {
+        const option = document.createElement("option");
+        option.value = themeOptions[index][0];
+        option.textContent = themeOptions[index][1];
+        this.themeSelect.append(option);
+      }
 
       this.themeColorInput = document.createElement("input");
       this.themeColorInput.type = "color";
-      this.themeColorInput.className = "dc-theme-color dc-theme-swatch dc-theme-custom";
+      this.themeColorInput.className = "dc-theme-color";
       this.themeColorInput.title = "Custom theme color";
       this.themeColorInput.setAttribute("aria-label", "Custom theme color");
       this.themeColorInput.value = this.settings.customThemeColor || "#ded6c3";
-      themeSwatches.append(this.themeColorInput);
-
-      const themeNames = Object.keys(THEME_PRESETS);
-      this.themeButtons = [];
-      for (let index = 0; index < themeNames.length; index += 1) {
-        const themeName = themeNames[index];
-        const preset = THEME_PRESETS[themeName];
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "dc-theme-swatch";
-        button.dataset.themeName = themeName;
-        button.title = preset.label;
-        button.setAttribute("aria-label", preset.label + " theme");
-        button.style.setProperty("--dc-swatch-color", preset.accent);
-        this.themeButtons.push(button);
-        themeSwatches.append(button);
-      }
-      themeRail.popover.append(themeSwatches);
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
@@ -258,8 +235,6 @@
       this.opacityInput.value = String(this.settings.panelOpacity || 100);
       this.opacityInput.title = "Panel opacity";
       opacityWrap.append(this.opacityInput);
-      const opacityRail = createRailItem("O", "Panel opacity");
-      opacityRail.popover.append(opacityWrap);
 
       const textScaleWrap = document.createElement("label");
       textScaleWrap.className = "dc-text-scale-wrap";
@@ -275,8 +250,6 @@
       this.textScaleInput.value = String(this.settings.textScale || 100);
       this.textScaleInput.title = "Text size";
       textScaleWrap.append(this.textScaleInput);
-      const textRail = createRailItem("Aa", "Text size");
-      textRail.popover.append(textScaleWrap);
 
       const centerFadeWrap = document.createElement("label");
       centerFadeWrap.className = "dc-center-fade-wrap";
@@ -287,8 +260,6 @@
       this.centerFadeInput.className = "dc-center-fade-input";
       this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
       centerFadeWrap.append(this.centerFadeInput);
-      const fadeRail = createRailItem("F", "Center fade");
-      fadeRail.popover.append(centerFadeWrap);
 
       const futurePreviewWrap = document.createElement("label");
       futurePreviewWrap.className = "dc-future-toggle-wrap";
@@ -308,28 +279,18 @@
       this.timelineModeButton.setAttribute("aria-pressed", this.settings.timelineModeEnabled ? "true" : "false");
       this.timelineModeButton.hidden = !this.timelineFeatureEnabled;
 
-      const timelineRail = createRailItem("Tl", "Timeline mode");
-      timelineRail.item.classList.add("dc-rail-item-timeline");
-      this.timelineRailPopover = timelineRail.popover;
-      timelineRail.popover.append(this.timelineModeButton);
-      timelineRail.item.hidden = !this.timelineFeatureEnabled;
-
-      const resetRail = createRailItem("R", "Reset panel");
-      resetRail.popover.append(this.resetButton);
-
-      const closeRail = createRailItem("X", "Collapse panel");
-      closeRail.popover.append(this.closeButton);
-
       controls.append(
-        themeRail.item,
-        opacityRail.item,
-        textRail.item,
-        fadeRail.item,
-        timelineRail.item,
-        resetRail.item,
-        closeRail.item
+        this.themeSelect,
+        this.themeColorInput,
+        opacityWrap,
+        textScaleWrap,
+        centerFadeWrap
       );
-      header.append(titleWrap);
+      if (this.timelineFeatureEnabled) {
+        controls.append(this.timelineModeButton);
+      }
+      controls.append(this.resetButton, this.closeButton);
+      header.append(titleWrap, controls);
 
       this.body = document.createElement("div");
       this.body.className = "dc-body";
@@ -366,7 +327,7 @@
       footer.append(futurePreviewWrap, this.jumpBottomButton);
 
       this.body.append(this.statusEl, this.listViewport, footer);
-      this.root.append(header, this.body, controls);
+      this.root.append(header, this.body);
       for (let index = 0; index < this.resizeHandles.length; index += 1) {
         this.root.append(this.resizeHandles[index]);
       }
@@ -522,13 +483,10 @@
       };
       this.addListener(this.opacityInput, "input", onOpacityInput);
 
-      for (let index = 0; index < this.themeButtons.length; index += 1) {
-        const button = this.themeButtons[index];
-        const onThemeButtonClick = () => {
-          this.updateSettings({ themeName: button.dataset.themeName || "stone" });
-        };
-        this.addListener(button, "click", onThemeButtonClick);
-      }
+      const onThemeChange = () => {
+        this.updateSettings({ themeName: this.themeSelect.value || "stone" });
+      };
+      this.addListener(this.themeSelect, "change", onThemeChange);
 
       const onThemeColorInput = () => {
         this.updateSettings({ themeName: "custom", customThemeColor: this.themeColorInput.value || "#ded6c3" });
@@ -742,11 +700,6 @@
         this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
       }
       if (this.timelineModeButton) {
-        if (timelineActive && this.timelineModeButton.parentElement !== this.header) {
-          this.header.append(this.timelineModeButton);
-        } else if (!timelineActive && this.timelineRailPopover && this.timelineModeButton.parentElement !== this.timelineRailPopover) {
-          this.timelineRailPopover.append(this.timelineModeButton);
-        }
         this.timelineModeButton.classList.toggle("is-active", timelineActive);
         this.timelineModeButton.textContent = timelineActive ? "Panel" : "Timeline";
         this.timelineModeButton.title = timelineActive ? "Return to full caption panel" : "Open transcript scrub mode";
@@ -756,17 +709,18 @@
       if (this.root) {
         this.root.classList.toggle("is-timeline-scrub", timelineActive);
       }
-      const themeName = this.getThemeName();
-      for (let index = 0; index < this.themeButtons.length; index += 1) {
-        const button = this.themeButtons[index];
-        button.classList.toggle("is-active", button.dataset.themeName === themeName);
+      if (this.themeSelect) {
+        const themeName = this.getThemeName();
+        if (this.themeSelect.value !== themeName) {
+          this.themeSelect.value = themeName;
+        }
       }
       if (this.themeColorInput) {
         const color = this.getCustomThemeColor();
         if (this.themeColorInput.value.toLowerCase() !== color) {
           this.themeColorInput.value = color;
         }
-        this.themeColorInput.classList.toggle("is-active", themeName === "custom");
+        this.themeColorInput.disabled = this.getThemeName() !== "custom";
       }
       this.applyFuturePreviewHeight();
       if (this.stickToBottom) {

@@ -92,7 +92,32 @@
 }
 
 .dc-panel.is-timeline-scrub .dc-controls {
-  display: none;
+  max-width: 116px;
+  overflow: hidden;
+  opacity: 0.58;
+  transition: max-width 150ms ease, opacity 150ms ease;
+}
+
+.dc-panel.is-timeline-scrub:hover .dc-controls,
+.dc-panel.is-timeline-scrub:focus-within .dc-controls {
+  max-width: 520px;
+  opacity: 1;
+}
+
+.dc-panel.is-timeline-scrub .dc-opacity-wrap,
+.dc-panel.is-timeline-scrub .dc-text-scale-wrap,
+.dc-panel.is-timeline-scrub .dc-center-fade-wrap {
+  font-size: 0;
+  gap: 2px;
+}
+
+.dc-panel.is-timeline-scrub:hover .dc-opacity-wrap,
+.dc-panel.is-timeline-scrub:hover .dc-text-scale-wrap,
+.dc-panel.is-timeline-scrub:hover .dc-center-fade-wrap,
+.dc-panel.is-timeline-scrub:focus-within .dc-opacity-wrap,
+.dc-panel.is-timeline-scrub:focus-within .dc-text-scale-wrap,
+.dc-panel.is-timeline-scrub:focus-within .dc-center-fade-wrap {
+  font-size: 10px;
 }
 
 .dc-panel::before {
@@ -131,8 +156,8 @@
   justify-content: flex-start;
   gap: 12px;
   align-items: center;
-  min-height: 22px;
-  padding: 3px 10px;
+  min-height: 28px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--dc-border-soft);
   cursor: move;
 }
@@ -183,7 +208,7 @@
 
 .dc-title {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -191,31 +216,18 @@
 }
 
 .dc-controls {
-  position: absolute;
-  top: 28px;
-  bottom: 26px;
-  left: 6px;
-  z-index: 4;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 3px;
-  width: 26px;
-  overflow-y: auto;
-  scrollbar-width: none;
-  overscroll-behavior: contain;
-  pointer-events: auto;
-}
-
-.dc-controls::-webkit-scrollbar {
-  display: none;
+  gap: 7px;
+  min-width: 0;
 }
 
 .dc-controls * {
   cursor: default;
 }
 
-.dc-btn {
+.dc-btn,
+.dc-theme-select {
   border: 1px solid var(--dc-border);
   border-radius: 7px;
   background:
@@ -226,73 +238,27 @@
   height: 23px;
 }
 
-.dc-rail-item {
-  position: relative;
-  width: 26px;
-  min-height: 24px;
-}
-
-.dc-rail-trigger {
-  width: 26px;
-  height: 24px;
-  border: 1px solid rgba(var(--dc-accent-rgb), 0.2);
-  border-radius: 7px;
-  background: rgba(var(--dc-bg-rgb), 0.38);
-  color: rgba(var(--dc-text-rgb), 0.76);
-  font-size: 10px;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-
-.dc-rail-item:hover .dc-rail-trigger,
-.dc-rail-item:focus-within .dc-rail-trigger {
-  border-color: rgba(var(--dc-accent-rgb), 0.55);
-  background: rgba(var(--dc-bg-rgb), 0.68);
-  color: var(--dc-text);
-}
-
-.dc-rail-popover {
-  position: absolute;
-  left: 33px;
-  top: 0;
-  display: none;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  max-width: min(260px, calc(100vw - 70px));
-  padding: 5px 7px;
-  border: 1px solid rgba(var(--dc-accent-rgb), 0.25);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.05), rgba(var(--dc-text-rgb), 0.01)),
-    rgba(var(--dc-bg-rgb), 0.9);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(8px);
-}
-
-.dc-rail-item:hover .dc-rail-popover,
-.dc-rail-item:focus-within .dc-rail-popover {
-  display: flex;
-}
-
-.dc-theme-swatches {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: max-content;
+.dc-theme-select {
+  width: 67px;
+  padding: 0 3px;
+  color-scheme: dark;
 }
 
 .dc-theme-color {
   appearance: none;
   -webkit-appearance: none;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   padding: 1px;
   border: 1px solid var(--dc-border);
   border-radius: 7px;
   background: rgba(var(--dc-bg-rgb), 0.48);
   cursor: pointer;
+}
+
+.dc-theme-color:disabled {
+  opacity: 0.42;
+  cursor: default;
 }
 
 .dc-theme-color::-webkit-color-swatch-wrapper {
@@ -307,23 +273,6 @@
 .dc-theme-color::-moz-color-swatch {
   border: 0;
   border-radius: 5px;
-}
-
-.dc-theme-swatch {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-  border: 1px solid rgba(var(--dc-accent-rgb), 0.28);
-  border-radius: 7px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.08)),
-    var(--dc-swatch-color, var(--dc-accent));
-  cursor: pointer;
-}
-
-.dc-theme-swatch.is-active {
-  border-color: var(--dc-accent);
-  box-shadow: 0 0 0 1px rgba(var(--dc-accent-rgb), 0.35);
 }
 
 .dc-btn {
@@ -356,6 +305,22 @@
 .dc-btn.is-active {
   border-color: var(--dc-accent);
   box-shadow: inset 0 0 0 1px rgba(var(--dc-accent-rgb), 0.33);
+}
+
+.dc-size-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--dc-muted);
+}
+
+.dc-step-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--dc-muted);
 }
 
 .dc-opacity-wrap,
@@ -577,8 +542,6 @@
   flex-direction: column;
   min-height: 0;
   flex: 1;
-  box-sizing: border-box;
-  padding-left: 31px;
 }
 
 .dc-status {
@@ -760,6 +723,8 @@
 }
 
 .dc-chunk-future {
+  width: 100%;
+  box-sizing: border-box;
   min-height: 0;
   padding: 4px 7px;
   flex: 0 0 auto;
@@ -770,8 +735,8 @@
   background:
     linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.014), transparent 45%),
     rgba(var(--dc-card-rgb), 0.2);
-  color: rgba(var(--dc-text-rgb), 0.7);
-  opacity: 0.78;
+  color: rgba(var(--dc-text-rgb), 0.78);
+  opacity: 0.86;
   font-size: 0.86em;
 }
 
@@ -784,6 +749,8 @@
   grid-template-columns: auto minmax(0, 1fr);
   gap: 7px;
   align-items: baseline;
+  width: 100%;
+  min-width: 0;
 }
 
 .dc-chunk-future .dc-chunk-time {
@@ -793,6 +760,8 @@
 }
 
 .dc-chunk-future .dc-chunk-text {
+  display: block;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -800,12 +769,13 @@
   word-break: normal;
   font-size: calc(11px * var(--dc-text-scale));
   line-height: 1.2;
+  color: rgba(var(--dc-text-rgb), 0.82);
 }
 
 .dc-chunk-future:hover {
   border-color: rgba(var(--dc-muted-rgb), 0.2);
-  color: rgba(var(--dc-text-rgb), 0.78);
-  opacity: 0.86;
+  color: rgba(var(--dc-text-rgb), 0.84);
+  opacity: 0.92;
   background:
     radial-gradient(circle at left center, rgba(var(--dc-accent-rgb), 0.04), transparent 48%),
     rgba(var(--dc-panel-rgb), 0.32);

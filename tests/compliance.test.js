@@ -358,7 +358,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('aria-label", "Panel theme"'));
     assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
     assert.ok(panelSource.includes('opacityWrap.textContent = "Opacity"'));
-    assert.ok(panelSource.includes("dc-theme-swatches"));
+    assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
@@ -465,7 +465,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("width: min(860px, 82vw)"));
     assert.ok(css.includes(".dc-timeline-lens.is-hover"));
     assert.ok(css.includes(".dc-panel.is-timeline-scrub .dc-controls"));
-    assert.ok(css.includes(".dc-rail-popover"));
+    assert.ok(!css.includes(".dc-rail-popover"));
     assert.ok(css.includes(".dc-panel-open .ytp-caption-window-rollup"));
     assert.ok(css.includes(".dc-panel-open .ytp-caption-segment"));
   });
