@@ -1065,7 +1065,7 @@
       const dy = event.clientY - rect.top - rect.height / 2;
       const distance = Math.sqrt(dx * dx + dy * dy);
       const saturation = Math.max(0, Math.min(1, distance / radius));
-      const hue = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+      const hue = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
       const color = this.hsvToHex(hue, saturation, 0.92);
       this.updateSettings({ themeName: "custom", customThemeColor: color });
       if (this.colorPickerPopover) {
@@ -1084,8 +1084,8 @@
       const hsv = this.hexToHsv(this.getCustomThemeColor());
       const radiusPercent = Math.max(0, Math.min(1, hsv.s)) * 50;
       const radians = hsv.h * Math.PI / 180;
-      const left = 50 + Math.cos(radians) * radiusPercent;
-      const top = 50 + Math.sin(radians) * radiusPercent;
+      const left = 50 + Math.sin(radians) * radiusPercent;
+      const top = 50 - Math.cos(radians) * radiusPercent;
       this.colorPickerIndicator.style.left = left.toFixed(1) + "%";
       this.colorPickerIndicator.style.top = top.toFixed(1) + "%";
       this.colorPickerIndicator.style.background = this.getCustomThemeColor();

@@ -416,6 +416,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(panelSource.includes("dc-color-popover"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
+    assert.ok(panelSource.includes("Math.atan2(dx, -dy)"));
+    assert.ok(panelSource.includes("Math.sin(radians)"));
+    assert.ok(panelSource.includes("50 - Math.cos(radians)"));
     assert.ok(panelSource.includes("document.body.append(this.colorPickerPopover)"));
     assert.ok(!panelSource.includes('type = "color"'));
     assert.ok(panelSource.includes("getPersistenceSnapshot()"));
