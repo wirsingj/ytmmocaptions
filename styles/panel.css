@@ -57,8 +57,8 @@
   flex-direction: column;
   overflow: hidden;
   isolation: isolate;
-  -webkit-mask-image: radial-gradient(circle at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) var(--dc-center-mask-midpoint), #000 100%);
-  mask-image: radial-gradient(circle at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) var(--dc-center-mask-midpoint), #000 100%);
+  -webkit-mask-image: radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-alpha)) 28%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) 72%, #000 100%);
+  mask-image: radial-gradient(ellipse at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-alpha)) 28%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) 72%, #000 100%);
 }
 
 .dc-panel.is-anchor-offscreen,

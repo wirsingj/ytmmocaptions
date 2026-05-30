@@ -766,15 +766,15 @@
         }
       };
       const eased = Math.pow(blend, 0.72);
-      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.83);
-      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.83);
-      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.69);
-      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.83);
-      setAlpha("--dc-panel-fade-light", 0.002 + eased * 0.026);
-      setAlpha("--dc-panel-fade-shadow", 0.014 + eased * 0.28);
-      setAlpha("--dc-panel-fade-shadow-soft", (0.014 + eased * 0.28) * 0.62);
-      setAlpha("--dc-card-alpha", 0.2 + eased * 0.65);
-      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.62);
+      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.98);
+      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.98);
+      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84);
+      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.98);
+      setAlpha("--dc-panel-fade-light", 0.002 + eased * 0.018);
+      setAlpha("--dc-panel-fade-shadow", 0.014 + eased * 0.18);
+      setAlpha("--dc-panel-fade-shadow-soft", (0.014 + eased * 0.18) * 0.56);
+      setAlpha("--dc-card-alpha", 0.2 + eased * 0.8);
+      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.74);
       this.root.style.opacity = "1";
     }
 
