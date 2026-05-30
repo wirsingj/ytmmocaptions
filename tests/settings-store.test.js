@@ -54,6 +54,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelPosition: { left: -50, top: 20.4 },
       panelSize: { width: 200, height: 150 },
       futurePreviewHeight: 999,
+      futurePreviewEnabled: false,
       fadeTowardVideoCenter: false,
       videoCenterFadeStrength: 999,
       videoCenterFadeMidpoint: 999,
@@ -64,6 +65,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(result.panelPosition, { left: 0, top: 20 });
     assert.deepEqual(result.panelSize, { width: 280, height: 220 });
     assert.equal(result.futurePreviewHeight, 360);
+    assert.equal(result.futurePreviewEnabled, false);
     assert.equal(result.fadeTowardVideoCenter, false);
     assert.equal(result.videoCenterFadeStrength, 90);
     assert.equal(result.videoCenterFadeMidpoint, 80);
@@ -80,6 +82,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");
     assert.equal(result.futurePreviewHeight, 150);
+    assert.equal(result.futurePreviewEnabled, true);
     assert.equal(result.fadeTowardVideoCenter, true);
     assert.equal(result.videoCenterFadeStrength, 72);
     assert.equal(result.videoCenterFadeMidpoint, 50);
@@ -113,6 +116,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       themeName: "ocean",
       customThemeColor: "#336699",
       futurePreviewHeight: 42,
+      futurePreviewEnabled: false,
       fadeTowardVideoCenter: false,
       videoCenterFadeStrength: -5,
       videoCenterFadeMidpoint: 10,
@@ -130,6 +134,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.themeName, "ocean");
     assert.equal(persisted.customThemeColor, "#336699");
     assert.equal(persisted.futurePreviewHeight, 52);
+    assert.equal(persisted.futurePreviewEnabled, false);
     assert.equal(persisted.fadeTowardVideoCenter, false);
     assert.equal(persisted.videoCenterFadeStrength, 0);
     assert.equal(persisted.videoCenterFadeMidpoint, 20);
@@ -155,6 +160,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelPosition: { left: 45, top: 80 },
       panelSize: { width: 640, height: 420 },
       futurePreviewHeight: 205,
+      futurePreviewEnabled: false,
       fadeTowardVideoCenter: false,
       videoCenterFadeStrength: 77,
       videoCenterFadeMidpoint: 52,
@@ -178,6 +184,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(loaded.panelPosition, { left: 45, top: 80 });
     assert.deepEqual(loaded.panelSize, { width: 640, height: 420 });
     assert.equal(loaded.futurePreviewHeight, 205);
+    assert.equal(loaded.futurePreviewEnabled, false);
     assert.equal(loaded.fadeTowardVideoCenter, false);
     assert.equal(loaded.videoCenterFadeStrength, 77);
     assert.equal(loaded.videoCenterFadeMidpoint, 52);

@@ -32,14 +32,45 @@ async function copyDir(sourceDir, destinationDir) {
   }
 }
 
+async function readJson(filePath) {
+  return JSON.parse(await fs.readFile(filePath, "utf8"));
+}
+
+function getRuntimeFilesFromManifest(manifest) {
+  const files = new Set();
+  for (const contentScript of manifest.content_scripts || []) {
+    for (const jsFile of contentScript.js || []) {
+      files.add(jsFile);
+    }
+    for (const cssFile of contentScript.css || []) {
+      files.add(cssFile);
+    }
+  }
+  for (const block of manifest.web_accessible_resources || []) {
+    for (const resource of block.resources || []) {
+      files.add(resource);
+    }
+  }
+  return Array.from(files);
+}
+
+async function copyManifestRuntimeFiles(targetRoot, manifest) {
+  const runtimeFiles = getRuntimeFilesFromManifest(manifest);
+  for (const runtimeFile of runtimeFiles) {
+    const sourceFile = runtimeFile.replace(/^scripts\//, "src/");
+    await copyFile(path.join(projectRoot, sourceFile), path.join(targetRoot, runtimeFile));
+  }
+}
+
 async function createTargetBuild(targetName, manifestSource) {
   const targetRoot = path.join(buildRoot, targetName);
+  const manifest = await readJson(path.join(projectRoot, manifestSource));
   await ensureDir(targetRoot);
   await clearDir(path.join(targetRoot, "scripts"));
   await clearDir(path.join(targetRoot, "styles"));
   await clearDir(path.join(targetRoot, "assets"));
 
-  await copyDir(path.join(projectRoot, "src"), path.join(targetRoot, "scripts"));
+  await copyManifestRuntimeFiles(targetRoot, manifest);
   await copyDir(path.join(projectRoot, "styles"), path.join(targetRoot, "styles"));
   await copyDir(path.join(projectRoot, "assets"), path.join(targetRoot, "assets"));
 

@@ -1,12 +1,12 @@
-# Dialogue Captions Privacy Policy
+# YTMMOCC Privacy Policy
 
 Effective date: April 16, 2026
 
-Dialogue Captions is a browser extension for turning existing video captions into an MMO-style dialogue panel. YouTube is the primary supported site, and V2 also begins supporting standard HTML5 videos when the page exposes usable caption/subtitle tracks.
+YTMMOCC is a browser extension for turning YouTube captions and transcripts into an MMO-style dialogue panel. This release is YouTube-only and runs locally in the browser.
 
 ## Data Collection
 
-Dialogue Captions does not collect, store, sell, or transmit personal data to the developer or third parties.
+YTMMOCC does not collect, store, sell, or transmit personal data to the developer or third parties.
 
 The extension does not:
 - create user accounts;
@@ -23,6 +23,7 @@ The extension stores only local preference settings in extension storage:
 - panel theme preset and custom theme color;
 - panel position and size;
 - next-up preview height;
+- whether Future / Next Up previews are enabled;
 - whether the panel fades toward the center of the associated video;
 - timeline scrub mode preference;
 - launcher/pill position;
@@ -38,19 +39,17 @@ The extension does not store transcript text, chat bubble history, the active bu
   Used to save the local settings listed above.
 
 - YouTube host access
-  Used only on YouTube pages so the extension can detect watch-page navigation and read captions for the current video.
+  Used only on YouTube so the extension can detect watch-page navigation and read caption/transcript/timed-text data for the current video.
 
-The extension's content script is injected on normal `http` and `https` pages so it can detect local HTML5 video elements with browser-exposed caption or subtitle tracks. This generic V2 path only reads the video element and its text-track metadata/cues; it does not request microphone access, capture audio, infer captions, scrape unrelated page content, or call external transcription services.
-
-YouTube-specific caption fetching and page-bridge work remains gated to YouTube watch pages (`/watch`) with a valid video id. Chrome and Firefox may ignore path portions of host-permission patterns, so the extension also checks the route before starting YouTube caption work.
+The extension's content script is injected only on `https://www.youtube.com/*` so it can observe YouTube single-page navigation. Caption fetching and page-bridge work remains gated to YouTube watch pages (`/watch`) with a valid video id. Chrome and Firefox may ignore path portions of host-permission patterns, so the extension also checks the route before starting caption work.
 
 No additional host permissions are requested.
 
 ## Network Access
 
-The extension reads YouTube subtitle/caption data, browser-exposed HTML5 text-track data, and limited YouTube page configuration required for on-page functionality. Subtitle/caption text and page configuration are processed locally in the browser for the current video and are not transmitted to the developer.
+The extension reads YouTube subtitle/caption/transcript data and limited YouTube page configuration required for on-page functionality. Caption text and page configuration are processed locally in the browser for the current video and are not transmitted to the developer.
 
-Dialogue Captions is intended as a local accessibility/navigation aid. It does not bulk download, export, sell, analyze, or transmit YouTube captions to the developer or third parties.
+YTMMOCC is intended as a local accessibility/navigation aid. It does not bulk download, export, sell, analyze, or transmit YouTube captions to the developer or third parties.
 
 If subtitles or transcript data are unavailable, the extension fails gracefully and shows an in-panel status message. No fallback data is uploaded or collected.
 
@@ -63,7 +62,7 @@ Keyboard controls are not globally enabled in the release UI.
 
 ## Third-Party Services
 
-Dialogue Captions does not integrate with third-party analytics, advertising, ad network, account, payment, or remote code services.
+YTMMOCC does not integrate with third-party analytics, advertising, ad network, account, payment, or remote code services.
 
 ## Local Diagnostics
 

@@ -9,7 +9,6 @@
   const pageContext = app.pageContext;
   const diagnostics = app.diagnostics || { record() {} };
   const captionTimeline = app.captionTimeline;
-  const universalCaptions = app.universalCaptions;
   const DialoguePanel = app.DialoguePanel;
 
   if (!transcript || !captionTimeline || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
@@ -1502,6 +1501,9 @@
     }
 
     canShowFuturePreviewChunks() {
+      if (this.settings.futurePreviewEnabled === false) {
+        return false;
+      }
       if (Array.isArray(this.transcriptPreviewChunks) && this.transcriptPreviewChunks.length) {
         return true;
       }
@@ -2380,6 +2382,12 @@
       const isClosed = Boolean(this.settings.panelClosed);
       const changedPanelClosed =
         patch && Object.prototype.hasOwnProperty.call(patch, "panelClosed") && wasClosed !== isClosed;
+      const changedFuturePreview =
+        patch && Object.prototype.hasOwnProperty.call(patch, "futurePreviewEnabled");
+
+      if (changedFuturePreview) {
+        this.updateFuturePreviewChunks();
+      }
 
       if (changedPanelClosed && isClosed) {
         this.abortTranscriptLoad();
@@ -2777,7 +2785,6 @@
     constructor() {
       this.activeVideoId = null;
       this.app = null;
-      this.genericRegistry = null;
       this.cleanupFns = [];
       this.loadNonce = 0;
       this.destroyed = false;
@@ -2821,7 +2828,6 @@
       }
       this.cleanupFns.length = 0;
       this.teardownApp();
-      this.teardownGenericRegistry();
       this.activeVideoId = null;
     }
 
@@ -2835,11 +2841,9 @@
         diagnostics.record("route:leave-watch", {});
         this.activeVideoId = null;
         this.teardownApp();
-        this.startGenericRegistryIfAllowed();
         return;
       }
 
-      this.teardownGenericRegistry();
       const videoId = transcript.getVideoId(url);
       if (!videoId) {
         diagnostics.record("route:missing-video-id", {});
@@ -2879,26 +2883,6 @@
       if (this.app) {
         this.app.destroy();
         this.app = null;
-      }
-    }
-
-    startGenericRegistryIfAllowed() {
-      if (!universalCaptions || !universalCaptions.PlayerRegistry) {
-        return;
-      }
-      if (window.location.hostname === "www.youtube.com") {
-        return;
-      }
-      if (!this.genericRegistry) {
-        this.genericRegistry = new universalCaptions.PlayerRegistry();
-        this.genericRegistry.start();
-      }
-    }
-
-    teardownGenericRegistry() {
-      if (this.genericRegistry) {
-        this.genericRegistry.destroy();
-        this.genericRegistry = null;
       }
     }
   }

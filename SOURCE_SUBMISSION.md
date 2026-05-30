@@ -1,4 +1,4 @@
-# Dialogue Captions Source Submission
+# YTMMOCC Source Submission
 
 This source package reproduces the Firefox extension package submitted to AMO.
 
@@ -53,6 +53,6 @@ npm run lint:firefox
 
 ## Privacy / Network Behavior
 
-Dialogue Captions is local-only. It has no server, account system, analytics, ad network, or tracking. Caption data is processed locally for the active YouTube watch page and is not transmitted to the developer.
+YTMMOCC is local-only. It has no server, account system, analytics, ad network, or tracking. Caption data is processed locally for the active YouTube watch page and is not transmitted to the developer. Extension storage is used for local UI preferences only.
 
 

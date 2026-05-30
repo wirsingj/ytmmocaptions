@@ -26,13 +26,23 @@ exports.run = async function runComplianceTests(ctx) {
     }
   });
 
-  await runCase("V2 content script can see HTML5 videos while YouTube bridge stays YouTube-only", () => {
+  await runCase("release manifests stay YouTube-only and avoid broad site access", () => {
     for (const fileName of manifests) {
       const manifest = readJson(fileName);
+      assert.equal(manifest.name, "YTMMOCC", fileName);
       assert.deepEqual(manifest.host_permissions, ["https://www.youtube.com/*"], fileName);
-      assert.deepEqual(manifest.content_scripts[0].matches, ["http://*/*", "https://*/*"], fileName);
-      assert.ok(manifest.content_scripts[0].exclude_matches.includes("*://addons.mozilla.org/*"), fileName);
-      assert.ok(manifest.content_scripts[0].exclude_matches.includes("*://chromewebstore.google.com/*"), fileName);
+      assert.deepEqual(manifest.content_scripts[0].matches, ["https://www.youtube.com/*"], fileName);
+      assert.equal(Object.prototype.hasOwnProperty.call(manifest, "optional_permissions"), false, fileName);
+      assert.equal(Object.prototype.hasOwnProperty.call(manifest, "background"), false, fileName);
+      assert.equal(Object.prototype.hasOwnProperty.call(manifest, "externally_connectable"), false, fileName);
+      assert.ok(!manifest.permissions.includes("tabs"), fileName);
+      assert.ok(!manifest.permissions.includes("activeTab"), fileName);
+      assert.ok(!manifest.permissions.includes("scripting"), fileName);
+      const serialized = JSON.stringify(manifest);
+      assert.ok(!serialized.includes("<all_urls>"), fileName);
+      assert.ok(!serialized.includes("*://*/*"), fileName);
+      assert.ok(!serialized.includes("http://*/*"), fileName);
+      assert.ok(!serialized.includes("https://*/*"), fileName);
       for (const block of manifest.web_accessible_resources || []) {
         assert.deepEqual(block.matches, ["https://www.youtube.com/*"], fileName);
       }
@@ -40,6 +50,8 @@ exports.run = async function runComplianceTests(ctx) {
     const contentScript = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
     assert.ok(contentScript.includes("transcript.isWatchPage(url)"));
     assert.ok(contentScript.includes("transcript.getVideoId(url)"));
+    assert.ok(!contentScript.includes("startGenericRegistryIfAllowed"));
+    assert.ok(!contentScript.includes("universalCaptions"));
   });
 
   await runCase("content script order loads bubble-state before content-script", () => {
@@ -64,7 +76,6 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(scrubIndex >= 0, fileName + " missing timeline-scrub.js");
       assert.ok(transcriptIndex >= 0, fileName + " missing transcript.js");
       assert.ok(timelineIndex >= 0, fileName + " missing caption-timeline.js");
-      assert.ok(universalIndex >= 0, fileName + " missing universal-captions.js");
       assert.ok(contentIndex >= 0, fileName + " missing content-script.js");
       assert.ok(platformIndex < diagnosticsIndex, fileName + " loads platform before diagnostics");
       assert.ok(diagnosticsIndex < pageContextIndex, fileName + " loads diagnostics before page-context");
@@ -74,7 +85,7 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(scrubIndex < contentIndex, fileName + " loads content-script before timeline scrub");
       assert.ok(transcriptIndex < timelineIndex, fileName + " loads caption timeline before transcript");
       assert.ok(timelineIndex < contentIndex, fileName + " loads content-script before caption timeline");
-      assert.ok(universalIndex < contentIndex, fileName + " loads content-script before universal captions");
+      assert.equal(universalIndex, -1, fileName + " should not load generic-video experiment in release manifest");
     }
   });
 
@@ -312,6 +323,8 @@ exports.run = async function runComplianceTests(ctx) {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("dc-future-divider"));
     assert.ok(panelSource.includes("dc-future-section"));
+    assert.ok(panelSource.includes("futurePreviewEnabled"));
+    assert.ok(panelSource.includes("dc-future-toggle-input"));
     assert.ok(!panelSource.includes("handleFutureDividerPointerDown"));
     assert.ok(!panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
@@ -376,6 +389,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("keyboardStepSeconds"));
     assert.ok(!source.includes("autoScroll"));
     assert.ok(source.includes("futurePreviewHeight"));
+    assert.ok(source.includes("futurePreviewEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
     assert.ok(source.includes("timelineModeEnabled"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
@@ -384,11 +398,12 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!privacy.includes("auto-scroll"));
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
     assert.ok(privacy.includes("next-up preview height"));
+    assert.ok(privacy.includes("whether Future / Next Up previews are enabled"));
     assert.ok(privacy.includes("timeline scrub mode"));
     assert.ok(privacy.includes("whether the panel fades toward the center"));
   });
 
-  await runCase("V2 universal layer remains local-only and standards-based", () => {
+  await runCase("generic video experiment is source-only and not in release manifests", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "universal-captions.js"), "utf8");
     assert.ok(source.includes("HTMLVideoElement"));
     assert.ok(source.includes("TextTrack"));
@@ -396,6 +411,10 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("getUserMedia"));
     assert.ok(!source.includes("MediaRecorder"));
     assert.ok(!source.includes("fetch("));
+    for (const fileName of manifests) {
+      const manifest = readJson(fileName);
+      assert.ok(!JSON.stringify(manifest).includes("universal-captions.js"), fileName);
+    }
   });
 
   await runCase("timeline scrub mode reuses panel chunks and stays optional", () => {

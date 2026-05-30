@@ -99,6 +99,7 @@
       this.themeSelect = null;
       this.themeColorInput = null;
       this.centerFadeInput = null;
+      this.futurePreviewInput = null;
       this.timelineModeButton = null;
       this.timelineLayer = null;
       this.timelineTrack = null;
@@ -126,6 +127,7 @@
       this.currentWindowEnd = -1;
       this.currentFutureCount = -1;
       this.currentFutureCollapsed = false;
+      this.currentFutureKey = "";
       this.dragState = null;
       this.resizeState = null;
       this.launcherDragState = null;
@@ -256,6 +258,16 @@
       this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
       centerFadeWrap.append(this.centerFadeInput);
 
+      const futurePreviewWrap = document.createElement("label");
+      futurePreviewWrap.className = "dc-future-toggle-wrap";
+      futurePreviewWrap.title = "Show Next Up preview captions";
+      futurePreviewWrap.textContent = "Next";
+      this.futurePreviewInput = document.createElement("input");
+      this.futurePreviewInput.type = "checkbox";
+      this.futurePreviewInput.className = "dc-future-toggle-input";
+      this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
+      futurePreviewWrap.append(this.futurePreviewInput);
+
       this.timelineModeButton = document.createElement("button");
       this.timelineModeButton.type = "button";
       this.timelineModeButton.className = "dc-btn dc-btn-timeline";
@@ -269,6 +281,7 @@
         opacityWrap,
         textScaleWrap,
         centerFadeWrap,
+        futurePreviewWrap,
         this.timelineModeButton,
         this.resetButton,
         this.closeButton
@@ -486,6 +499,11 @@
       };
       this.addListener(this.centerFadeInput, "change", onCenterFadeChange);
 
+      const onFuturePreviewChange = () => {
+        this.updateSettings({ futurePreviewEnabled: Boolean(this.futurePreviewInput.checked) });
+      };
+      this.addListener(this.futurePreviewInput, "change", onFuturePreviewChange);
+
       const onTimelineToggle = () => {
         this.updateSettings({ timelineModeEnabled: !this.settings.timelineModeEnabled });
       };
@@ -670,6 +688,9 @@
       }
       if (this.centerFadeInput) {
         this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
+      }
+      if (this.futurePreviewInput) {
+        this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
       }
       if (this.timelineModeButton) {
         this.timelineModeButton.classList.toggle("is-active", timelineActive);
@@ -949,6 +970,7 @@
         panelPosition: null,
         panelSize: null,
         futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : 150,
+        futurePreviewEnabled: defaults.futurePreviewEnabled !== false,
         fadeTowardVideoCenter: defaults.fadeTowardVideoCenter !== false,
         videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 72,
         videoCenterFadeMidpoint: Number.isFinite(defaults.videoCenterFadeMidpoint) ? defaults.videoCenterFadeMidpoint : 50,
@@ -1673,8 +1695,6 @@
       }
       this.futureChunks = normalized;
       this.futureChunksKey = key;
-      this.currentWindowStart = -1;
-      this.currentWindowEnd = -1;
       this.scheduleWindowRender(true);
       this.updateJumpBottomVisibility();
     }
@@ -1892,28 +1912,57 @@
         this.topSpacer.style.height = "0px";
         this.bottomSpacer.style.height = "0px";
         this.windowContainer.replaceChildren();
+        this.currentFutureKey = "";
         return;
       }
 
       const start = 0;
       const end = chunkCount - 1;
+      const futureKey = this.getFutureRenderKey();
+      const canAppendSingleChunk =
+        chunkCount > 0 &&
+        this.currentWindowStart === start &&
+        end === this.currentWindowEnd + 1 &&
+        this.currentWindowEnd >= start - 1 &&
+        this.windowContainer.childElementCount > 0;
       const shouldRebuild =
         start !== this.currentWindowStart ||
         end !== this.currentWindowEnd ||
         futureCount !== this.currentFutureCount ||
         this.futureCollapsed !== this.currentFutureCollapsed;
-      this.currentWindowStart = start;
-      this.currentWindowEnd = end;
-      this.currentFutureCount = futureCount;
-      this.currentFutureCollapsed = this.futureCollapsed;
       this.topSpacer.style.height = "0px";
       this.bottomSpacer.style.height = "0px";
 
-      if (!shouldRebuild) {
+      if (canAppendSingleChunk) {
+        const chunk = this.chunks[end];
+        const nextButton = this.createChunkButton(chunk, end, false);
+        const futureSection = this.windowContainer.querySelector(".dc-future-section");
+        if (futureSection) {
+          this.windowContainer.insertBefore(nextButton, futureSection);
+        } else {
+          this.windowContainer.append(nextButton);
+        }
+        this.currentWindowEnd = end;
+        this.replaceFutureSection(futureCount, chunkCount);
         this.updateActiveClass();
         this.updateActiveReadingGlow();
         return;
       }
+
+      if (!shouldRebuild) {
+        if (futureKey !== this.currentFutureKey) {
+          this.replaceFutureSection(futureCount, chunkCount);
+        }
+        this.updateActiveClass();
+        this.updateActiveReadingGlow();
+        return;
+      }
+
+      this.currentWindowStart = start;
+      this.currentWindowEnd = end;
+      this.currentFutureCount = futureCount;
+      this.currentFutureCollapsed = this.futureCollapsed;
+      this.currentFutureKey = futureKey;
 
       const fragment = document.createDocumentFragment();
       for (let index = start; index <= end; index += 1) {
@@ -1922,31 +1971,58 @@
       }
 
       if (futureCount) {
-        const section = document.createElement("div");
-        section.className = "dc-future-section";
-
-        const divider = document.createElement("div");
-        divider.className = "dc-future-divider";
-        divider.setAttribute("role", "separator");
-        divider.setAttribute("aria-label", "Next up captions");
-        divider.setAttribute("aria-orientation", "horizontal");
-        divider.setAttribute("title", "Upcoming caption preview");
-        divider.textContent = "Next up";
-
-        const futureList = document.createElement("div");
-        futureList.className = "dc-future-list";
-
-        for (let index = 0; index < futureCount; index += 1) {
-          const preview = this.futureChunks[index];
-          const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
-          futureList.append(this.createChunkButton(preview, actualIndex, true));
-        }
-
-        section.append(divider, futureList);
-        fragment.append(section);
+        fragment.append(this.createFutureSection(futureCount, chunkCount));
       }
 
       this.windowContainer.replaceChildren(fragment);
+    }
+
+    getFutureRenderKey() {
+      const source = Array.isArray(this.futureChunks) ? this.futureChunks : [];
+      return source
+        .map((chunk) => [chunk && chunk.actualIndex, chunk && chunk.start, chunk && chunk.end, chunk && chunk.text].join(":"))
+        .join("|");
+    }
+
+    createFutureSection(futureCount, chunkCount) {
+      const section = document.createElement("div");
+      section.className = "dc-future-section";
+
+      const divider = document.createElement("div");
+      divider.className = "dc-future-divider";
+      divider.setAttribute("role", "separator");
+      divider.setAttribute("aria-label", "Next up captions");
+      divider.setAttribute("aria-orientation", "horizontal");
+      divider.setAttribute("title", "Upcoming caption preview");
+      divider.textContent = "Next up";
+
+      const futureList = document.createElement("div");
+      futureList.className = "dc-future-list";
+
+      for (let index = 0; index < futureCount; index += 1) {
+        const preview = this.futureChunks[index];
+        const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
+        futureList.append(this.createChunkButton(preview, actualIndex, true));
+      }
+
+      section.append(divider, futureList);
+      return section;
+    }
+
+    replaceFutureSection(futureCount, chunkCount) {
+      if (!this.windowContainer) {
+        return;
+      }
+      const existing = this.windowContainer.querySelector(".dc-future-section");
+      if (existing) {
+        existing.remove();
+      }
+      if (futureCount) {
+        this.windowContainer.append(this.createFutureSection(futureCount, chunkCount));
+      }
+      this.currentFutureCount = futureCount;
+      this.currentFutureCollapsed = this.futureCollapsed;
+      this.currentFutureKey = this.getFutureRenderKey();
     }
 
     createChunkButton(chunk, index, isFuture) {

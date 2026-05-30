@@ -203,6 +203,7 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("getFuturePreviewChunks()"));
     assert.ok(source.includes("findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)"));
     assert.ok(source.includes("readFuturePreviewChunksFromTextTracks(currentBucketIndex)"));
+    assert.ok(source.includes("this.settings.futurePreviewEnabled === false"));
     assert.ok(source.includes("offset <= 4"));
     assert.ok(source.includes("futurePreviewOnly"));
     assert.ok(source.includes("currentIndex + 1"));

@@ -1,6 +1,6 @@
-# Dialogue Captions
+# YTMMOCC
 
-Dialogue Captions is a Chrome/Firefox extension that turns existing captions into an MMO-style dialogue panel. YouTube remains the known-good V1 path; V2 also starts supporting standard HTML5 videos with browser-accessible caption/subtitle tracks.
+YTMMOCC is a lightweight Chrome/Firefox extension that turns YouTube captions and transcripts into an MMO-style dialogue panel. This release is YouTube-only and runs locally in the browser.
 
 ## Build Outputs
 
@@ -40,14 +40,14 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 
 - Bottom-left floating chat panel with scroll history.
 - Subtitle cues grouped into readable chunks.
-- On non-YouTube pages, eligible HTML5 videos with existing captions/subtitles can get their own anchored MMOCC panel.
 - Music/lyric-like captions split a little sooner so song lines do not become paragraph blobs.
 - Optional Timeline Scrub mode turns the playbar area into a transcript lens for hovering and seeking through caption chunks.
 - Hover the panel and press `Space` to go to the next chunk.
 - Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
-- Panel preferences persist across videos: open/closed state, panel size/position, next-up preview height, pill position, opacity, center fade, timeline scrub mode, text size, and local-only theme/color choice.
+- Future / Next Up previews can be turned on or off.
+- Panel preferences persist across YouTube videos: open/closed state, panel size/position, Future / Next Up setting and preview height, pill position, opacity, center fade, timeline scrub mode, text size, and local-only theme/color choice.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.
 
 ## Project Structure
@@ -65,7 +65,6 @@ ytmmocaptions/
     transcript.js
     caption-timeline.js
     ui-panel.js
-    universal-captions.js
     content-script.js
     page-bridge.js
   styles/
@@ -171,14 +170,6 @@ provide equivalent Firefox WebExtension install control. It still provides
 useful Firefox engine, layout, caption-source, console, and interaction health
 signal without becoming a release blocker.
 
-## Local HTML5 Fixture Notes
-
-The V2 test bed includes replaceable WebVTT fixture files under
-`tests/fixtures/`. Later, generated videos from the separate local video
-generator app can be copied into that fixture area as matching `.mp4` + `.vtt`
-or `.srt` pairs for manual scenarios. The extension will only use caption data
-that the page exposes through normal browser media/text-track APIs.
-
 ## Load Unpacked
 
 ### Chrome
@@ -207,12 +198,12 @@ For AMO signing/upload, use:
 
 ## Store Compliance Notes
 
-- Host permissions are kept to YouTube only. Browser host-permission paths may be ignored by Chrome/Firefox, so YouTube-specific runtime activation is also route-gated to `/watch?v=...`.
-- Content scripts are loaded on normal `http` and `https` pages so V2 can discover local HTML5 `<video>` elements with existing caption/subtitle tracks. The generic path does not request broad host permissions, does not fetch remote transcript data, and only reads browser-exposed media/text-track state.
+- Host permissions are kept to YouTube only. Browser host-permission paths may be ignored by Chrome/Firefox, so runtime activation is also route-gated to `/watch?v=...`.
+- Content scripts are loaded only on `https://www.youtube.com/*` so YouTube SPA navigation can be detected reliably.
 - YouTube page-bridge caption hooks are still gated to valid `/watch?v=...` pages only.
 - Page-bridge work is additionally guarded inside the injected page script so snapshots, caption probes, timedtext captures, and bridge fetches stop after YouTube SPA navigation leaves a valid `/watch?v=...` route.
 - No personal data collection.
-- Only local settings are stored via extension storage.
+- Only local UI preferences are stored via extension storage.
 - Keyboard shortcuts are not global in the release UI; they activate when the pointer is over the panel and are ignored while typing.
 - If transcript/subtitles are unavailable, the extension shows a clear in-panel message and exits safely.
 - Subtitle/caption data is processed locally for the current video only. The extension is a local accessibility/navigation aid and does not bulk download, export, or transmit captions to the developer or third parties.
@@ -224,7 +215,7 @@ For AMO signing/upload, use:
 
 ## License
 
-Dialogue Captions is source-available proprietary software. The public repo may
+YTMMOCC is source-available proprietary software. The public repo may
 be cloned, reviewed, built, and loaded locally for personal non-commercial
 testing only. Reuse, redistribution, sublicensing, commercial cloning, and
 publishing modified builds are not allowed. See `LICENSE`.

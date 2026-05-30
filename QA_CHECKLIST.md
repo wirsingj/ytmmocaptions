@@ -6,7 +6,7 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 
 - Chrome: load `build/chrome` with Developer Mode > Load unpacked.
 - Firefox: load `build/firefox/manifest.json` from `about:debugging#/runtime/this-firefox`.
-- Confirm the extension appears only on normal pages where a usable video/caption source exists.
+- Confirm the extension appears only on YouTube pages.
 - Confirm there are no noisy console logs in normal mode. Optional diagnostics require `dcdebug=1`.
 
 ## YouTube Watch Page
@@ -22,6 +22,8 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 
 - Confirm current/recent bubbles render consistently.
 - Confirm future bubbles appear when full transcript/timeline data is available.
+- Toggle Future / Next Up off and confirm the divider and preview rows disappear.
+- Toggle Future / Next Up back on and confirm previews return when transcript/timeline data is available.
 - Confirm future bubbles are absent, not stale, when captions are unavailable or live-only.
 - Confirm the `Next up` divider stays compact and is not clickable as a caption row.
 - Confirm long captions wrap inside rows and the scroll container owns overflow.
@@ -45,14 +47,6 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 - Confirm shortcuts do nothing while typing in inputs, textareas, selects, or editable content.
 - Click old and new caption bubbles repeatedly; the selected timestamp should be repeatable and no words should teleport between locked bubbles.
 - Scrub the YouTube timeline manually and confirm active/future state catches up without stale highlights.
-
-## Generic HTML5 Video
-
-- Open a page with one HTML5 video and a captions/subtitles `<track>`.
-- Confirm one MMOCC overlay attaches to that video.
-- Open a page with two eligible videos.
-- Confirm two independent overlays attach, each anchored to its own player.
-- Remove or navigate away from videos and confirm overlays are cleaned up.
 
 ## No-Captions / Edge Cases
 

@@ -1,7 +1,7 @@
 # YTMMOCC Release Automation
 
 This project uses GitHub Actions to build, validate, package, attach release
-artifacts, and optionally publish Dialogue Captions / YTMMOCC to browser stores.
+artifacts, and optionally publish YTMMOCC to browser stores.
 
 Normal pushes and pull requests run test/package sanity checks only. Store
 publishing runs only from tags that match `v*` and is gated by the protected
@@ -107,7 +107,7 @@ CHROME_REFRESH_TOKEN
 Where to get them:
 
 - `CHROME_EXTENSION_ID`: Chrome Web Store Developer Dashboard item ID. For the
-  current Dialogue Captions listing this is `cocgdaogbkknnhdpmojlmodalmblndgf`.
+  current YTMMOCC listing this is `cocgdaogbkknnhdpmojlmodalmblndgf`.
 - `CHROME_PUBLISHER_ID`: Chrome Web Store Developer Dashboard publisher/account
   identifier.
 - `CHROME_CLIENT_ID` and `CHROME_CLIENT_SECRET`: Google Cloud Console OAuth
