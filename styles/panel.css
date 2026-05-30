@@ -45,7 +45,9 @@
   border: 1px solid var(--dc-border);
   border-radius: 14px;
   background: rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-base));
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
+  box-shadow:
+    inset 0 0 0 2px rgba(var(--dc-accent-rgb), 0.07),
+    0 12px 26px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
@@ -159,42 +161,128 @@
 
 .dc-resize-handle {
   position: absolute;
-  width: 14px;
-  height: 14px;
-  z-index: 5;
-  opacity: 0.7;
+  z-index: 18;
+  opacity: 0.72;
+  touch-action: none;
 }
 
 .dc-resize-handle::after {
   content: "";
   position: absolute;
-  inset: 2px;
-  border: 1px solid rgba(var(--dc-accent-rgb), 0.42);
-  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.dc-resize-handle:hover::after,
+.dc-resize-handle:active::after {
+  opacity: 1;
+}
+
+.dc-resize-top,
+.dc-resize-bottom {
+  left: 14px;
+  right: 14px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.dc-resize-left,
+.dc-resize-right {
+  top: 14px;
+  bottom: 14px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.dc-resize-top {
+  top: 0;
+}
+
+.dc-resize-right {
+  right: 0;
+}
+
+.dc-resize-bottom {
+  bottom: 0;
+}
+
+.dc-resize-left {
+  left: 0;
+}
+
+.dc-resize-top::after,
+.dc-resize-bottom::after {
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(var(--dc-accent-rgb), 0.48);
+}
+
+.dc-resize-top::after {
+  top: 2px;
+}
+
+.dc-resize-bottom::after {
+  bottom: 2px;
+}
+
+.dc-resize-left::after,
+.dc-resize-right::after {
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(var(--dc-accent-rgb), 0.48);
+}
+
+.dc-resize-left::after {
+  left: 2px;
+}
+
+.dc-resize-right::after {
+  right: 2px;
 }
 
 .dc-resize-top-left {
   top: 0;
   left: 0;
+  width: 18px;
+  height: 18px;
   cursor: nwse-resize;
 }
 
 .dc-resize-top-right {
   top: 0;
   right: 0;
+  width: 18px;
+  height: 18px;
   cursor: nesw-resize;
 }
 
 .dc-resize-bottom-left {
   bottom: 0;
   left: 0;
+  width: 18px;
+  height: 18px;
   cursor: nesw-resize;
 }
 
 .dc-resize-bottom-right {
   right: 0;
   bottom: 0;
+  width: 18px;
+  height: 18px;
   cursor: nwse-resize;
+}
+
+.dc-resize-top-left::after,
+.dc-resize-top-right::after,
+.dc-resize-bottom-left::after,
+.dc-resize-bottom-right::after {
+  inset: 3px;
+  border: 1px solid rgba(var(--dc-accent-rgb), 0.48);
+  border-radius: 3px;
 }
 
 .dc-title-wrap {

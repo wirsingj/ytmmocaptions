@@ -176,12 +176,12 @@
       this.root.tabIndex = 0;
       this.root.setAttribute("aria-label", "MMO dialogue captions panel");
       this.resizeHandles = [];
-      const resizeCorners = ["top-left", "top-right", "bottom-left", "bottom-right"];
-      for (let index = 0; index < resizeCorners.length; index += 1) {
-        const corner = resizeCorners[index];
+      const resizeZones = ["top", "right", "bottom", "left", "top-left", "top-right", "bottom-left", "bottom-right"];
+      for (let index = 0; index < resizeZones.length; index += 1) {
+        const zone = resizeZones[index];
         const handle = document.createElement("div");
-        handle.className = "dc-resize-handle dc-resize-" + corner;
-        handle.setAttribute("data-corner", corner);
+        handle.className = "dc-resize-handle dc-resize-" + zone;
+        handle.setAttribute("data-resize-zone", zone);
         handle.title = "Resize panel";
         this.resizeHandles.push(handle);
       }
@@ -535,9 +535,12 @@
         return;
       }
 
-      const onPanelPointerDown = () => {
+      const onPanelPointerDown = (event) => {
         if (this.root) {
           this.root.focus();
+        }
+        if (this.shouldStartPanelMove(event)) {
+          this.startPanelDrag(event);
         }
       };
       this.addListener(this.root, "pointerdown", onPanelPointerDown);
@@ -567,8 +570,8 @@
       this.addListener(this.header, "pointerdown", onHeaderPointerDown);
       for (let index = 0; index < this.resizeHandles.length; index += 1) {
         const handle = this.resizeHandles[index];
-        const corner = handle.getAttribute("data-corner") || "";
-        const onResizeDown = (event) => this.handleResizePointerDown(event, corner);
+        const zone = handle.getAttribute("data-resize-zone") || "";
+        const onResizeDown = (event) => this.handleResizePointerDown(event, zone);
         this.addListener(handle, "pointerdown", onResizeDown);
       }
 
@@ -1787,14 +1790,46 @@
       if (event.target.closest("button, input, select, label, option")) {
         return;
       }
+      this.startPanelDrag(event);
+    }
 
+    shouldStartPanelMove(event) {
+      if (!this.root || !(event.target instanceof Element)) {
+        return false;
+      }
+      if (event.button !== 0) {
+        return false;
+      }
+      if (event.target.closest(".dc-header")) {
+        return false;
+      }
+      if (event.target.closest(".dc-resize-handle, .dc-list-viewport, .dc-footer, button, input, select, label, option")) {
+        return false;
+      }
+      return event.target === this.root;
+    }
+
+    startPanelDrag(event) {
+      if (!this.root) {
+        return;
+      }
       const rect = this.getElementLocalRect(this.root);
       this.root.style.left = rect.left + "px";
       this.root.style.top = rect.top + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
+      const captureTarget = event.currentTarget instanceof Element ? event.currentTarget : this.root;
+      if (captureTarget && typeof captureTarget.setPointerCapture === "function") {
+        try {
+          captureTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Capture is best effort; global listeners still keep dragging reliable.
+        }
+      }
 
       this.dragState = {
+        captureTarget: captureTarget,
+        pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         startLeft: rect.left,
@@ -1803,7 +1838,12 @@
 
       const onMove = (moveEvent) => this.handleDragMove(moveEvent);
       let cleanupPointerListeners = null;
-      const onUp = () => {
+      const onUp = (upEvent) => {
+        this.suppressPageClickUntil = Date.now() + 250;
+        if (upEvent) {
+          upEvent.preventDefault();
+          upEvent.stopPropagation();
+        }
         if (cleanupPointerListeners) {
           cleanupPointerListeners();
         }
@@ -1845,6 +1885,15 @@
       const top = Number.parseInt(this.root.style.top || "0", 10);
       const width = this.root.offsetWidth || 360;
       const height = this.root.offsetHeight || 320;
+      const captureTarget = this.dragState.captureTarget;
+      const pointerId = this.dragState.pointerId;
+      if (captureTarget && typeof captureTarget.releasePointerCapture === "function") {
+        try {
+          captureTarget.releasePointerCapture(pointerId);
+        } catch {
+          // Capture may already be released by the browser.
+        }
+      }
       this.dragState = null;
       this.updateSettings({
         panelPosition: this.localToPlayerPanelPosition(
@@ -1917,11 +1966,11 @@
       this.updateSettings({ futurePreviewHeight: nextHeight });
     }
 
-    handleResizePointerDown(event, corner) {
+    handleResizePointerDown(event, zone) {
       if (!this.root) {
         return;
       }
-      if (!corner || corner.indexOf("-") < 0) {
+      if (!this.isResizeZone(zone)) {
         return;
       }
 
@@ -1940,7 +1989,7 @@
       }
 
       this.resizeState = {
-        corner: corner,
+        zone: zone,
         captureTarget: captureTarget,
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -1978,6 +2027,19 @@
       event.stopPropagation();
     }
 
+    isResizeZone(zone) {
+      return [
+        "top",
+        "right",
+        "bottom",
+        "left",
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right"
+      ].includes(zone);
+    }
+
     handleResizeMove(event) {
       if (!this.root || !this.resizeState) {
         return;
@@ -2002,11 +2064,24 @@
       const deltaY = state.latestY - state.startY;
       const rightEdge = state.startLeft + state.startWidth;
       const bottomEdge = state.startTop + state.startHeight;
-      const resizesLeft = state.corner.indexOf("left") >= 0;
-      const resizesTop = state.corner.indexOf("top") >= 0;
+      const zone = String(state.zone || "");
+      const resizesLeft = zone.indexOf("left") >= 0;
+      const resizesRight = zone.indexOf("right") >= 0;
+      const resizesTop = zone.indexOf("top") >= 0;
+      const resizesBottom = zone.indexOf("bottom") >= 0;
 
-      let nextWidth = resizesLeft ? state.startWidth - deltaX : state.startWidth + deltaX;
-      let nextHeight = resizesTop ? state.startHeight - deltaY : state.startHeight + deltaY;
+      let nextWidth = state.startWidth;
+      let nextHeight = state.startHeight;
+      if (resizesLeft) {
+        nextWidth = state.startWidth - deltaX;
+      } else if (resizesRight) {
+        nextWidth = state.startWidth + deltaX;
+      }
+      if (resizesTop) {
+        nextHeight = state.startHeight - deltaY;
+      } else if (resizesBottom) {
+        nextHeight = state.startHeight + deltaY;
+      }
 
       const panelFrame = state.frameBounds || this.getPanelFrameRect();
       const maxWidth = Math.max(MIN_PANEL_WIDTH, panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2);

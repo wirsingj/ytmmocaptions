@@ -319,6 +319,20 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.launcherDragState = null;"));
   });
 
+  await runCase("panel exposes natural edge and corner resize handles", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes('"top", "right", "bottom", "left"'));
+    assert.ok(panelSource.includes("data-resize-zone"));
+    assert.ok(panelSource.includes("isResizeZone(zone)"));
+    assert.ok(panelSource.includes("resizesRight"));
+    assert.ok(panelSource.includes("resizesBottom"));
+    assert.ok(css.includes(".dc-resize-top,"));
+    assert.ok(css.includes(".dc-resize-left,"));
+    assert.ok(css.includes("cursor: ew-resize"));
+    assert.ok(css.includes("cursor: ns-resize"));
+  });
+
   await runCase("future preview UI uses a movable divider and visually ghosted rows", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
