@@ -329,12 +329,15 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
     assert.ok(panelSource.includes('role", "separator"'));
+    assert.ok(!panelSource.includes('divider.textContent = "Next up"'));
     assert.ok(!panelSource.includes('divider.addEventListener("click"'));
     assert.ok(css.includes(".dc-chunk-future"));
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes(".dc-future-section"));
-    assert.ok(css.includes("max-height: var(--dc-future-preview-height"));
-    assert.ok(css.includes("border-style: dashed"));
+    assert.ok(css.includes("max-height: min(var(--dc-future-preview-height"));
+    assert.ok(css.includes("border-style: solid"));
+    assert.ok(css.includes("text-overflow: ellipsis"));
+    assert.ok(css.includes("white-space: nowrap"));
     assert.ok(css.includes("cursor: default"));
     assert.ok(css.includes("pointer-events: none"));
   });

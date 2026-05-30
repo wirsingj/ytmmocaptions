@@ -84,9 +84,9 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.futurePreviewHeight, 150);
     assert.equal(result.futurePreviewEnabled, true);
     assert.equal(result.fadeTowardVideoCenter, true);
-    assert.equal(result.videoCenterFadeStrength, 72);
+    assert.equal(result.videoCenterFadeStrength, 84);
     assert.equal(result.videoCenterFadeMidpoint, 50);
-    assert.equal(result.videoCenterFadeMinOpacity, 22);
+    assert.equal(result.videoCenterFadeMinOpacity, 12);
     assert.equal(result.timelineModeEnabled, false);
     assert.equal(result.schemaVersion, 1);
   });

@@ -15,9 +15,9 @@
     futurePreviewHeight: 150,
     futurePreviewEnabled: true,
     fadeTowardVideoCenter: true,
-    videoCenterFadeStrength: 72,
+    videoCenterFadeStrength: 84,
     videoCenterFadeMidpoint: 50,
-    videoCenterFadeMinOpacity: 22,
+    videoCenterFadeMinOpacity: 12,
     timelineModeEnabled: false,
     launcherPosition: null,
     panelClosed: true

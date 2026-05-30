@@ -25,7 +25,7 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 - Toggle Future / Next Up off and confirm the divider and preview rows disappear.
 - Toggle Future / Next Up back on and confirm previews return when transcript/timeline data is available.
 - Confirm future bubbles are absent, not stale, when captions are unavailable or live-only.
-- Confirm the `Next up` divider stays compact and is not clickable as a caption row.
+- Confirm the future-preview separator is just a subtle line and is not clickable as a caption row.
 - Confirm long captions wrap inside rows and the scroll container owns overflow.
 - Navigate to another video using YouTube recommendations, playlist next, browser back/forward, and page reload.
 - Confirm old captions, future previews, hover state, and timeline data do not leak into the new video.

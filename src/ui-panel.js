@@ -281,7 +281,6 @@
         opacityWrap,
         textScaleWrap,
         centerFadeWrap,
-        futurePreviewWrap,
         this.timelineModeButton,
         this.resetButton,
         this.closeButton
@@ -320,7 +319,7 @@
       this.jumpBottomButton.className = "dc-jump-bottom is-hidden";
       this.jumpBottomButton.textContent = "Jump to Latest";
       this.jumpBottomButton.title = "Scroll to newest dialogue";
-      footer.append(this.jumpBottomButton);
+      footer.append(futurePreviewWrap, this.jumpBottomButton);
 
       this.body.append(this.statusEl, this.listViewport, footer);
       this.root.append(header, this.body);
@@ -919,9 +918,9 @@
       this.root.style.setProperty("--dc-fade-x", fadeX.toFixed(1) + "%");
       this.root.style.setProperty("--dc-fade-y", fadeY.toFixed(1) + "%");
       const enabled = this.settings.fadeTowardVideoCenter !== false;
-      const strength = enabled ? Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 72))) / 100 : 0;
+      const strength = enabled ? Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100 : 0;
       const midpoint = Math.max(20, Math.min(80, Number(this.settings.videoCenterFadeMidpoint || 50)));
-      const minimum = Math.max(0.08, Math.min(0.7, Number(this.settings.videoCenterFadeMinOpacity || 22) / 100));
+      const minimum = Math.max(0.08, Math.min(0.7, Number(this.settings.videoCenterFadeMinOpacity || 12) / 100));
       const centerAlpha = enabled ? minimum + (1 - minimum) * (1 - strength) : 1;
       const midAlpha = enabled ? Math.min(1, centerAlpha + (1 - centerAlpha) * 0.38) : 1;
       this.root.style.setProperty("--dc-center-mask-alpha", centerAlpha.toFixed(3));
@@ -972,9 +971,9 @@
         futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : 150,
         futurePreviewEnabled: defaults.futurePreviewEnabled !== false,
         fadeTowardVideoCenter: defaults.fadeTowardVideoCenter !== false,
-        videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 72,
+        videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 84,
         videoCenterFadeMidpoint: Number.isFinite(defaults.videoCenterFadeMidpoint) ? defaults.videoCenterFadeMidpoint : 50,
-        videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 22,
+        videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 12,
         timelineModeEnabled: Boolean(defaults.timelineModeEnabled),
         launcherPosition: null,
         panelClosed: false
@@ -1991,10 +1990,9 @@
       const divider = document.createElement("div");
       divider.className = "dc-future-divider";
       divider.setAttribute("role", "separator");
-      divider.setAttribute("aria-label", "Next up captions");
+      divider.setAttribute("aria-label", "Upcoming caption previews");
       divider.setAttribute("aria-orientation", "horizontal");
       divider.setAttribute("title", "Upcoming caption preview");
-      divider.textContent = "Next up";
 
       const futureList = document.createElement("div");
       futureList.className = "dc-future-list";
