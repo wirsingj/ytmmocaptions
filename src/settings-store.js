@@ -6,13 +6,19 @@
   const SCHEMA_VERSION = 1;
   const DEFAULTS = Object.freeze({
     schemaVersion: SCHEMA_VERSION,
-    panelOpacity: 88,
+    panelOpacity: 55,
     textScale: 120,
     themeName: "stone",
     customThemeColor: "#ded6c3",
     panelPosition: null,
     panelSize: null,
     futurePreviewHeight: 150,
+    futurePreviewEnabled: true,
+    fadeTowardVideoCenter: true,
+    videoCenterFadeStrength: 84,
+    videoCenterFadeMidpoint: 50,
+    videoCenterFadeMinOpacity: 12,
+    timelineModeEnabled: false,
     launcherPosition: null,
     panelClosed: true
   });
@@ -53,10 +59,14 @@
     if (!Number.isFinite(left) || !Number.isFinite(top)) {
       return null;
     }
-    return {
+    const normalized = {
       left: Math.max(0, Math.round(left)),
       top: Math.max(0, Math.round(top))
     };
+    if (value.anchor === "player") {
+      normalized.anchor = "player";
+    }
+    return normalized;
   }
 
   function normalizePanelSize(value) {
@@ -80,6 +90,30 @@
       return DEFAULTS.futurePreviewHeight;
     }
     return Math.max(52, Math.min(360, Math.round(number)));
+  }
+
+  function normalizeVideoCenterFadeStrength(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return DEFAULTS.videoCenterFadeStrength;
+    }
+    return Math.max(0, Math.min(90, Math.round(number)));
+  }
+
+  function normalizeVideoCenterFadeMidpoint(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return DEFAULTS.videoCenterFadeMidpoint;
+    }
+    return Math.max(20, Math.min(80, Math.round(number)));
+  }
+
+  function normalizeVideoCenterFadeMinOpacity(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return DEFAULTS.videoCenterFadeMinOpacity;
+    }
+    return Math.max(8, Math.min(70, Math.round(number)));
   }
 
   function normalizeLauncherPosition(value) {
@@ -108,6 +142,12 @@
       panelPosition: normalizePanelPosition(source.panelPosition),
       panelSize: normalizePanelSize(source.panelSize),
       futurePreviewHeight: normalizeFuturePreviewHeight(source.futurePreviewHeight),
+      futurePreviewEnabled: typeof source.futurePreviewEnabled === "boolean" ? source.futurePreviewEnabled : DEFAULTS.futurePreviewEnabled,
+      fadeTowardVideoCenter: typeof source.fadeTowardVideoCenter === "boolean" ? source.fadeTowardVideoCenter : DEFAULTS.fadeTowardVideoCenter,
+      videoCenterFadeStrength: normalizeVideoCenterFadeStrength(source.videoCenterFadeStrength),
+      videoCenterFadeMidpoint: normalizeVideoCenterFadeMidpoint(source.videoCenterFadeMidpoint),
+      videoCenterFadeMinOpacity: normalizeVideoCenterFadeMinOpacity(source.videoCenterFadeMinOpacity),
+      timelineModeEnabled: typeof source.timelineModeEnabled === "boolean" ? source.timelineModeEnabled : DEFAULTS.timelineModeEnabled,
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),
       panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed
     };

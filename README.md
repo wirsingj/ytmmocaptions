@@ -1,6 +1,6 @@
-# Dialogue Captions
+# YTMMOCC
 
-Dialogue Captions is a Chrome/Firefox extension that turns YouTube subtitles into an MMO-style dialogue panel.
+YTMMOCC is a lightweight Chrome/Firefox extension that turns YouTube captions and transcripts into an MMO-style dialogue panel. This release is YouTube-only and runs locally in the browser.
 
 ## Build Outputs
 
@@ -45,8 +45,11 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 - Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.
 - Keyboard controls are safe by default and only run when the pointer is over the panel.
-- Panel preferences persist across YouTube videos: open/closed state, panel size/position, next-up preview height, pill position, opacity, text size, and local-only theme/color choice.
+- Future / Next Up previews can be turned on or off.
+- Panel preferences persist across YouTube videos: open/closed state, panel size/position, Future / Next Up setting and preview height, pill position, opacity, center fade, text size, and local-only theme/color choice.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.
+
+Timeline Scrub mode remains experimental and is hidden from the normal release UI.
 
 ## Project Structure
 
@@ -133,6 +136,8 @@ npm run release:sanity
 
 See `RELEASE.md` for tag-based GitHub Release and store publishing automation.
 
+For manual pre-upload smoke testing, use `QA_CHECKLIST.md`.
+
 ## Optional Diagnostics
 
 The one-shot browser diagnostic is intentionally not part of `release:check`.
@@ -195,10 +200,11 @@ For AMO signing/upload, use:
 ## Store Compliance Notes
 
 - Host permissions are kept to YouTube only. Browser host-permission paths may be ignored by Chrome/Firefox, so runtime activation is also route-gated to `/watch?v=...`.
-- Content scripts are loaded on `https://www.youtube.com/*` so YouTube SPA navigation can be detected reliably; runtime activation and page-bridge caption hooks are still gated to valid `/watch?v=...` pages only.
+- Content scripts are loaded only on `https://www.youtube.com/*` so YouTube SPA navigation can be detected reliably.
+- YouTube page-bridge caption hooks are still gated to valid `/watch?v=...` pages only.
 - Page-bridge work is additionally guarded inside the injected page script so snapshots, caption probes, timedtext captures, and bridge fetches stop after YouTube SPA navigation leaves a valid `/watch?v=...` route.
 - No personal data collection.
-- Only local settings are stored via extension storage.
+- Only local UI preferences are stored via extension storage.
 - Keyboard shortcuts are not global in the release UI; they activate when the pointer is over the panel and are ignored while typing.
 - If transcript/subtitles are unavailable, the extension shows a clear in-panel message and exits safely.
 - Subtitle/caption data is processed locally for the current video only. The extension is a local accessibility/navigation aid and does not bulk download, export, or transmit captions to the developer or third parties.
@@ -210,7 +216,7 @@ For AMO signing/upload, use:
 
 ## License
 
-Dialogue Captions is source-available proprietary software. The public repo may
+YTMMOCC is source-available proprietary software. The public repo may
 be cloned, reviewed, built, and loaded locally for personal non-commercial
 testing only. Reuse, redistribution, sublicensing, commercial cloning, and
 publishing modified builds are not allowed. See `LICENSE`.

@@ -51,14 +51,26 @@ exports.run = async function runSettingsStoreTests(ctx) {
   await runCase("settings normalization sanitizes position objects", () => {
     const { normalize } = makeStore();
     const result = normalize({
-      panelPosition: { left: -50, top: 20.4 },
+      panelPosition: { anchor: "player", left: -50, top: 20.4 },
       panelSize: { width: 200, height: 150 },
       futurePreviewHeight: 999,
+      futurePreviewEnabled: false,
+      fadeTowardVideoCenter: false,
+      videoCenterFadeStrength: 999,
+      videoCenterFadeMidpoint: 999,
+      videoCenterFadeMinOpacity: -10,
+      timelineModeEnabled: true,
       launcherPosition: { left: 12.6, top: -3 }
     });
-    assert.deepEqual(result.panelPosition, { left: 0, top: 20 });
+    assert.deepEqual(result.panelPosition, { anchor: "player", left: 0, top: 20 });
     assert.deepEqual(result.panelSize, { width: 280, height: 220 });
     assert.equal(result.futurePreviewHeight, 360);
+    assert.equal(result.futurePreviewEnabled, false);
+    assert.equal(result.fadeTowardVideoCenter, false);
+    assert.equal(result.videoCenterFadeStrength, 90);
+    assert.equal(result.videoCenterFadeMidpoint, 80);
+    assert.equal(result.videoCenterFadeMinOpacity, 8);
+    assert.equal(result.timelineModeEnabled, true);
     assert.deepEqual(result.launcherPosition, { left: 13, top: 0 });
   });
 
@@ -66,10 +78,17 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const { normalize } = makeStore();
     const result = normalize({});
     assert.equal(result.panelClosed, true);
+    assert.equal(result.panelOpacity, 55);
     assert.equal(result.textScale, 120);
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");
     assert.equal(result.futurePreviewHeight, 150);
+    assert.equal(result.futurePreviewEnabled, true);
+    assert.equal(result.fadeTowardVideoCenter, true);
+    assert.equal(result.videoCenterFadeStrength, 84);
+    assert.equal(result.videoCenterFadeMidpoint, 50);
+    assert.equal(result.videoCenterFadeMinOpacity, 12);
+    assert.equal(result.timelineModeEnabled, false);
     assert.equal(result.schemaVersion, 1);
   });
 
@@ -98,6 +117,12 @@ exports.run = async function runSettingsStoreTests(ctx) {
       themeName: "ocean",
       customThemeColor: "#336699",
       futurePreviewHeight: 42,
+      futurePreviewEnabled: false,
+      fadeTowardVideoCenter: false,
+      videoCenterFadeStrength: -5,
+      videoCenterFadeMidpoint: 10,
+      videoCenterFadeMinOpacity: 99,
+      timelineModeEnabled: true,
       plan: "legacy-ignored",
       featureOverrides: { oldGate: true },
       globalKeyboardEnabled: true,
@@ -110,6 +135,12 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.themeName, "ocean");
     assert.equal(persisted.customThemeColor, "#336699");
     assert.equal(persisted.futurePreviewHeight, 52);
+    assert.equal(persisted.futurePreviewEnabled, false);
+    assert.equal(persisted.fadeTowardVideoCenter, false);
+    assert.equal(persisted.videoCenterFadeStrength, 0);
+    assert.equal(persisted.videoCenterFadeMidpoint, 20);
+    assert.equal(persisted.videoCenterFadeMinOpacity, 70);
+    assert.equal(persisted.timelineModeEnabled, true);
     assert.equal(persisted.schemaVersion, 1);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "plan"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, "featureOverrides"), false);
@@ -130,6 +161,12 @@ exports.run = async function runSettingsStoreTests(ctx) {
       panelPosition: { left: 45, top: 80 },
       panelSize: { width: 640, height: 420 },
       futurePreviewHeight: 205,
+      futurePreviewEnabled: false,
+      fadeTowardVideoCenter: false,
+      videoCenterFadeStrength: 77,
+      videoCenterFadeMidpoint: 52,
+      videoCenterFadeMinOpacity: 18,
+      timelineModeEnabled: true,
       launcherPosition: { left: 15, top: 300 },
       chunkSize: "short",
       keyboardStepSeconds: 12,
@@ -148,6 +185,12 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(loaded.panelPosition, { left: 45, top: 80 });
     assert.deepEqual(loaded.panelSize, { width: 640, height: 420 });
     assert.equal(loaded.futurePreviewHeight, 205);
+    assert.equal(loaded.futurePreviewEnabled, false);
+    assert.equal(loaded.fadeTowardVideoCenter, false);
+    assert.equal(loaded.videoCenterFadeStrength, 77);
+    assert.equal(loaded.videoCenterFadeMidpoint, 52);
+    assert.equal(loaded.videoCenterFadeMinOpacity, 18);
+    assert.equal(loaded.timelineModeEnabled, true);
     assert.deepEqual(loaded.launcherPosition, { left: 15, top: 300 });
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "chunkSize"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "keyboardStepSeconds"), false);

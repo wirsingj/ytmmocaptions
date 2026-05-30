@@ -203,11 +203,25 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("getFuturePreviewChunks()"));
     assert.ok(source.includes("findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)"));
     assert.ok(source.includes("readFuturePreviewChunksFromTextTracks(currentBucketIndex)"));
+    assert.ok(source.includes("this.settings.futurePreviewEnabled === false"));
     assert.ok(source.includes("offset <= 4"));
     assert.ok(source.includes("futurePreviewOnly"));
     assert.ok(source.includes("currentIndex + 1"));
     assert.ok(source.includes("actualIndex: index"));
     assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks())"));
+  });
+
+  await runCase("full transcript timelines use conversational chunks instead of keyboard skip buckets", () => {
+    const rebuildStart = source.indexOf("    rebuildChunks()");
+    const rebuildBody = source.slice(
+      rebuildStart,
+      source.indexOf("    onSettingsChanged(nextSettings, patch)", rebuildStart)
+    );
+    assert.ok(source.includes("buildTranscriptChunksFromCues(cues)"));
+    assert.ok(rebuildBody.includes("? this.buildFixedWindowChunksFromCues(this.cues)"));
+    assert.ok(rebuildBody.includes(": this.buildTranscriptChunksFromCues(this.cues);"));
+    assert.ok(rebuildBody.includes(": rawChunks;"));
+    assert.ok(!rebuildBody.includes(": this.polishFixedWindowChunks(rawChunks);"));
   });
 
   await runCase("live fallback periodically upgrades to full transcript for future previews", () => {
@@ -216,5 +230,15 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("this.transcriptUpgradeAttempts >= 8"));
     assert.ok(source.includes("Full caption timeline loaded. Next up previews are available."));
     assert.ok(source.includes("this.disableLiveCaptureMode();"));
+  });
+
+  await runCase("unavailable transcript clears stale current future and timeline state", () => {
+    const failureStart = source.indexOf("if (!response || !response.ok)");
+    const failureBody = source.slice(failureStart, source.indexOf("if (response.videoId !== this.videoId)", failureStart));
+    assert.ok(failureBody.includes("this.panel.setChunks([]);"));
+    assert.ok(failureBody.includes("this.panel.setFutureChunks([]);"));
+    assert.ok(failureBody.includes("this.panel.setTimelineData([], Number.NaN);"));
+    assert.ok(failureBody.includes("this.panel.setActiveIndex(-1);"));
+    assert.ok(failureBody.includes("this.panel.setPlaybackTime(0, { forceGlowReset: true });"));
   });
 };

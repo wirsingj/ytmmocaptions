@@ -28,9 +28,9 @@ $artifacts = @(
   @{
     Name = "Source ZIP"
     Path = Join-Path $projectRoot ("downloads\ytmmocaptions-source-v" + $version + ".zip")
-    Required = @("package.json", "src/content-script.js", "scripts/build.mjs", "SOURCE_SUBMISSION.md")
+    Required = @("package.json", "package-lock.json", "src/content-script.js", "scripts/build.mjs", "SOURCE_SUBMISSION.md")
     AllowedPrefixes = @("assets/", "scripts/", "src/", "store-assets/", "styles/", "tests/")
-    AllowedFiles = @(".gitignore", "LICENSE", "manifest.json", "manifest.chrome.json", "manifest.firefox.json", "package.json", "PRIVACY.md", "README.md", "RELEASE.md", "SOURCE_SUBMISSION.md")
+    AllowedFiles = @(".gitignore", "LICENSE", "manifest.json", "manifest.chrome.json", "manifest.firefox.json", "package.json", "package-lock.json", "PRIVACY.md", "README.md", "RELEASE.md", "SOURCE_SUBMISSION.md")
   }
 )
 
@@ -63,9 +63,56 @@ foreach ($artifact in $artifacts) {
       }
     }
 
+    $manifestEntries = $entries | Where-Object { $_ -in @("manifest.json", "manifest.chrome.json", "manifest.firefox.json") }
+    foreach ($manifestEntry in $manifestEntries) {
+      $entryObject = $archive.GetEntry($manifestEntry)
+      if (-not $entryObject) {
+        continue
+      }
+      $reader = New-Object System.IO.StreamReader($entryObject.Open())
+      try {
+        $manifest = $reader.ReadToEnd() | ConvertFrom-Json
+      } finally {
+        $reader.Dispose()
+      }
+
+      foreach ($contentScript in $manifest.content_scripts) {
+        foreach ($match in $contentScript.matches) {
+          if ($match -in @("<all_urls>", "*://*/*", "http://*/*", "https://*/*")) {
+            throw "$($artifact.Name) manifest $manifestEntry contains broad content script match: $match"
+          }
+          if ($match -ne "https://www.youtube.com/*") {
+            throw "$($artifact.Name) manifest $manifestEntry contains unexpected content script match: $match"
+          }
+        }
+      }
+      foreach ($hostPermission in $manifest.host_permissions) {
+        if ($hostPermission -in @("<all_urls>", "*://*/*", "http://*/*", "https://*/*")) {
+          throw "$($artifact.Name) manifest $manifestEntry contains broad host permission: $hostPermission"
+        }
+        if ($hostPermission -ne "https://www.youtube.com/*") {
+          throw "$($artifact.Name) manifest $manifestEntry contains unexpected host permission: $hostPermission"
+        }
+      }
+      if ($manifest.optional_permissions -and $manifest.optional_permissions.Count -gt 0) {
+        throw "$($artifact.Name) manifest $manifestEntry should not declare optional_permissions."
+      }
+      if ($manifest.background -or $manifest.externally_connectable) {
+        throw "$($artifact.Name) manifest $manifestEntry should not declare background or externally_connectable."
+      }
+      foreach ($permission in @("tabs", "activeTab", "scripting")) {
+        if ($manifest.permissions -contains $permission) {
+          throw "$($artifact.Name) manifest $manifestEntry contains unnecessary permission: $permission"
+        }
+      }
+    }
+
     foreach ($entry in $entries) {
       if ($entry -like "*\*") {
         throw "$($artifact.Name) contains Windows-style path: $entry"
+      }
+      if (($artifact.Name -in @("Chrome ZIP", "Firefox XPI")) -and $entry -eq "scripts/universal-captions.js") {
+        throw "$($artifact.Name) contains unreleased generic-video runtime code: $entry"
       }
       foreach ($blocked in $blockedSegments) {
         if ($entry.StartsWith($blocked, [System.StringComparison]::OrdinalIgnoreCase)) {

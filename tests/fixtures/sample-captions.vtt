@@ -1,0 +1,10 @@
+WEBVTT
+
+00:00.000 --> 00:03.000
+Welcome to the generic caption fixture.
+
+00:03.500 --> 00:07.000
+This line should appear as a normal MMO caption bubble.
+
+00:08.000 --> 00:12.000
+Future text should be available when the browser exposes the full text track.

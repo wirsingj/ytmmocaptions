@@ -26,11 +26,23 @@ exports.run = async function runComplianceTests(ctx) {
     }
   });
 
-  await runCase("YouTube permissions stay YouTube-only while runtime is watch-page gated", () => {
+  await runCase("release manifests stay YouTube-only and avoid broad site access", () => {
     for (const fileName of manifests) {
       const manifest = readJson(fileName);
+      assert.equal(manifest.name, "YTMMOCC", fileName);
       assert.deepEqual(manifest.host_permissions, ["https://www.youtube.com/*"], fileName);
       assert.deepEqual(manifest.content_scripts[0].matches, ["https://www.youtube.com/*"], fileName);
+      assert.equal(Object.prototype.hasOwnProperty.call(manifest, "optional_permissions"), false, fileName);
+      assert.equal(Object.prototype.hasOwnProperty.call(manifest, "background"), false, fileName);
+      assert.equal(Object.prototype.hasOwnProperty.call(manifest, "externally_connectable"), false, fileName);
+      assert.ok(!manifest.permissions.includes("tabs"), fileName);
+      assert.ok(!manifest.permissions.includes("activeTab"), fileName);
+      assert.ok(!manifest.permissions.includes("scripting"), fileName);
+      const serialized = JSON.stringify(manifest);
+      assert.ok(!serialized.includes("<all_urls>"), fileName);
+      assert.ok(!serialized.includes("*://*/*"), fileName);
+      assert.ok(!serialized.includes("http://*/*"), fileName);
+      assert.ok(!serialized.includes("https://*/*"), fileName);
       for (const block of manifest.web_accessible_resources || []) {
         assert.deepEqual(block.matches, ["https://www.youtube.com/*"], fileName);
       }
@@ -38,6 +50,8 @@ exports.run = async function runComplianceTests(ctx) {
     const contentScript = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
     assert.ok(contentScript.includes("transcript.isWatchPage(url)"));
     assert.ok(contentScript.includes("transcript.getVideoId(url)"));
+    assert.ok(!contentScript.includes("startGenericRegistryIfAllowed"));
+    assert.ok(!contentScript.includes("universalCaptions"));
   });
 
   await runCase("content script order loads bubble-state before content-script", () => {
@@ -49,14 +63,17 @@ exports.run = async function runComplianceTests(ctx) {
       const pageContextIndex = js.findIndex((item) => item.includes("page-context.js"));
       const captionTextIndex = js.findIndex((item) => item.includes("caption-text.js"));
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
+      const scrubIndex = js.findIndex((item) => item.includes("timeline-scrub.js"));
       const transcriptIndex = js.findIndex((item) => item.includes("transcript.js"));
       const timelineIndex = js.findIndex((item) => item.includes("caption-timeline.js"));
+      const universalIndex = js.findIndex((item) => item.includes("universal-captions.js"));
       const contentIndex = js.findIndex((item) => item.includes("content-script.js"));
       assert.ok(platformIndex >= 0, fileName + " missing platform.js");
       assert.ok(diagnosticsIndex >= 0, fileName + " missing diagnostics.js");
       assert.ok(pageContextIndex >= 0, fileName + " missing page-context.js");
       assert.ok(captionTextIndex >= 0, fileName + " missing caption-text.js");
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
+      assert.ok(scrubIndex >= 0, fileName + " missing timeline-scrub.js");
       assert.ok(transcriptIndex >= 0, fileName + " missing transcript.js");
       assert.ok(timelineIndex >= 0, fileName + " missing caption-timeline.js");
       assert.ok(contentIndex >= 0, fileName + " missing content-script.js");
@@ -64,8 +81,11 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(diagnosticsIndex < pageContextIndex, fileName + " loads diagnostics before page-context");
       assert.ok(captionTextIndex < contentIndex, fileName + " loads content-script before caption-text");
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
+      assert.ok(bubbleIndex < scrubIndex, fileName + " loads timeline scrub before bubble-state");
+      assert.ok(scrubIndex < contentIndex, fileName + " loads content-script before timeline scrub");
       assert.ok(transcriptIndex < timelineIndex, fileName + " loads caption timeline before transcript");
       assert.ok(timelineIndex < contentIndex, fileName + " loads content-script before caption timeline");
+      assert.equal(universalIndex, -1, fileName + " should not load generic-video experiment in release manifest");
     }
   });
 
@@ -303,16 +323,27 @@ exports.run = async function runComplianceTests(ctx) {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("dc-future-divider"));
     assert.ok(panelSource.includes("dc-future-section"));
-    assert.ok(panelSource.includes("handleFutureDividerPointerDown"));
+    assert.ok(panelSource.includes("futurePreviewEnabled"));
+    assert.ok(panelSource.includes("dc-future-toggle-input"));
+    assert.ok(!panelSource.includes("handleFutureDividerPointerDown"));
+    assert.ok(!panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
     assert.ok(panelSource.includes('role", "separator"'));
+    assert.ok(!panelSource.includes('divider.textContent = "Next up"'));
     assert.ok(!panelSource.includes('divider.addEventListener("click"'));
+    assert.ok(!panelSource.includes("dc-chunk-seek-icon"));
     assert.ok(css.includes(".dc-chunk-future"));
+    assert.ok(!css.includes(".dc-chunk-seek-icon"));
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes(".dc-future-section"));
-    assert.ok(css.includes("max-height: var(--dc-future-preview-height"));
-    assert.ok(css.includes("border-style: dashed"));
-    assert.ok(css.includes("cursor: ns-resize"));
+    assert.ok(css.includes("max-height: min(var(--dc-future-preview-height"));
+    assert.ok(css.includes("display: block;"));
+    assert.ok(css.includes("grid-template-columns: auto minmax(0, 1fr)"));
+    assert.ok(css.includes("border-style: solid"));
+    assert.ok(css.includes("text-overflow: ellipsis"));
+    assert.ok(css.includes("white-space: nowrap"));
+    assert.ok(css.includes("cursor: default"));
+    assert.ok(css.includes("pointer-events: none"));
   });
 
   await runCase("reading glow cannot persist without an active timing range", () => {
@@ -327,8 +358,12 @@ exports.run = async function runComplianceTests(ctx) {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes('aria-label", "MMO dialogue captions panel"'));
     assert.ok(panelSource.includes('aria-live", "polite"'));
+    assert.ok(panelSource.includes('title.textContent = "YTMMOCC"'));
     assert.ok(panelSource.includes('aria-label", "Panel theme"'));
     assert.ok(panelSource.includes('aria-label", "Custom theme color"'));
+    assert.ok(panelSource.includes('opacityWrap.textContent = "Opacity"'));
+    assert.ok(panelSource.includes("dc-theme-select"));
+    assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 
@@ -336,6 +371,8 @@ exports.run = async function runComplianceTests(ctx) {
     const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
     assert.ok(readme.includes("Hover the panel and press `Space`"));
     assert.ok(readme.includes("desktop Chrome and desktop Firefox only"));
+    assert.ok(readme.includes("Timeline Scrub mode remains experimental and is hidden from the normal release UI."));
+    assert.ok(!readme.includes("Optional Timeline Scrub mode turns"));
     assert.ok(!readme.includes("gecko_android"));
   });
 
@@ -365,11 +402,93 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!source.includes("keyboardStepSeconds"));
     assert.ok(!source.includes("autoScroll"));
     assert.ok(source.includes("futurePreviewHeight"));
+    assert.ok(source.includes("futurePreviewEnabled"));
+    assert.ok(source.includes("fadeTowardVideoCenter"));
+    assert.ok(source.includes("timelineModeEnabled"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
     assert.ok(privacy.includes("panel theme preset and custom theme color"));
     assert.ok(privacy.includes("next-up preview height"));
+    assert.ok(privacy.includes("whether Future / Next Up previews are enabled"));
+    assert.ok(privacy.includes("timeline scrub mode"));
+    assert.ok(privacy.includes("whether the panel fades toward the center"));
+  });
+
+  await runCase("generic video experiment is source-only and not in release manifests", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "universal-captions.js"), "utf8");
+    assert.ok(source.includes("HTMLVideoElement"));
+    assert.ok(source.includes("TextTrack"));
+    assert.ok(source.includes("GenericTextTrackAdapter"));
+    assert.ok(!source.includes("getUserMedia"));
+    assert.ok(!source.includes("MediaRecorder"));
+    assert.ok(!source.includes("fetch("));
+    for (const fileName of manifests) {
+      const manifest = readJson(fileName);
+      assert.ok(!JSON.stringify(manifest).includes("universal-captions.js"), fileName);
+    }
+  });
+
+  await runCase("timeline scrub mode reuses panel chunks and stays optional", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const scrubSource = fs.readFileSync(path.join(ROOT_DIR, "src", "timeline-scrub.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes("setTimelineData"));
+    assert.ok(panelSource.includes("dc-timeline-lens"));
+    assert.ok(panelSource.includes("TIMELINE_MODE_EXPERIMENT_ENABLED = false"));
+    assert.ok(panelSource.includes("timelineFeatureEnabled"));
+    assert.ok(panelSource.includes("timelineModeEnabled"));
+    assert.ok(panelSource.includes("handleTimelineClick"));
+    assert.ok(panelSource.includes('this.body.style.display = timelineActive ? "none" : "flex"'));
+    assert.ok(panelSource.includes("this.body.hidden = timelineActive"));
+    assert.ok(panelSource.includes("timelineDataKey"));
+    assert.ok(panelSource.includes("this.timelineHoverIndex = -1;"));
+    assert.ok(panelSource.includes("this.timelineHoverTime = Number.NaN;"));
+    assert.ok(panelSource.includes("const lensTime = Number.isFinite(this.timelineHoverTime)"));
+    assert.ok(panelSource.includes("dc-timeline-lens-text dc-chunk-text"));
+    assert.ok(panelSource.includes("this.renderChunkText(text, focusChunk, true, clampedLensTime)"));
+    assert.ok(panelSource.includes('this.timelineLayer.style.setProperty("--dc-text-scale"'));
+    assert.ok(panelSource.includes('this.timelineLayer.style.setProperty("--dc-accent"'));
+    assert.ok(panelSource.includes('this.timelineTooltip.classList.add("is-visible")'));
+    assert.ok(panelSource.includes('this.timelineTooltip.classList.toggle("is-hover"'));
+    assert.ok(panelSource.includes("Math.pow(blend, 0.72)"));
+    assert.ok(panelSource.includes("const fadeX = Math.max(0, Math.min(100"));
+    assert.ok(panelSource.includes("const centerAlpha = enabled ?"));
+    assert.ok(panelSource.includes('this.root.style.setProperty("--dc-edge-mask-alpha"'));
+    assert.ok(panelSource.includes('setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84)'));
+    assert.ok(panelSource.includes('setAlpha("--dc-card-alpha", 0.2 + eased * 0.8)'));
+    assert.ok(scrubSource.includes("hoverXToTime"));
+    assert.ok(scrubSource.includes("findChunkIndexAtTime"));
+    assert.ok(css.includes(".dc-timeline-layer"));
+    assert.ok(css.includes(".dc-timeline-lens"));
+    assert.equal(css.includes(".dc-timeline-lens::after"), false);
+    assert.ok(css.includes(".dc-timeline-lens-time"));
+    assert.ok(css.includes(".dc-timeline-lens-text"));
+    assert.ok(css.includes("background: transparent;"));
+    assert.ok(css.includes("radial-gradient("));
+    assert.ok(css.includes('font-family: "Trebuchet MS", "Segoe UI", sans-serif;'));
+    assert.ok(css.includes("font-size: calc(15px * var(--dc-text-scale, 1.2))"));
+    assert.ok(css.includes("width: min(860px, 82vw)"));
+    assert.ok(css.includes(".dc-timeline-lens.is-hover"));
+    assert.ok(css.includes(".dc-panel.is-timeline-scrub .dc-controls"));
+    assert.ok(!css.includes(".dc-rail-popover"));
+    assert.ok(css.includes(".dc-panel-open .ytp-caption-window-rollup"));
+    assert.ok(css.includes(".dc-panel-open .ytp-caption-segment"));
+  });
+
+  await runCase("video-anchored panel mounts inside the player instead of floating over comments", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(panelSource.includes("resolveMountElement()"));
+    assert.ok(panelSource.includes('(this.mountElement || document.body).append(this.root)'));
+    assert.ok(panelSource.includes("getElementLocalRect"));
+    assert.ok(panelSource.includes("localToPlayerPanelPosition"));
+    assert.ok(panelSource.includes("isAnchorUsablyVisible()"));
+    assert.ok(panelSource.includes("is-anchor-offscreen"));
+    assert.ok(css.includes("dc-player-host"));
+    assert.ok(css.includes("position: absolute;"));
+    assert.ok(css.includes(".dc-panel.is-anchor-offscreen"));
+    assert.ok(css.includes(".dc-launcher.is-anchor-offscreen"));
   });
 };

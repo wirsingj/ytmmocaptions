@@ -1501,6 +1501,9 @@
     }
 
     canShowFuturePreviewChunks() {
+      if (this.settings.futurePreviewEnabled === false) {
+        return false;
+      }
       if (Array.isArray(this.transcriptPreviewChunks) && this.transcriptPreviewChunks.length) {
         return true;
       }
@@ -1621,6 +1624,15 @@
     updateFuturePreviewChunks() {
       if (this.panel && typeof this.panel.setFutureChunks === "function") {
         this.panel.setFutureChunks(this.getFuturePreviewChunks());
+      }
+      if (
+        this.panel &&
+        typeof this.panel.isTimelineFeatureAvailable === "function" &&
+        this.panel.isTimelineFeatureAvailable() &&
+        typeof this.panel.setTimelineData === "function"
+      ) {
+        const duration = this.video ? Number(this.video.duration) : Number.NaN;
+        this.panel.setTimelineData(this.allChunks, duration);
       }
     }
 
@@ -1801,6 +1813,16 @@
         if (this.panel) {
           if (!this.cues.length) {
             this.panel.setChunks([]);
+            if (typeof this.panel.setFutureChunks === "function") {
+              this.panel.setFutureChunks([]);
+            }
+            if (typeof this.panel.setTimelineData === "function") {
+              this.panel.setTimelineData([], Number.NaN);
+            }
+            this.panel.setActiveIndex(-1);
+            if (typeof this.panel.setPlaybackTime === "function") {
+              this.panel.setPlaybackTime(0, { forceGlowReset: true });
+            }
           }
           this.panel.setStatus(
             shouldEnableLiveCapture
@@ -1904,6 +1926,25 @@
         });
       }
       return chunks;
+    }
+
+    buildTranscriptChunksFromCues(cues) {
+      const chunks = chunker.chunkCues(cues, this.settings.chunkSize || "medium");
+      return chunks.map((chunk, index) => {
+        const tokens = this.normalizeCaptionTokens(chunk.tokens);
+        const firstTokenStart = tokens.length ? Number(tokens[0].start) : Number.NaN;
+        const start = Math.max(0, Number(chunk.start || 0));
+        return {
+          ...chunk,
+          id: index,
+          start,
+          end: Math.max(start + 0.25, Number(chunk.end || start + 0.25)),
+          seekStart: Number.isFinite(firstTokenStart) ? Math.max(0, firstTokenStart) : start,
+          text: this.cleanCaptionCandidateText(chunk.text),
+          tokens,
+          sourceType: "transcript"
+        };
+      }).filter((chunk) => chunk.text);
     }
 
     isCaptionStageDirection(text) {
@@ -2323,10 +2364,12 @@
     }
 
     rebuildChunks() {
-      const rawChunks = this.buildFixedWindowChunksFromCues(this.cues);
+      const rawChunks = this.liveCaptureEnabled
+        ? this.buildFixedWindowChunksFromCues(this.cues)
+        : this.buildTranscriptChunksFromCues(this.cues);
       this.allChunks = this.liveCaptureEnabled
         ? this.syncLiveBubblesFromBuckets(rawChunks)
-        : this.polishFixedWindowChunks(rawChunks);
+        : rawChunks;
       const previousRevealed = Math.max(0, Number(this.revealedChunkCount || 0));
       const initialVisible = Math.min(this.allChunks.length, previousRevealed);
       this.revealedChunkCount = initialVisible;
@@ -2344,6 +2387,12 @@
       const isClosed = Boolean(this.settings.panelClosed);
       const changedPanelClosed =
         patch && Object.prototype.hasOwnProperty.call(patch, "panelClosed") && wasClosed !== isClosed;
+      const changedFuturePreview =
+        patch && Object.prototype.hasOwnProperty.call(patch, "futurePreviewEnabled");
+
+      if (changedFuturePreview) {
+        this.updateFuturePreviewChunks();
+      }
 
       if (changedPanelClosed && isClosed) {
         this.abortTranscriptLoad();

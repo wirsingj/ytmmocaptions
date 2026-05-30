@@ -4,6 +4,7 @@
   const platform = app.platform;
   const bubbleState = app.bubbleState;
   const settingsStore = app.settingsStore;
+  const timelineScrub = app.timelineScrub;
 
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
@@ -19,6 +20,8 @@
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
   const LAUNCHER_CONTROL_BAR_GAP = 54;
+  // Timeline mode is intentionally shipped dormant until it gets a focused UX pass.
+  const TIMELINE_MODE_EXPERIMENT_ENABLED = false;
   const THEME_PRESETS = Object.freeze({
     stone: {
       label: "Stone",
@@ -76,6 +79,13 @@
     constructor(options) {
       this.options = options || {};
       this.settings = this.options.settings || {};
+      this.instanceId = String(this.options.instanceId || "").replace(/[^a-z0-9_-]/gi, "");
+      this.panelId = this.instanceId ? PANEL_ID + "-" + this.instanceId : PANEL_ID;
+      this.launcherId = this.instanceId ? LAUNCHER_ID + "-" + this.instanceId : LAUNCHER_ID;
+      this.timelineId = this.instanceId ? "dc-timeline-" + this.instanceId : "dc-timeline";
+      this.anchorElement = this.options.anchorElement instanceof Element ? this.options.anchorElement : null;
+      this.persistLayout = this.options.persistLayout !== false;
+      this.mountElement = null;
 
       this.root = null;
       this.body = null;
@@ -91,6 +101,13 @@
       this.textScaleInput = null;
       this.themeSelect = null;
       this.themeColorInput = null;
+      this.centerFadeInput = null;
+      this.futurePreviewInput = null;
+      this.timelineModeButton = null;
+      this.timelineFeatureEnabled = TIMELINE_MODE_EXPERIMENT_ENABLED;
+      this.timelineLayer = null;
+      this.timelineTrack = null;
+      this.timelineTooltip = null;
       this.header = null;
       this.resetButton = null;
       this.closeButton = null;
@@ -99,6 +116,11 @@
 
       this.chunks = [];
       this.futureChunks = [];
+      this.timelineChunks = [];
+      this.timelineDuration = Number.NaN;
+      this.timelineDataKey = "";
+      this.timelineHoverIndex = -1;
+      this.timelineHoverTime = Number.NaN;
       this.futureCollapsed = false;
       this.activeIndex = -1;
       this.playbackTime = Number.NaN;
@@ -109,9 +131,9 @@
       this.currentWindowEnd = -1;
       this.currentFutureCount = -1;
       this.currentFutureCollapsed = false;
+      this.currentFutureKey = "";
       this.dragState = null;
       this.resizeState = null;
-      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.launcherSuppressClickUntil = 0;
       this.resizeHandles = [];
@@ -124,16 +146,21 @@
       this.layoutRefreshTimers = [];
       this.rafRenderId = 0;
       this.resizeMoveRafId = 0;
-      this.futureDividerRafId = 0;
       this.statusTimer = 0;
+      this.timelineLayerVisible = false;
     }
 
     mount() {
       this.removeExistingUiNodes();
+      this.mountElement = this.resolveMountElement();
+      if (this.mountElement) {
+        this.mountElement.classList.add("dc-player-host");
+      }
 
       this.root = document.createElement("section");
-      this.root.id = PANEL_ID;
+      this.root.id = this.panelId;
       this.root.className = "dc-panel";
+      this.root.dataset.dcInstanceId = this.instanceId || "youtube";
       this.root.tabIndex = 0;
       this.root.setAttribute("aria-label", "MMO dialogue captions panel");
       this.resizeHandles = [];
@@ -155,7 +182,7 @@
       titleWrap.className = "dc-title-wrap";
       const title = document.createElement("h2");
       title.className = "dc-title";
-      title.textContent = "MMOCC";
+      title.textContent = "YTMMOCC";
       titleWrap.append(title);
 
       const controls = document.createElement("div");
@@ -201,7 +228,7 @@
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
-      opacityWrap.textContent = "Blend";
+      opacityWrap.textContent = "Opacity";
       this.opacityWrap = opacityWrap;
 
       this.opacityInput = document.createElement("input");
@@ -210,8 +237,8 @@
       this.opacityInput.min = "10";
       this.opacityInput.max = "100";
       this.opacityInput.step = "1";
-      this.opacityInput.value = String(this.settings.panelOpacity || 100);
-      this.opacityInput.title = "Panel background blend";
+      this.opacityInput.value = String(this.settings.panelOpacity || 55);
+      this.opacityInput.title = "Panel opacity";
       opacityWrap.append(this.opacityInput);
 
       const textScaleWrap = document.createElement("label");
@@ -229,14 +256,45 @@
       this.textScaleInput.title = "Text size";
       textScaleWrap.append(this.textScaleInput);
 
+      const centerFadeWrap = document.createElement("label");
+      centerFadeWrap.className = "dc-center-fade-wrap";
+      centerFadeWrap.title = "Fade toward the center of this video";
+      centerFadeWrap.textContent = "Fade";
+      this.centerFadeInput = document.createElement("input");
+      this.centerFadeInput.type = "checkbox";
+      this.centerFadeInput.className = "dc-center-fade-input";
+      this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
+      centerFadeWrap.append(this.centerFadeInput);
+
+      const futurePreviewWrap = document.createElement("label");
+      futurePreviewWrap.className = "dc-future-toggle-wrap";
+      futurePreviewWrap.title = "Show Next Up preview captions";
+      futurePreviewWrap.textContent = "Next";
+      this.futurePreviewInput = document.createElement("input");
+      this.futurePreviewInput.type = "checkbox";
+      this.futurePreviewInput.className = "dc-future-toggle-input";
+      this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
+      futurePreviewWrap.append(this.futurePreviewInput);
+
+      this.timelineModeButton = document.createElement("button");
+      this.timelineModeButton.type = "button";
+      this.timelineModeButton.className = "dc-btn dc-btn-timeline";
+      this.timelineModeButton.textContent = "Timeline";
+      this.timelineModeButton.title = "Open transcript scrub mode";
+      this.timelineModeButton.setAttribute("aria-pressed", this.settings.timelineModeEnabled ? "true" : "false");
+      this.timelineModeButton.hidden = !this.timelineFeatureEnabled;
+
       controls.append(
         this.themeSelect,
         this.themeColorInput,
         opacityWrap,
         textScaleWrap,
-        this.resetButton,
-        this.closeButton
+        centerFadeWrap
       );
+      if (this.timelineFeatureEnabled) {
+        controls.append(this.timelineModeButton);
+      }
+      controls.append(this.resetButton, this.closeButton);
       header.append(titleWrap, controls);
 
       this.body = document.createElement("div");
@@ -271,22 +329,35 @@
       this.jumpBottomButton.className = "dc-jump-bottom is-hidden";
       this.jumpBottomButton.textContent = "Jump to Latest";
       this.jumpBottomButton.title = "Scroll to newest dialogue";
-      footer.append(this.jumpBottomButton);
+      footer.append(futurePreviewWrap, this.jumpBottomButton);
 
       this.body.append(this.statusEl, this.listViewport, footer);
       this.root.append(header, this.body);
       for (let index = 0; index < this.resizeHandles.length; index += 1) {
         this.root.append(this.resizeHandles[index]);
       }
-      document.body.append(this.root);
+      (this.mountElement || document.body).append(this.root);
+
+      this.timelineLayer = document.createElement("div");
+      this.timelineLayer.id = this.timelineId;
+      this.timelineLayer.className = "dc-timeline-layer";
+      this.timelineLayer.dataset.dcInstanceId = this.instanceId || "youtube";
+      this.timelineTrack = document.createElement("div");
+      this.timelineTrack.className = "dc-timeline-track";
+      this.timelineTooltip = document.createElement("div");
+      this.timelineTooltip.className = "dc-timeline-lens";
+      this.timelineTooltip.setAttribute("role", "tooltip");
+      this.timelineLayer.append(this.timelineTrack, this.timelineTooltip);
+      (this.mountElement || document.body).append(this.timelineLayer);
 
       this.launcherButton = document.createElement("button");
       this.launcherButton.type = "button";
-      this.launcherButton.id = LAUNCHER_ID;
+      this.launcherButton.id = this.launcherId;
       this.launcherButton.className = "dc-launcher";
+      this.launcherButton.dataset.dcInstanceId = this.instanceId || "youtube";
       this.launcherButton.textContent = "Captions";
       this.launcherButton.title = "Open panel (drag to move)";
-      document.body.append(this.launcherButton);
+      (this.mountElement || document.body).append(this.launcherButton);
 
       this.bindEvents();
       this.applySettings();
@@ -320,17 +391,46 @@
         this.launcherButton.remove();
         this.launcherButton = null;
       }
+      if (this.timelineLayer) {
+        this.timelineLayer.remove();
+        this.timelineLayer = null;
+        this.timelineTrack = null;
+        this.timelineTooltip = null;
+      }
       this.removeExistingUiNodes();
+      if (this.mountElement) {
+        this.mountElement.classList.remove("dc-player-host");
+        this.mountElement = null;
+      }
       document.documentElement.classList.remove(ACTIVE_PAGE_CLASS);
     }
 
     removeExistingUiNodes() {
-      const knownNodes = document.querySelectorAll("#" + PANEL_ID + ", #" + LAUNCHER_ID + ", .dc-launcher");
+      const knownNodes = document.querySelectorAll("#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId);
       knownNodes.forEach((node) => {
         if (node instanceof Element) {
           node.remove();
         }
       });
+    }
+
+    resolveMountElement() {
+      if (this.anchorElement instanceof HTMLElement && document.documentElement.contains(this.anchorElement)) {
+        if (this.anchorElement.tagName !== "VIDEO") {
+          return this.anchorElement;
+        }
+        if (this.anchorElement.parentElement instanceof HTMLElement) {
+          return this.anchorElement.parentElement;
+        }
+      }
+      const selectors = ["#movie_player", ".html5-video-player", "ytd-player"];
+      for (let index = 0; index < selectors.length; index += 1) {
+        const element = document.querySelector(selectors[index]);
+        if (element instanceof HTMLElement) {
+          return element;
+        }
+      }
+      return document.body;
     }
 
     addListener(target, type, handler, options) {
@@ -360,7 +460,6 @@
       }
       this.dragState = null;
       this.resizeState = null;
-      this.futureDividerDragState = null;
       this.launcherDragState = null;
       this.cancelResizeFrames();
     }
@@ -369,10 +468,6 @@
       if (this.resizeMoveRafId) {
         platform.cancelFrame(this.resizeMoveRafId);
         this.resizeMoveRafId = 0;
-      }
-      if (this.futureDividerRafId) {
-        platform.cancelFrame(this.futureDividerRafId);
-        this.futureDividerRafId = 0;
       }
     }
 
@@ -431,6 +526,24 @@
       };
       this.addListener(this.textScaleInput, "input", onTextScaleInput);
 
+      const onCenterFadeChange = () => {
+        this.updateSettings({ fadeTowardVideoCenter: Boolean(this.centerFadeInput.checked) });
+      };
+      this.addListener(this.centerFadeInput, "change", onCenterFadeChange);
+
+      const onFuturePreviewChange = () => {
+        this.updateSettings({ futurePreviewEnabled: Boolean(this.futurePreviewInput.checked) });
+      };
+      this.addListener(this.futurePreviewInput, "change", onFuturePreviewChange);
+
+      const onTimelineToggle = () => {
+        if (!this.timelineFeatureEnabled) {
+          return;
+        }
+        this.updateSettings({ timelineModeEnabled: !this.settings.timelineModeEnabled });
+      };
+      this.addListener(this.timelineModeButton, "click", onTimelineToggle);
+
       const onLauncherClick = () => {
         if (Date.now() < this.launcherSuppressClickUntil) {
           return;
@@ -470,17 +583,13 @@
       };
       this.addListener(this.listViewport, "click", onListClick);
 
-      const onListPointerDown = (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) {
-          return;
-        }
-        const divider = target.closest(".dc-future-divider");
-        if (divider) {
-          this.handleFutureDividerPointerDown(event, divider);
-        }
-      };
-      this.addListener(this.listViewport, "pointerdown", onListPointerDown);
+      const onTimelineClick = (event) => this.handleTimelineClick(event);
+      const onTimelineMove = (event) => this.handleTimelinePointerMove(event);
+      const onTimelineLeave = () => this.hideTimelineTooltip();
+      this.addListener(this.timelineLayer, "click", onTimelineClick);
+      this.addListener(this.timelineLayer, "pointermove", onTimelineMove);
+      this.addListener(this.timelineLayer, "pointerleave", onTimelineLeave);
+      this.addListener(this.timelineTrack, "pointerleave", onTimelineLeave);
 
       const onJumpBottom = () => {
         if (this.chunks.length > 0) {
@@ -515,11 +624,12 @@
       this.addListener(window, "resize", onResize);
 
       const onWindowScroll = () => {
-        if (this.launcherButton && this.launcherButton.style.display !== "none") {
-          this.applyLauncherPosition();
-        }
+        this.refreshAnchorLayout();
       };
       this.addListener(window, "scroll", onWindowScroll, { passive: true });
+
+      const onFullscreenChange = () => this.refreshAnchorLayout();
+      this.addListener(document, "fullscreenchange", onFullscreenChange);
     }
 
     updateSettings(patch) {
@@ -558,7 +668,9 @@
       if (panelClosed) {
         this.pointerInside = false;
       }
-      this.body.style.display = "flex";
+      const timelineActive = this.timelineFeatureEnabled && Boolean(this.settings.timelineModeEnabled);
+      this.body.style.display = timelineActive ? "none" : "flex";
+      this.body.hidden = timelineActive;
 
       const isNarrowViewport = window.matchMedia("(max-width: 980px)").matches;
       const defaultPanelRect = isNarrowViewport ? null : this.getDefaultPanelRect();
@@ -577,11 +689,11 @@
         );
         const boundedWidth = Math.max(
           MIN_PANEL_WIDTH,
-          Math.min(window.innerWidth - 8, Number(this.settings.panelSize.width))
+          Math.min(panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2, Number(this.settings.panelSize.width))
         );
         const boundedHeight = Math.max(
           MIN_PANEL_HEIGHT,
-          Math.min(maxPanelHeight, window.innerHeight - 8, Number(this.settings.panelSize.height))
+          Math.min(maxPanelHeight, Number(this.settings.panelSize.height))
         );
         this.root.style.width = Math.round(boundedWidth) + "px";
         this.root.style.height = Math.round(boundedHeight) + "px";
@@ -593,7 +705,7 @@
         this.root.style.height = "";
       }
 
-      const panelOpacity = Number(this.settings.panelOpacity || 100);
+      const panelOpacity = Number(this.settings.panelOpacity || 55);
       const normalizedOpacity = Math.max(10, Math.min(100, panelOpacity));
       this.applyTheme();
       this.applyPanelBlend(normalizedOpacity);
@@ -603,8 +715,27 @@
       const textScale = Number(this.settings.textScale || 100);
       const normalizedTextScale = Math.max(100, Math.min(200, textScale));
       this.root.style.setProperty("--dc-text-scale", String(normalizedTextScale / 100));
+      if (this.timelineLayer) {
+        this.timelineLayer.style.setProperty("--dc-text-scale", String(normalizedTextScale / 100));
+      }
       if (this.textScaleInput && this.textScaleInput.value !== String(normalizedTextScale)) {
         this.textScaleInput.value = String(normalizedTextScale);
+      }
+      if (this.centerFadeInput) {
+        this.centerFadeInput.checked = this.settings.fadeTowardVideoCenter !== false;
+      }
+      if (this.futurePreviewInput) {
+        this.futurePreviewInput.checked = this.settings.futurePreviewEnabled !== false;
+      }
+      if (this.timelineModeButton) {
+        this.timelineModeButton.classList.toggle("is-active", timelineActive);
+        this.timelineModeButton.textContent = timelineActive ? "Panel" : "Timeline";
+        this.timelineModeButton.title = timelineActive ? "Return to full caption panel" : "Open transcript scrub mode";
+        this.timelineModeButton.hidden = !this.timelineFeatureEnabled;
+        this.timelineModeButton.setAttribute("aria-pressed", timelineActive ? "true" : "false");
+      }
+      if (this.root) {
+        this.root.classList.toggle("is-timeline-scrub", timelineActive);
       }
       if (this.themeSelect) {
         const themeName = this.getThemeName();
@@ -624,11 +755,8 @@
         this.scrollToBottom();
       }
 
-      if (this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
-        this.root.style.left = this.settings.panelPosition.left + "px";
-        this.root.style.top = this.settings.panelPosition.top + "px";
-        this.root.style.right = "auto";
-        this.root.style.bottom = "auto";
+      if (this.persistLayout && this.settings.panelPosition && Number.isFinite(this.settings.panelPosition.left) && Number.isFinite(this.settings.panelPosition.top)) {
+        this.applySavedPanelPosition();
       } else if (defaultPanelRect) {
         this.root.style.left = defaultPanelRect.left + "px";
         this.root.style.top = defaultPanelRect.top + "px";
@@ -645,6 +773,7 @@
       this.applyLauncherPosition();
       this.normalizeSavedPanelPosition();
       this.updatePanelFade();
+      this.updateTimelineLayer();
       this.updateJumpBottomVisibility();
     }
 
@@ -655,17 +784,22 @@
       const normalizedPercent = Math.max(10, Math.min(100, Number(opacityPercent)));
       const blend = (normalizedPercent - 10) / 90;
       const setAlpha = (name, value) => {
-        this.root.style.setProperty(name, Math.max(0, Math.min(1, value)).toFixed(3));
+        const alpha = Math.max(0, Math.min(1, value)).toFixed(3);
+        this.root.style.setProperty(name, alpha);
+        if (this.timelineLayer) {
+          this.timelineLayer.style.setProperty(name, alpha);
+        }
       };
-      setAlpha("--dc-panel-alpha-inner", 0 + blend * 0.172);
-      setAlpha("--dc-panel-alpha-mid", 0.004 + blend * 0.354);
-      setAlpha("--dc-panel-alpha-outer", 0.14 + blend * 0.74);
-      setAlpha("--dc-panel-alpha-base", 0.004 + blend * 0.336);
-      setAlpha("--dc-panel-fade-light", 0.001 + blend * 0.019);
-      setAlpha("--dc-panel-fade-shadow", 0.012 + blend * 0.253);
-      setAlpha("--dc-panel-fade-shadow-soft", (0.012 + blend * 0.253) * 0.62);
-      setAlpha("--dc-card-alpha", 0.16 + blend * 0.48);
-      setAlpha("--dc-card-current-alpha", 0.22 + blend * 0.52);
+      const eased = Math.pow(blend, 0.72);
+      setAlpha("--dc-panel-alpha-inner", 0.02 + eased * 0.98);
+      setAlpha("--dc-panel-alpha-mid", 0.02 + eased * 0.98);
+      setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84);
+      setAlpha("--dc-panel-alpha-base", 0.02 + eased * 0.98);
+      setAlpha("--dc-panel-fade-light", 0);
+      setAlpha("--dc-panel-fade-shadow", 0);
+      setAlpha("--dc-panel-fade-shadow-soft", 0);
+      setAlpha("--dc-card-alpha", 0.2 + eased * 0.8);
+      setAlpha("--dc-card-current-alpha", 0.26 + eased * 0.74);
       this.root.style.opacity = "1";
     }
 
@@ -788,6 +922,18 @@
       this.root.style.setProperty("--dc-panel-rgb", this.rgbString(theme.panel));
       this.root.style.setProperty("--dc-card-rgb", this.rgbString(theme.card));
       this.root.style.setProperty("--dc-current-rgb", this.rgbString(theme.current));
+      if (this.timelineLayer) {
+        this.timelineLayer.style.setProperty("--dc-accent", theme.accent);
+        this.timelineLayer.style.setProperty("--dc-text", theme.text);
+        this.timelineLayer.style.setProperty("--dc-muted", theme.muted);
+        this.timelineLayer.style.setProperty("--dc-accent-rgb", this.rgbString(accentRgb));
+        this.timelineLayer.style.setProperty("--dc-text-rgb", this.rgbString(textRgb));
+        this.timelineLayer.style.setProperty("--dc-muted-rgb", this.rgbString(mutedRgb));
+        this.timelineLayer.style.setProperty("--dc-bg-rgb", this.rgbString(theme.bg));
+        this.timelineLayer.style.setProperty("--dc-panel-rgb", this.rgbString(theme.panel));
+        this.timelineLayer.style.setProperty("--dc-card-rgb", this.rgbString(theme.card));
+        this.timelineLayer.style.setProperty("--dc-current-rgb", this.rgbString(theme.current));
+      }
     }
 
     updatePanelFade() {
@@ -805,6 +951,16 @@
       const fadeY = Math.max(0, Math.min(100, ((centerY - rect.top) / rect.height) * 100));
       this.root.style.setProperty("--dc-fade-x", fadeX.toFixed(1) + "%");
       this.root.style.setProperty("--dc-fade-y", fadeY.toFixed(1) + "%");
+      const enabled = this.settings.fadeTowardVideoCenter !== false;
+      const strength = Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100;
+      const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 55)));
+      const opacityBlend = (opacityPercent - 10) / 90;
+      const centerAlpha = enabled ? Math.min(0.86, 0.36 + opacityBlend * 0.38 + (1 - strength) * 0.08) : 1;
+      const midAlpha = enabled ? centerAlpha + (1 - centerAlpha) * 0.46 : 1;
+      this.root.style.setProperty("--dc-center-mask-alpha", centerAlpha.toFixed(3));
+      this.root.style.setProperty("--dc-center-mask-mid-alpha", midAlpha.toFixed(3));
+      this.root.style.setProperty("--dc-edge-mask-alpha", "1");
+      this.root.style.setProperty("--dc-center-mask-midpoint", "50%");
     }
 
     getDefaultPanelRect() {
@@ -841,13 +997,19 @@
     resetPanelDefaults() {
       const defaults = settingsStore && settingsStore.DEFAULTS ? settingsStore.DEFAULTS : {};
       this.updateSettings({
-        panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 88,
+        panelOpacity: Number.isFinite(defaults.panelOpacity) ? defaults.panelOpacity : 55,
         textScale: Number.isFinite(defaults.textScale) ? defaults.textScale : 120,
         themeName: defaults.themeName || "stone",
         customThemeColor: defaults.customThemeColor || "#ded6c3",
         panelPosition: null,
         panelSize: null,
         futurePreviewHeight: Number.isFinite(defaults.futurePreviewHeight) ? defaults.futurePreviewHeight : 150,
+        futurePreviewEnabled: defaults.futurePreviewEnabled !== false,
+        fadeTowardVideoCenter: defaults.fadeTowardVideoCenter !== false,
+        videoCenterFadeStrength: Number.isFinite(defaults.videoCenterFadeStrength) ? defaults.videoCenterFadeStrength : 84,
+        videoCenterFadeMidpoint: Number.isFinite(defaults.videoCenterFadeMidpoint) ? defaults.videoCenterFadeMidpoint : 50,
+        videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 12,
+        timelineModeEnabled: Boolean(defaults.timelineModeEnabled),
         launcherPosition: null,
         panelClosed: false
       });
@@ -866,6 +1028,17 @@
     }
 
     getYouTubeFrameRect() {
+      if (this.anchorElement instanceof Element && document.documentElement.contains(this.anchorElement)) {
+        const anchorRect = this.anchorElement.getBoundingClientRect();
+        if (anchorRect.width >= 160 && anchorRect.height >= 90) {
+          return {
+            left: anchorRect.left,
+            top: anchorRect.top,
+            right: anchorRect.right,
+            bottom: anchorRect.bottom
+          };
+        }
+      }
       const selectors = ["#movie_player", ".html5-video-player", "ytd-player"];
       for (let index = 0; index < selectors.length; index += 1) {
         const element = document.querySelector(selectors[index]);
@@ -875,18 +1048,55 @@
         const rect = element.getBoundingClientRect();
         if (rect.width >= 160 && rect.height >= 90) {
           return {
-            left: Math.max(0, rect.left),
-            top: Math.max(0, rect.top),
-            right: Math.min(window.innerWidth, rect.right),
-            bottom: Math.min(window.innerHeight, rect.bottom)
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom
           };
         }
       }
       return {
         left: 0,
         top: 0,
-        right: window.innerWidth,
-        bottom: window.innerHeight
+        right: 0,
+        bottom: 0
+      };
+    }
+
+    isAnchorUsablyVisible() {
+      const frame = this.getVisibleYouTubeFrameRect();
+      const width = frame.right - frame.left;
+      const height = frame.bottom - frame.top;
+      return width >= 80 && height >= 56;
+    }
+
+    getVisibleYouTubeFrameRect() {
+      const frame = this.getYouTubeFrameRect();
+      return {
+        left: Math.max(0, frame.left),
+        top: Math.max(0, frame.top),
+        right: Math.min(window.innerWidth, frame.right),
+        bottom: Math.min(window.innerHeight, frame.bottom)
+      };
+    }
+
+    getMountViewportRect() {
+      if (this.mountElement instanceof Element && document.documentElement.contains(this.mountElement)) {
+        return this.mountElement.getBoundingClientRect();
+      }
+      return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+    }
+
+    getElementLocalRect(element) {
+      const rect = element.getBoundingClientRect();
+      const mountRect = this.getMountViewportRect();
+      return {
+        left: rect.left - mountRect.left,
+        top: rect.top - mountRect.top,
+        right: rect.right - mountRect.left,
+        bottom: rect.bottom - mountRect.top,
+        width: rect.width,
+        height: rect.height
       };
     }
 
@@ -905,7 +1115,7 @@
     }
 
     getLauncherFrameRect() {
-      const frame = this.getYouTubeFrameRect();
+      const frame = this.getPanelFrameRect();
       return {
         ...frame,
         bottom: Math.max(frame.top + LAUNCHER_HEIGHT + LAUNCHER_MARGIN * 2, frame.bottom - LAUNCHER_CONTROL_BAR_GAP)
@@ -913,11 +1123,51 @@
     }
 
     getPanelFrameRect() {
-      return this.getYouTubeFrameRect();
+      const mountRect = this.getMountViewportRect();
+      const width = Math.max(0, mountRect.right - mountRect.left);
+      const height = Math.max(0, mountRect.bottom - mountRect.top);
+      return {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height
+      };
+    }
+
+    refreshAnchorLayout() {
+      let anchorVisible = this.isAnchorUsablyVisible();
+      if (this.root) {
+        this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
+      }
+      if (this.launcherButton) {
+        this.launcherButton.classList.toggle("is-anchor-offscreen", !anchorVisible);
+      }
+      if (!this.root || this.root.style.display === "none") {
+        this.applyLauncherPosition();
+        this.updateTimelineLayer();
+        return;
+      }
+      if (!this.persistLayout) {
+        const rect = this.getDefaultPanelRect();
+        if (rect) {
+          this.root.style.left = rect.left + "px";
+          this.root.style.top = rect.top + "px";
+          if (!this.settings.panelSize) {
+            this.root.style.width = rect.width + "px";
+            this.root.style.height = rect.height + "px";
+          }
+        }
+      } else {
+        this.normalizeSavedPanelPosition();
+      }
+      this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
+      this.applyLauncherPosition();
+      this.updatePanelFade();
+      this.updateTimelineLayer();
     }
 
     getDefaultPanelFrameRect() {
-      const frame = this.getYouTubeFrameRect();
+      const frame = this.getPanelFrameRect();
       return {
         ...frame,
         bottom: Math.max(frame.top + MIN_PANEL_HEIGHT + DEFAULT_PANEL_MARGIN * 2, frame.bottom - PANEL_CONTROL_BAR_GAP)
@@ -926,6 +1176,41 @@
 
     clampPanelPosition(left, top, width, height) {
       return this.clampPositionToRect(left, top, width, height, this.getPanelFrameRect(), DEFAULT_PANEL_MARGIN);
+    }
+
+    panelPositionToLocal(width, height) {
+      if (!this.settings.panelPosition) {
+        return null;
+      }
+      const position = this.settings.panelPosition;
+      const mountRect = this.getMountViewportRect();
+      const sourceLeft = position.anchor === "player" ? Number(position.left) : Number(position.left) - mountRect.left;
+      const sourceTop = position.anchor === "player" ? Number(position.top) : Number(position.top) - mountRect.top;
+      return this.clampPanelPosition(sourceLeft, sourceTop, width, height);
+    }
+
+    localToPlayerPanelPosition(left, top, width, height) {
+      const clamped = this.clampPanelPosition(left, top, width, height);
+      return {
+        anchor: "player",
+        left: Math.max(0, Math.round(clamped.left)),
+        top: Math.max(0, Math.round(clamped.top))
+      };
+    }
+
+    applySavedPanelPosition() {
+      if (!this.root || !this.settings.panelPosition) {
+        return;
+      }
+      const rect = this.getElementLocalRect(this.root);
+      const positioned = this.panelPositionToLocal(rect.width, rect.height);
+      if (!positioned) {
+        return;
+      }
+      this.root.style.left = positioned.left + "px";
+      this.root.style.top = positioned.top + "px";
+      this.root.style.right = "auto";
+      this.root.style.bottom = "auto";
     }
 
     clampLauncherPosition(left, top, width, height) {
@@ -942,7 +1227,7 @@
       const width = this.launcherButton.offsetWidth || LAUNCHER_WIDTH;
       const height = this.launcherButton.offsetHeight || LAUNCHER_HEIGHT;
       const frame = this.getLauncherFrameRect();
-      const source = this.settings.launcherPosition || {
+      const source = this.persistLayout && this.settings.launcherPosition ? this.settings.launcherPosition : {
         left: frame.left + LAUNCHER_MARGIN,
         top: frame.bottom - height - LAUNCHER_MARGIN
       };
@@ -953,6 +1238,7 @@
       this.launcherButton.style.bottom = "auto";
 
       if (
+        this.persistLayout &&
         this.settings.launcherPosition &&
         (clamped.left !== Number(this.settings.launcherPosition.left) ||
           clamped.top !== Number(this.settings.launcherPosition.top))
@@ -967,13 +1253,171 @@
       }
     }
 
+    updateTimelineLayer() {
+      if (!this.timelineLayer || !this.timelineTrack || !this.timelineTooltip) {
+        return;
+      }
+      const enabled = this.timelineFeatureEnabled && Boolean(this.settings.timelineModeEnabled);
+      const duration = Number(this.timelineDuration);
+      const chunks = Array.isArray(this.timelineChunks) ? this.timelineChunks : [];
+      const anchorVisible = this.isAnchorUsablyVisible();
+      if (!enabled || !anchorVisible || !Number.isFinite(duration) || duration <= 0 || !chunks.length) {
+        this.timelineLayer.classList.remove("is-visible");
+        this.timelineLayer.classList.remove("is-scrub-mode");
+        this.timelineLayerVisible = false;
+        this.hideTimelineTooltip();
+        this.timelineTrack.replaceChildren();
+        return;
+      }
+
+      const frame = this.getPanelFrameRect();
+      const width = Math.max(120, frame.right - frame.left);
+      const top = Math.max(frame.top + 8, Math.min(frame.bottom - 210, frame.bottom - 190));
+      this.timelineLayer.style.left = Math.round(frame.left + 8) + "px";
+      this.timelineLayer.style.top = Math.round(top) + "px";
+      this.timelineLayer.style.width = Math.round(Math.max(80, width - 16)) + "px";
+      this.timelineLayer.classList.add("is-visible");
+      this.timelineLayer.classList.add("is-scrub-mode");
+      this.timelineLayerVisible = true;
+
+      // The full-width track is an invisible hit target only. The visible progress
+      // affordance lives on the MMOCC lens bubble so Timeline mode does not look
+      // like a separate random marker bar.
+      this.timelineTrack.replaceChildren();
+      this.renderTimelineScrub();
+    }
+
+    handleTimelineClick(event) {
+      if (!this.timelineLayerVisible || typeof this.options.onSeek !== "function") {
+        return;
+      }
+      const chunk = this.getTimelineChunkFromPointerEvent(event);
+      if (!chunk) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const index = Number(chunk.timelineIndex);
+      const start = timelineScrub && timelineScrub.getChunkStart ? timelineScrub.getChunkStart(chunk) : Number(chunk.seekStart || chunk.start);
+      if (!Number.isFinite(start)) {
+        return;
+      }
+      this.options.onSeek({
+        future: true,
+        index: Number.isInteger(index) ? index : -1,
+        seekStart: start,
+        start,
+        end: start + 0.25,
+        timelineMarker: true
+      });
+    }
+
+    handleTimelinePointerMove(event) {
+      if (!this.timelineLayerVisible || !this.timelineTooltip) {
+        return;
+      }
+      const chunk = this.getTimelineChunkFromPointerEvent(event);
+      if (!chunk) {
+        this.hideTimelineTooltip();
+        return;
+      }
+      this.timelineHoverIndex = Number(chunk.timelineIndex);
+      this.timelineHoverTime = this.getTimelineTimeFromPointerEvent(event);
+      this.renderTimelineScrub();
+    }
+
+    hideTimelineTooltip() {
+      if (this.timelineTooltip) {
+        this.timelineTooltip.classList.remove("is-visible");
+        this.timelineTooltip.classList.remove("is-hover");
+      }
+      this.timelineHoverIndex = -1;
+      this.timelineHoverTime = Number.NaN;
+      this.renderTimelineScrub();
+    }
+
+    getTimelineTimeFromPointerEvent(event) {
+      if (!this.timelineLayer || !timelineScrub || typeof timelineScrub.hoverXToTime !== "function") {
+        return Number.NaN;
+      }
+      const rect = this.timelineLayer.getBoundingClientRect();
+      return timelineScrub.hoverXToTime(event.clientX - rect.left, rect.width, this.timelineDuration);
+    }
+
+    getTimelineChunkFromPointerEvent(event) {
+      if (!timelineScrub || !Array.isArray(this.timelineChunks) || !this.timelineChunks.length) {
+        return null;
+      }
+      const target = event.target;
+      if (target instanceof Element) {
+        const explicit = target.closest(".dc-timeline-lens[data-index]");
+        if (explicit) {
+          const explicitIndex = Number(explicit.getAttribute("data-index"));
+          if (Number.isInteger(explicitIndex) && explicitIndex >= 0 && explicitIndex < this.timelineChunks.length) {
+            return this.timelineChunks[explicitIndex];
+          }
+        }
+      }
+      const time = this.getTimelineTimeFromPointerEvent(event);
+      const index = timelineScrub.findChunkIndexAtTime(this.timelineChunks, time, 0.35);
+      return index >= 0 ? this.timelineChunks[index] : null;
+    }
+
+    renderTimelineScrub() {
+      if (!this.timelineLayerVisible || !this.timelineLayer || !timelineScrub) {
+        return;
+      }
+      const chunks = Array.isArray(this.timelineChunks) ? this.timelineChunks : [];
+      const duration = Number(this.timelineDuration);
+      if (!chunks.length || !Number.isFinite(duration) || duration <= 0) {
+        return;
+      }
+      let focusIndex = this.timelineHoverIndex >= 0
+        ? this.timelineHoverIndex
+        : timelineScrub.findChunkIndexAtTime(chunks, this.playbackTime, 0.35);
+      if (focusIndex < 0) {
+        focusIndex = 0;
+      }
+      if (focusIndex < 0 || focusIndex >= chunks.length) {
+        return;
+      }
+      const layerRect = this.timelineLayer.getBoundingClientRect();
+      const layerWidth = Math.max(120, layerRect.width || 120);
+      if (this.timelineTooltip) {
+        const focusChunk = chunks[focusIndex];
+        const focusStart = timelineScrub.getChunkStart(focusChunk);
+        const lensTime = Number.isFinite(this.timelineHoverTime)
+          ? this.timelineHoverTime
+          : (Number.isFinite(this.playbackTime) ? this.playbackTime : focusStart);
+        const clampedLensTime = Number.isFinite(lensTime)
+          ? Math.max(0, Math.min(duration, lensTime))
+          : 0;
+        const lensWidth = Math.min(820, Math.max(460, layerWidth * 0.6));
+        const lensCenter = (clampedLensTime / duration) * layerWidth;
+        const lensLeft = timelineScrub.clampBubbleLeft(lensCenter, lensWidth, layerWidth, 8);
+        this.timelineTooltip.style.left = Math.round(lensLeft) + "px";
+        this.timelineTooltip.style.width = Math.round(lensWidth) + "px";
+        this.timelineTooltip.dataset.index = String(focusIndex);
+        this.timelineTooltip.replaceChildren();
+        const timestamp = document.createElement("span");
+        timestamp.className = "dc-timeline-lens-time";
+        timestamp.textContent = Number.isFinite(focusStart) ? chunker.formatTimestamp(focusStart) : "";
+        const text = document.createElement("span");
+        text.className = "dc-timeline-lens-text dc-chunk-text";
+        this.renderChunkText(text, focusChunk, true, clampedLensTime);
+        this.timelineTooltip.append(timestamp, text);
+        this.timelineTooltip.classList.add("is-visible");
+        this.timelineTooltip.classList.toggle("is-hover", this.timelineHoverIndex >= 0);
+      }
+    }
+
     closeToNearestCorner() {
       if (!this.root) {
         this.updateSettings({ panelClosed: true });
         return;
       }
 
-      const rect = this.root.getBoundingClientRect();
+      const rect = this.getElementLocalRect(this.root);
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
       const frame = this.getLauncherFrameRect();
@@ -1011,28 +1455,28 @@
       if (!this.root || this.root.style.display === "none") {
         return;
       }
-      if (!this.settings.panelPosition) {
+      if (!this.persistLayout || !this.settings.panelPosition) {
         return;
       }
-      const rect = this.root.getBoundingClientRect();
-      const clamped = this.clampPanelPosition(
-        this.settings.panelPosition.left,
-        this.settings.panelPosition.top,
-        rect.width,
-        rect.height
-      );
+      const rect = this.getElementLocalRect(this.root);
+      const clamped = this.panelPositionToLocal(rect.width, rect.height);
+      if (!clamped) {
+        return;
+      }
       this.root.style.left = clamped.left + "px";
       this.root.style.top = clamped.top + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
+      const nextPosition = this.localToPlayerPanelPosition(clamped.left, clamped.top, rect.width, rect.height);
 
       const changed =
-        clamped.left !== Number(this.settings.panelPosition.left) ||
-        clamped.top !== Number(this.settings.panelPosition.top);
+        this.settings.panelPosition.anchor !== "player" ||
+        nextPosition.left !== Number(this.settings.panelPosition.left) ||
+        nextPosition.top !== Number(this.settings.panelPosition.top);
       if (changed) {
         this.settings = {
           ...this.settings,
-          panelPosition: { left: clamped.left, top: clamped.top }
+          panelPosition: nextPosition
         };
         if (typeof this.options.onSettingsChange === "function") {
           this.options.onSettingsChange(this.settings, { panelPosition: this.settings.panelPosition });
@@ -1051,7 +1495,7 @@
         return;
       }
 
-      const rect = this.root.getBoundingClientRect();
+      const rect = this.getElementLocalRect(this.root);
       this.root.style.left = rect.left + "px";
       this.root.style.top = rect.top + "px";
       this.root.style.right = "auto";
@@ -1106,12 +1550,16 @@
       }
       const left = Number.parseInt(this.root.style.left || "0", 10);
       const top = Number.parseInt(this.root.style.top || "0", 10);
+      const width = this.root.offsetWidth || 360;
+      const height = this.root.offsetHeight || 320;
       this.dragState = null;
       this.updateSettings({
-        panelPosition: {
-          left: Number.isFinite(left) ? left : 0,
-          top: Number.isFinite(top) ? top : 0
-        }
+        panelPosition: this.localToPlayerPanelPosition(
+          Number.isFinite(left) ? left : 0,
+          Number.isFinite(top) ? top : 0,
+          width,
+          height
+        )
       });
     }
 
@@ -1123,7 +1571,7 @@
         return;
       }
 
-      const rect = this.root.getBoundingClientRect();
+      const rect = this.getElementLocalRect(this.root);
       this.root.style.left = rect.left + "px";
       this.root.style.top = rect.top + "px";
       this.root.style.right = "auto";
@@ -1159,84 +1607,6 @@
       window.addEventListener("pointerup", onUp);
       event.preventDefault();
       event.stopPropagation();
-    }
-
-    handleFutureDividerPointerDown(event, divider) {
-      if (!this.root || !divider) {
-        return;
-      }
-      const section = divider.closest(".dc-future-section");
-      if (!(section instanceof HTMLElement)) {
-        return;
-      }
-      const sectionRect = section.getBoundingClientRect();
-      const panelRect = this.root.getBoundingClientRect();
-      this.futureDividerDragState = {
-        startY: event.clientY,
-        startHeight: sectionRect.height,
-        maxHeight: Math.max(78, Math.min(360, Math.round(panelRect.height * 0.5))),
-        latestY: event.clientY
-      };
-
-      const onMove = (moveEvent) => this.handleFutureDividerMove(moveEvent);
-      let cleanupPointerListeners = null;
-      const onUp = () => {
-        if (cleanupPointerListeners) {
-          cleanupPointerListeners();
-        }
-        this.finishFutureDividerDrag();
-      };
-      cleanupPointerListeners = this.trackActivePointerListeners(() => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-      });
-
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      event.preventDefault();
-      event.stopPropagation();
-    }
-
-    handleFutureDividerMove(event) {
-      if (!this.root || !this.futureDividerDragState) {
-        return;
-      }
-      this.futureDividerDragState.latestY = event.clientY;
-      if (this.futureDividerRafId) {
-        return;
-      }
-      this.futureDividerRafId = platform.requestFrame(() => {
-        this.futureDividerRafId = 0;
-        this.applyFutureDividerMoveFrame();
-      });
-    }
-
-    applyFutureDividerMoveFrame() {
-      if (!this.root || !this.futureDividerDragState) {
-        return;
-      }
-      const state = this.futureDividerDragState;
-      const deltaY = state.latestY - state.startY;
-      const nextHeight = Math.max(52, Math.min(state.maxHeight, state.startHeight - deltaY));
-      this.root.style.setProperty("--dc-future-preview-height", Math.round(nextHeight) + "px");
-    }
-
-    finishFutureDividerDrag() {
-      if (!this.root || !this.futureDividerDragState) {
-        this.futureDividerDragState = null;
-        return;
-      }
-      if (this.futureDividerRafId) {
-        platform.cancelFrame(this.futureDividerRafId);
-        this.futureDividerRafId = 0;
-        this.applyFutureDividerMoveFrame();
-      }
-      const rawValue = this.root.style.getPropertyValue("--dc-future-preview-height");
-      const height = Number.parseInt(rawValue || "", 10);
-      this.futureDividerDragState = null;
-      if (Number.isFinite(height)) {
-        this.updateSettings({ futurePreviewHeight: height });
-      }
     }
 
     handleResizeMove(event) {
@@ -1305,10 +1675,12 @@
       const height = Number.parseInt(this.root.style.height || "0", 10);
       this.resizeState = null;
       this.updateSettings({
-        panelPosition: {
-          left: Number.isFinite(left) ? left : 0,
-          top: Number.isFinite(top) ? top : 0
-        },
+        panelPosition: this.localToPlayerPanelPosition(
+          Number.isFinite(left) ? left : 0,
+          Number.isFinite(top) ? top : 0,
+          Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
+          Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
+        ),
         panelSize: {
           width: Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
           height: Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
@@ -1320,7 +1692,7 @@
       if (!this.launcherButton || this.launcherButton.style.display === "none") {
         return;
       }
-      const rect = this.launcherButton.getBoundingClientRect();
+      const rect = this.getElementLocalRect(this.launcherButton);
       this.launcherButton.style.left = rect.left + "px";
       this.launcherButton.style.top = rect.top + "px";
       this.launcherButton.style.right = "auto";
@@ -1437,10 +1809,41 @@
       }
       this.futureChunks = normalized;
       this.futureChunksKey = key;
-      this.currentWindowStart = -1;
-      this.currentWindowEnd = -1;
       this.scheduleWindowRender(true);
       this.updateJumpBottomVisibility();
+    }
+
+    setTimelineData(chunks, durationSeconds) {
+      if (!this.timelineFeatureEnabled) {
+        return;
+      }
+      const normalized = timelineScrub && typeof timelineScrub.sortChunks === "function"
+        ? timelineScrub.sortChunks(chunks)
+        : Array.isArray(chunks) ? chunks : [];
+      const duration = Number(durationSeconds);
+      this.timelineDuration = Number.isFinite(duration) && duration > 0 ? duration : Number.NaN;
+      const nextKey = [
+        Number.isFinite(this.timelineDuration) ? this.timelineDuration.toFixed(3) : "none",
+        normalized.length,
+        normalized[0] ? [normalized[0].start, normalized[0].end, normalized[0].text].join(":") : "",
+        normalized[normalized.length - 1]
+          ? [normalized[normalized.length - 1].start, normalized[normalized.length - 1].end, normalized[normalized.length - 1].text].join(":")
+          : ""
+      ].join("|");
+      if (nextKey !== this.timelineDataKey) {
+        this.timelineHoverIndex = -1;
+        this.timelineHoverTime = Number.NaN;
+        if (this.timelineTooltip) {
+          this.timelineTooltip.classList.remove("is-hover");
+        }
+      }
+      this.timelineDataKey = nextKey;
+      this.timelineChunks = normalized;
+      this.updateTimelineLayer();
+    }
+
+    isTimelineFeatureAvailable() {
+      return Boolean(this.timelineFeatureEnabled);
     }
 
     setActiveIndex(index, options) {
@@ -1492,6 +1895,7 @@
       }
       this.playbackTime = time;
       this.updateActiveReadingGlow();
+      this.renderTimelineScrub();
     }
 
     flashChunk(index) {
@@ -1629,28 +2033,57 @@
         this.topSpacer.style.height = "0px";
         this.bottomSpacer.style.height = "0px";
         this.windowContainer.replaceChildren();
+        this.currentFutureKey = "";
         return;
       }
 
       const start = 0;
       const end = chunkCount - 1;
+      const futureKey = this.getFutureRenderKey();
+      const canAppendSingleChunk =
+        chunkCount > 0 &&
+        this.currentWindowStart === start &&
+        end === this.currentWindowEnd + 1 &&
+        this.currentWindowEnd >= start - 1 &&
+        this.windowContainer.childElementCount > 0;
       const shouldRebuild =
         start !== this.currentWindowStart ||
         end !== this.currentWindowEnd ||
         futureCount !== this.currentFutureCount ||
         this.futureCollapsed !== this.currentFutureCollapsed;
-      this.currentWindowStart = start;
-      this.currentWindowEnd = end;
-      this.currentFutureCount = futureCount;
-      this.currentFutureCollapsed = this.futureCollapsed;
       this.topSpacer.style.height = "0px";
       this.bottomSpacer.style.height = "0px";
 
-      if (!shouldRebuild) {
+      if (canAppendSingleChunk) {
+        const chunk = this.chunks[end];
+        const nextButton = this.createChunkButton(chunk, end, false);
+        const futureSection = this.windowContainer.querySelector(".dc-future-section");
+        if (futureSection) {
+          this.windowContainer.insertBefore(nextButton, futureSection);
+        } else {
+          this.windowContainer.append(nextButton);
+        }
+        this.currentWindowEnd = end;
+        this.replaceFutureSection(futureCount, chunkCount);
         this.updateActiveClass();
         this.updateActiveReadingGlow();
         return;
       }
+
+      if (!shouldRebuild) {
+        if (futureKey !== this.currentFutureKey) {
+          this.replaceFutureSection(futureCount, chunkCount);
+        }
+        this.updateActiveClass();
+        this.updateActiveReadingGlow();
+        return;
+      }
+
+      this.currentWindowStart = start;
+      this.currentWindowEnd = end;
+      this.currentFutureCount = futureCount;
+      this.currentFutureCollapsed = this.futureCollapsed;
+      this.currentFutureKey = futureKey;
 
       const fragment = document.createDocumentFragment();
       for (let index = start; index <= end; index += 1) {
@@ -1659,31 +2092,57 @@
       }
 
       if (futureCount) {
-        const section = document.createElement("div");
-        section.className = "dc-future-section";
-
-        const divider = document.createElement("div");
-        divider.className = "dc-future-divider";
-        divider.setAttribute("role", "separator");
-        divider.setAttribute("aria-label", "Next up captions");
-        divider.setAttribute("aria-orientation", "horizontal");
-        divider.setAttribute("title", "Drag to resize the next-up preview");
-        divider.textContent = "Next up";
-
-        const futureList = document.createElement("div");
-        futureList.className = "dc-future-list";
-
-        for (let index = 0; index < futureCount; index += 1) {
-          const preview = this.futureChunks[index];
-          const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
-          futureList.append(this.createChunkButton(preview, actualIndex, true));
-        }
-
-        section.append(divider, futureList);
-        fragment.append(section);
+        fragment.append(this.createFutureSection(futureCount, chunkCount));
       }
 
       this.windowContainer.replaceChildren(fragment);
+    }
+
+    getFutureRenderKey() {
+      const source = Array.isArray(this.futureChunks) ? this.futureChunks : [];
+      return source
+        .map((chunk) => [chunk && chunk.actualIndex, chunk && chunk.start, chunk && chunk.end, chunk && chunk.text].join(":"))
+        .join("|");
+    }
+
+    createFutureSection(futureCount, chunkCount) {
+      const section = document.createElement("div");
+      section.className = "dc-future-section";
+
+      const divider = document.createElement("div");
+      divider.className = "dc-future-divider";
+      divider.setAttribute("role", "separator");
+      divider.setAttribute("aria-label", "Upcoming caption previews");
+      divider.setAttribute("aria-orientation", "horizontal");
+      divider.setAttribute("title", "Upcoming caption preview");
+
+      const futureList = document.createElement("div");
+      futureList.className = "dc-future-list";
+
+      for (let index = 0; index < futureCount; index += 1) {
+        const preview = this.futureChunks[index];
+        const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
+        futureList.append(this.createChunkButton(preview, actualIndex, true));
+      }
+
+      section.append(divider, futureList);
+      return section;
+    }
+
+    replaceFutureSection(futureCount, chunkCount) {
+      if (!this.windowContainer) {
+        return;
+      }
+      const existing = this.windowContainer.querySelector(".dc-future-section");
+      if (existing) {
+        existing.remove();
+      }
+      if (futureCount) {
+        this.windowContainer.append(this.createFutureSection(futureCount, chunkCount));
+      }
+      this.currentFutureCount = futureCount;
+      this.currentFutureCollapsed = this.futureCollapsed;
+      this.currentFutureKey = this.getFutureRenderKey();
     }
 
     createChunkButton(chunk, index, isFuture) {
@@ -1697,11 +2156,6 @@
         item.setAttribute("data-end", String(Number(chunk && chunk.end)));
       }
 
-      const seekIcon = document.createElement("span");
-      seekIcon.className = "dc-chunk-seek-icon";
-      seekIcon.textContent = "\u25b6";
-      seekIcon.setAttribute("aria-hidden", "true");
-
       const content = document.createElement("span");
       content.className = "dc-chunk-content";
 
@@ -1713,7 +2167,7 @@
       text.className = "dc-chunk-text";
 
       content.append(time, text);
-      item.append(seekIcon, content);
+      item.append(content);
       if (!isFuture && index === this.activeIndex) {
         item.classList.add("is-current");
       }
@@ -1721,7 +2175,7 @@
       return item;
     }
 
-    renderChunkText(textElement, chunk, isActive) {
+    renderChunkText(textElement, chunk, isActive, playbackTimeOverride) {
       if (!textElement) {
         return;
       }
@@ -1731,7 +2185,10 @@
         return;
       }
 
-      const range = bubbleState.getReadingGlowRange(chunk, this.playbackTime);
+      const glowTime = Number.isFinite(Number(playbackTimeOverride))
+        ? Number(playbackTimeOverride)
+        : this.playbackTime;
+      const range = bubbleState.getReadingGlowRange(chunk, glowTime);
       if (!range || typeof bubbleState.splitTextByRange !== "function") {
         textElement.textContent = text;
         return;

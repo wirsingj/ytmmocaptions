@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Dialogue Captions",
-  "version": "1.1.2",
-  "description": "MMO-style dialogue panel for YouTube subtitles with chunk navigation.",
+  "name": "YTMMOCC",
+  "version": "1.1.3",
+  "description": "MMO-style dialogue panel for YouTube captions and transcripts.",
   "host_permissions": [
     "https://www.youtube.com/*"
   ],
@@ -22,6 +22,7 @@
         "src/caption-text.js",
         "src/chunker.js",
         "src/bubble-state.js",
+        "src/timeline-scrub.js",
         "src/transcript.js",
         "src/caption-timeline.js",
         "src/ui-panel.js",

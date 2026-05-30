@@ -1,12 +1,12 @@
-# Dialogue Captions Privacy Policy
+# YTMMOCC Privacy Policy
 
 Effective date: April 16, 2026
 
-Dialogue Captions is a browser extension for YouTube subtitle navigation.
+YTMMOCC is a browser extension for turning YouTube captions and transcripts into an MMO-style dialogue panel. This release is YouTube-only and runs locally in the browser.
 
 ## Data Collection
 
-Dialogue Captions does not collect, store, sell, or transmit personal data to the developer or third parties.
+YTMMOCC does not collect, store, sell, or transmit personal data to the developer or third parties.
 
 The extension does not:
 - create user accounts;
@@ -18,11 +18,14 @@ The extension does not:
 
 The extension stores only local preference settings in extension storage:
 - preference schema version for safe future migrations;
-- panel background blend/transparency;
+- panel opacity/transparency;
 - text size;
 - panel theme preset and custom theme color;
 - panel position and size;
 - next-up preview height;
+- whether Future / Next Up previews are enabled;
+- whether the panel fades toward the center of the associated video;
+- internal timeline scrub mode preference, which is off by default in this release;
 - launcher/pill position;
 - panel open/closed state.
 
@@ -36,19 +39,17 @@ The extension does not store transcript text, chat bubble history, the active bu
   Used to save the local settings listed above.
 
 - YouTube host access
-  Used only on YouTube pages so the extension can detect watch-page navigation and read captions for the current video.
+  Used only on YouTube so the extension can detect watch-page navigation and read caption/transcript/timed-text data for the current video.
 
-The extension's content script is injected on `https://www.youtube.com/*` only to detect YouTube SPA route changes.
-Runtime logic remains gated to watch pages (`/watch`) and the panel does not activate on other page types.
-Chrome and Firefox may ignore path portions of host-permission patterns, so the extension also checks the route before starting caption work.
+The extension's content script is injected only on `https://www.youtube.com/*` so it can observe YouTube single-page navigation. Caption fetching and page-bridge work remains gated to YouTube watch pages (`/watch`) with a valid video id. Chrome and Firefox may ignore path portions of host-permission patterns, so the extension also checks the route before starting caption work.
 
 No additional host permissions are requested.
 
 ## Network Access
 
-The extension reads YouTube subtitle/caption data and limited YouTube page configuration required for on-page functionality. Subtitle/caption text and page configuration are processed locally in the browser for the current video and are not transmitted to the developer.
+The extension reads YouTube subtitle/caption/transcript data and limited YouTube page configuration required for on-page functionality. Caption text and page configuration are processed locally in the browser for the current video and are not transmitted to the developer.
 
-Dialogue Captions is intended as a local accessibility/navigation aid. It does not bulk download, export, sell, analyze, or transmit YouTube captions to the developer or third parties.
+YTMMOCC is intended as a local accessibility/navigation aid. It does not bulk download, export, sell, analyze, or transmit YouTube captions to the developer or third parties.
 
 If subtitles or transcript data are unavailable, the extension fails gracefully and shows an in-panel status message. No fallback data is uploaded or collected.
 
@@ -61,7 +62,7 @@ Keyboard controls are not globally enabled in the release UI.
 
 ## Third-Party Services
 
-Dialogue Captions does not integrate with third-party analytics, advertising, ad network, account, payment, or remote code services.
+YTMMOCC does not integrate with third-party analytics, advertising, ad network, account, payment, or remote code services.
 
 ## Local Diagnostics
 

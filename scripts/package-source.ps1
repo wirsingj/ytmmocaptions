@@ -58,6 +58,7 @@ $files = @(
   "manifest.chrome.json",
   "manifest.firefox.json",
   "package.json",
+  "package-lock.json",
   "PRIVACY.md",
   "README.md",
   "RELEASE.md",
