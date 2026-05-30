@@ -2043,11 +2043,6 @@
         item.setAttribute("data-end", String(Number(chunk && chunk.end)));
       }
 
-      const seekIcon = document.createElement("span");
-      seekIcon.className = "dc-chunk-seek-icon";
-      seekIcon.textContent = "\u25b6";
-      seekIcon.setAttribute("aria-hidden", "true");
-
       const content = document.createElement("span");
       content.className = "dc-chunk-content";
 
@@ -2059,7 +2054,7 @@
       text.className = "dc-chunk-text";
 
       content.append(time, text);
-      item.append(seekIcon, content);
+      item.append(content);
       if (!isFuture && index === this.activeIndex) {
         item.classList.add("is-current");
       }

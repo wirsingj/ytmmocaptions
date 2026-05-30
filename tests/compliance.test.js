@@ -331,7 +331,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('role", "separator"'));
     assert.ok(!panelSource.includes('divider.textContent = "Next up"'));
     assert.ok(!panelSource.includes('divider.addEventListener("click"'));
+    assert.ok(!panelSource.includes("dc-chunk-seek-icon"));
     assert.ok(css.includes(".dc-chunk-future"));
+    assert.ok(!css.includes(".dc-chunk-seek-icon"));
     assert.ok(css.includes(".dc-future-divider"));
     assert.ok(css.includes(".dc-future-section"));
     assert.ok(css.includes("max-height: min(var(--dc-future-preview-height"));

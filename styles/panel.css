@@ -647,10 +647,8 @@
   color: var(--dc-text);
   padding: 10px 11px 10px 9px;
   cursor: pointer;
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
+  display: block;
   align-items: center;
-  column-gap: 7px;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -739,10 +737,6 @@
   font-size: 0.86em;
 }
 
-.dc-chunk-future .dc-chunk-seek-icon {
-  display: none;
-}
-
 .dc-chunk-future .dc-chunk-content {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -778,24 +772,6 @@
   background:
     radial-gradient(circle at left center, rgba(var(--dc-accent-rgb), 0.04), transparent 48%),
     rgba(var(--dc-panel-rgb), 0.32);
-}
-
-.dc-chunk-seek-icon {
-  align-self: center;
-  color: var(--dc-accent);
-  font-size: calc(10px * var(--dc-text-scale));
-  line-height: 1;
-  opacity: 0.34;
-  transform: translateX(0);
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
-}
-
-.dc-chunk:hover .dc-chunk-seek-icon,
-.dc-chunk:focus-visible .dc-chunk-seek-icon {
-  opacity: 0.9;
-  transform: translateX(1px);
 }
 
 .dc-chunk-content {
@@ -871,7 +847,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .dc-chunk,
-  .dc-chunk-seek-icon,
   .dc-launcher {
     transition: none;
   }
