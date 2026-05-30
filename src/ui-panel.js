@@ -232,20 +232,17 @@
       this.themeSelect.title = "Panel theme";
       this.themeSelect.setAttribute("aria-label", "Panel theme");
       const themeOptions = [
-        ["custom", "Custom", true],
         ["stone", "Stone"],
         ["ember", "Ember"],
         ["forest", "Forest"],
         ["ocean", "Ocean"],
-        ["violet", "Violet"]
+        ["violet", "Violet"],
+        ["custom", "Custom"]
       ];
       for (let index = 0; index < themeOptions.length; index += 1) {
         const option = document.createElement("option");
         option.value = themeOptions[index][0];
         option.textContent = themeOptions[index][1];
-        if (themeOptions[index][2]) {
-          option.hidden = true;
-        }
         this.themeSelect.append(option);
       }
 
@@ -593,7 +590,9 @@
 
       const onThemeChange = () => {
         this.updateSettings({ themeName: this.themeSelect.value || "stone" });
-        this.closeColorPicker();
+        if (this.themeSelect.value !== "custom") {
+          this.closeColorPicker();
+        }
       };
       this.addListener(this.themeSelect, "change", onThemeChange);
 
