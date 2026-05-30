@@ -29,6 +29,96 @@
       .replace(/\[\s*[_-]+\s*\]/g, " ");
   }
 
+  function looksAllCapsCaptionSegment(text, minLetters, minWords) {
+    const normalized = normalizeText(text);
+    if (!normalized) {
+      return false;
+    }
+    const letters = normalized.match(/[A-Za-z]/g) || [];
+    if (letters.length < minLetters) {
+      return false;
+    }
+    const words = normalized.match(/[A-Za-z][A-Za-z']*/g) || [];
+    if (words.length < minWords) {
+      return false;
+    }
+    const uppercase = normalized.match(/[A-Z]/g) || [];
+    const lowercase = normalized.match(/[a-z]/g) || [];
+    return uppercase.length / letters.length >= 0.82 && lowercase.length / letters.length <= 0.08;
+  }
+
+  function looksAllCapsCaption(text) {
+    return looksAllCapsCaptionSegment(text, 16, 4);
+  }
+
+  function sentenceCaseAllCapsCaption(text) {
+    let softened = normalizeText(text).toLowerCase();
+    softened = softened
+      .replace(/\bi'm\b/g, "I'm")
+      .replace(/\bi'll\b/g, "I'll")
+      .replace(/\bi'd\b/g, "I'd")
+      .replace(/\bi've\b/g, "I've")
+      .replace(/\bi\b/g, "I");
+    return softened.replace(/(^|[.!?]\s+)(["'(\[]?)([a-z])/g, (match, prefix, opener, letter) =>
+      prefix + opener + letter.toUpperCase()
+    );
+  }
+
+  function softenSpeakerLabel(label) {
+    const value = String(label || "");
+    const name = value.replace(/:\s*$/, "");
+    const suffix = value.slice(name.length);
+    if (!/^[A-Z]{4,}$/.test(name)) {
+      return value;
+    }
+    return name.charAt(0) + name.slice(1).toLowerCase() + suffix;
+  }
+
+  function softenSpeakerLabeledAllCaps(text) {
+    const normalized = normalizeText(text);
+    const labelPattern = /\b[A-Z][A-Za-z'.-]{1,24}:\s*/g;
+    let match = labelPattern.exec(normalized);
+    if (!match) {
+      return normalized;
+    }
+
+    let cursor = 0;
+    let changed = false;
+    let softened = "";
+    while (match) {
+      const beforeLabel = normalized.slice(cursor, match.index);
+      softened += looksAllCapsCaptionSegment(beforeLabel, 4, 1)
+        ? sentenceCaseAllCapsCaption(beforeLabel)
+        : beforeLabel;
+      softened += softenSpeakerLabel(match[0]);
+      cursor = labelPattern.lastIndex;
+      match = labelPattern.exec(normalized);
+      const segmentEnd = match ? match.index : normalized.length;
+      const segment = normalized.slice(cursor, segmentEnd);
+      if (looksAllCapsCaptionSegment(segment, 4, 1)) {
+        softened += sentenceCaseAllCapsCaption(segment) + (/\s$/.test(segment) ? " " : "");
+        changed = true;
+      } else {
+        softened += segment;
+      }
+      cursor = segmentEnd;
+    }
+
+    return changed ? normalizeText(softened) : normalized;
+  }
+
+  function softenAllCapsCaption(text) {
+    const normalized = normalizeText(text);
+    const labelAware = softenSpeakerLabeledAllCaps(normalized);
+    if (labelAware !== normalized) {
+      return labelAware;
+    }
+    if (looksAllCapsCaption(normalized)) {
+      return sentenceCaseAllCapsCaption(normalized);
+    }
+    return normalized;
+  }
+
   function toCanonical(text) {
     return String(text || "")
       .toLowerCase()
@@ -124,7 +214,7 @@
     ) {
       return "";
     }
-    return collapseOverlaySpam(normalized);
+    return softenAllCapsCaption(collapseOverlaySpam(normalized));
   }
 
   function isHighOverlap(leftText, rightText) {
@@ -387,10 +477,12 @@
     endsNaturally,
     isHighOverlap,
     looksLyricLike,
+    looksAllCapsCaption,
     mergeText,
     normalizeText,
     normalizeToken,
     sanitizeOverlayText,
+    softenAllCapsCaption,
     splitByNaturalBreaks,
     splitLongThought,
     toCanonical
