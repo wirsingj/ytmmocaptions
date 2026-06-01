@@ -158,6 +158,8 @@
       this.resizeHandles = [];
       this.pointerInside = false;
       this.stickToBottom = true;
+      this.historyReadingMode = false;
+      this.lastObservedScrollTop = 0;
       this.programmaticScrollUntil = 0;
 
       this.cleanupFns = [];
@@ -767,11 +769,13 @@
       this.addListener(this.timelineTrack, "pointerleave", onTimelineLeave);
 
       const onJumpBottom = () => {
+        this.exitHistoryReadingMode("current");
         this.scrollToCurrentCaption();
         this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
       const onJumpLatest = () => {
+        this.exitHistoryReadingMode("latest");
         this.jumpToLatestCaption();
         this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
@@ -780,14 +784,22 @@
       this.addListener(this.jumpLatestButton, "click", onJumpLatest);
 
       const onScroll = () => {
+        const scrollTop = this.listViewport ? this.listViewport.scrollTop : 0;
         if (Date.now() < this.programmaticScrollUntil) {
+          this.lastObservedScrollTop = scrollTop;
           this.updateJumpBottomVisibility();
           this.scheduleWindowRender();
           return;
         }
+        const delta = scrollTop - this.lastObservedScrollTop;
+        this.lastObservedScrollTop = scrollTop;
+        if (delta < -4 && this.getBottomDistance() > BOTTOM_PROXIMITY_PX) {
+          this.enterHistoryReadingMode("scroll-up");
+        }
         if (this.isNearBottom(2.6)) {
+          this.exitHistoryReadingMode("near-bottom");
           this.stickToBottom = true;
-        } else if (this.getBottomDistance() > BOTTOM_PROXIMITY_PX * 2) {
+        } else if (this.historyReadingMode || this.getBottomDistance() > BOTTOM_PROXIMITY_PX * 2) {
           this.stickToBottom = false;
         }
         this.updateJumpBottomVisibility();
@@ -823,6 +835,27 @@
       const source = patch && typeof patch === "object" ? patch : {};
       const layoutKeys = ["panelClosed", "panelPosition", "panelSize", "launcherPosition", "timelineModeEnabled"];
       return !layoutKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key));
+    }
+
+    enterHistoryReadingMode(reason) {
+      if (this.historyReadingMode) {
+        return;
+      }
+      this.historyReadingMode = true;
+      this.stickToBottom = false;
+      if (this.root) {
+        this.root.classList.add("is-reading-history");
+      }
+    }
+
+    exitHistoryReadingMode(reason) {
+      if (!this.historyReadingMode) {
+        return;
+      }
+      this.historyReadingMode = false;
+      if (this.root) {
+        this.root.classList.remove("is-reading-history");
+      }
     }
 
     getPersistenceSnapshot() {
@@ -2341,7 +2374,7 @@
     }
 
     setChunks(chunks) {
-      const shouldStick = this.stickToBottom || this.isNearBottom(2.6);
+      const shouldStick = !this.historyReadingMode && (this.stickToBottom || this.isNearBottom(2.6));
       this.chunks = Array.isArray(chunks) ? chunks : [];
       if (this.activeIndex >= this.chunks.length) {
         this.activeIndex = this.chunks.length - 1;
@@ -2429,6 +2462,14 @@
         this.lastGlowWordEnd = -1;
       }
       if (hasChanged && options && options.ensureVisible) {
+        if (this.historyReadingMode && !options.exitHistoryMode) {
+          this.updateJumpBottomVisibility();
+          this.scheduleWindowRender(!hasChanged);
+          return;
+        }
+        if (options.exitHistoryMode) {
+          this.exitHistoryReadingMode("active-index");
+        }
         if (bounded >= Math.max(0, this.chunks.length - 2)) {
           this.stickToBottom = true;
         }
@@ -2584,6 +2625,7 @@
       if (!this.listViewport) {
         return;
       }
+      this.exitHistoryReadingMode("scroll-bottom");
       this.stickToBottom = true;
       this.programmaticScrollUntil = Date.now() + 220;
       const target = Math.max(0, this.listViewport.scrollHeight - this.listViewport.clientHeight);

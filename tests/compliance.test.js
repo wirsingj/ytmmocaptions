@@ -420,6 +420,16 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.lastGlowWordEnd = nextGlowWordEnd"));
   });
 
+  await runCase("history reading mode treats upward scroll as explicit reading intent", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    assert.ok(panelSource.includes("historyReadingMode"));
+    assert.ok(panelSource.includes("enterHistoryReadingMode(\"scroll-up\")"));
+    assert.ok(panelSource.includes("exitHistoryReadingMode(\"current\")"));
+    assert.ok(panelSource.includes("exitHistoryReadingMode(\"latest\")"));
+    assert.ok(panelSource.includes("!this.historyReadingMode && (this.stickToBottom || this.isNearBottom(2.6))"));
+    assert.ok(panelSource.includes("this.historyReadingMode && !options.exitHistoryMode"));
+  });
+
   await runCase("panel exposes basic accessibility labels and reduced-motion CSS", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
