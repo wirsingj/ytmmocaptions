@@ -428,6 +428,34 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!sectionBody.includes("index < futureCount"));
   });
 
+  await runCase("history rendering keeps mounted transcript rows bounded during interaction", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const renderStart = panelSource.indexOf("    renderWindow()");
+    const renderEnd = panelSource.indexOf("    getHistoryRenderRange(chunkCount)", renderStart);
+    const scrollStart = panelSource.indexOf("    handleHistoryWindowScroll()");
+    const scrollEnd = panelSource.indexOf("    trimMountedRowsForInteraction(patch)", scrollStart);
+    const settingsStart = panelSource.indexOf("    updateSettings(patch)");
+    const settingsEnd = panelSource.indexOf("    shouldPreservePanelPlacement(patch)", settingsStart);
+    assert.ok(panelSource.includes("HISTORY_RENDER_WINDOW = 220"));
+    assert.ok(panelSource.includes("HISTORY_RENDER_STEP = 110"));
+    assert.ok(renderStart >= 0);
+    assert.ok(renderEnd > renderStart);
+    assert.ok(scrollStart >= 0);
+    assert.ok(scrollEnd > scrollStart);
+    assert.ok(settingsStart >= 0);
+    assert.ok(settingsEnd > settingsStart);
+    const renderBody = panelSource.slice(renderStart, renderEnd);
+    const scrollBody = panelSource.slice(scrollStart, scrollEnd);
+    const settingsBody = panelSource.slice(settingsStart, settingsEnd);
+    assert.ok(renderBody.includes("const range = this.getHistoryRenderRange(chunkCount);"));
+    assert.ok(renderBody.includes("index <= end"));
+    assert.ok(!renderBody.includes("const start = 0;"));
+    assert.ok(!renderBody.includes("const end = chunkCount - 1;"));
+    assert.ok(scrollBody.includes("this.setHistoryRenderStart(this.currentWindowStart - HISTORY_RENDER_STEP)"));
+    assert.ok(scrollBody.includes("this.setHistoryRenderStart(this.currentWindowStart + HISTORY_RENDER_STEP)"));
+    assert.ok(settingsBody.includes("this.trimMountedRowsForInteraction(patch);"));
+  });
+
   await runCase("panel scroll containers do not chain wheel scroll into the YouTube page", () => {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     const viewportStart = css.indexOf(".dc-list-viewport {");
@@ -490,7 +518,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.scrollAnchorRafId"));
     assert.ok(panelSource.includes("exitHistoryReadingMode(\"current\")"));
     assert.ok(panelSource.includes("exitHistoryReadingMode(\"latest\")"));
-    assert.ok(panelSource.includes("this.historyReadingMode && bottomDistance <= HISTORY_BOTTOM_EXIT_PX"));
+    assert.ok(panelSource.includes("this.historyReadingMode && atAbsoluteLatest && nextBottomDistance <= HISTORY_BOTTOM_EXIT_PX"));
     assert.ok(panelSource.includes("!this.historyReadingMode && this.isNearBottom(2.6)"));
     assert.ok(panelSource.includes("!this.historyReadingMode && (this.stickToBottom || this.isNearBottom(2.6))"));
     assert.ok(panelSource.includes("this.historyReadingMode && !options.exitHistoryMode"));

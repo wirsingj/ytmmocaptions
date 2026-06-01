@@ -32,6 +32,9 @@
   const MAX_FUTURE_PREVIEW_HEIGHT = 360;
   const FUTURE_RENDER_BATCH = 80;
   const FUTURE_RENDER_BUFFER_PX = 90;
+  const HISTORY_RENDER_WINDOW = 220;
+  const HISTORY_RENDER_STEP = 110;
+  const HISTORY_RENDER_EDGE_PX = 72;
   const RAINBOW_THEME_CYCLE_MS = 15000;
   const RAINBOW_THEME_FRAME_MS = 33;
   const RAINBOW_THEME_SATURATION = 0.84;
@@ -911,13 +914,11 @@
       const onJumpBottom = () => {
         this.exitHistoryReadingMode("current");
         this.scrollToCurrentCaption();
-        this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
       const onJumpLatest = () => {
         this.exitHistoryReadingMode("latest");
         this.jumpToLatestCaption();
-        this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
       this.addListener(this.jumpCurrentButton, "click", onJumpBottom);
@@ -937,7 +938,6 @@
         if (Date.now() < this.programmaticScrollUntil) {
           this.lastObservedScrollTop = scrollTop;
           this.updateJumpBottomVisibility();
-          this.scheduleWindowRender();
           return;
         }
         const delta = scrollTop - this.lastObservedScrollTop;
@@ -947,16 +947,21 @@
         if (enteredHistoryMode) {
           this.enterHistoryReadingMode("scroll-up");
         }
-        if (this.historyReadingMode && bottomDistance <= HISTORY_BOTTOM_EXIT_PX) {
+        const shiftedHistoryWindow = this.handleHistoryWindowScroll();
+        const nextBottomDistance = shiftedHistoryWindow ? this.getBottomDistance() : bottomDistance;
+        const atAbsoluteLatest = !Array.isArray(this.chunks) || this.currentWindowEnd >= this.chunks.length - 1;
+        if (this.historyReadingMode && atAbsoluteLatest && nextBottomDistance <= HISTORY_BOTTOM_EXIT_PX) {
           this.exitHistoryReadingMode("near-bottom");
           this.stickToBottom = true;
         } else if (!this.historyReadingMode && this.isNearBottom(2.6)) {
           this.stickToBottom = true;
-        } else if (this.historyReadingMode || bottomDistance > BOTTOM_PROXIMITY_PX * 2) {
+        } else if (this.historyReadingMode || nextBottomDistance > BOTTOM_PROXIMITY_PX * 2) {
           this.stickToBottom = false;
         }
         this.updateJumpBottomVisibility();
-        this.scheduleWindowRender();
+        if (shiftedHistoryWindow) {
+          this.updateActiveReadingGlow();
+        }
       };
       this.addListener(this.listViewport, "scroll", onScroll, { passive: true });
 
@@ -979,6 +984,7 @@
     }
 
     updateSettings(patch) {
+      this.trimMountedRowsForInteraction(patch);
       this.settings = { ...this.settings, ...patch };
       this.applySettings({ preservePanelPlacement: this.shouldPreservePanelPlacement(patch) });
       if (typeof this.options.onSettingsChange === "function") {
@@ -2935,12 +2941,15 @@
 
     setChunks(chunks) {
       const shouldStick = !this.historyReadingMode && (this.stickToBottom || this.isNearBottom(2.6));
+      const previousLength = Array.isArray(this.chunks) ? this.chunks.length : 0;
       this.chunks = Array.isArray(chunks) ? chunks : [];
       if (this.activeIndex >= this.chunks.length) {
         this.activeIndex = this.chunks.length - 1;
       }
-      this.currentWindowStart = -1;
-      this.currentWindowEnd = -1;
+      if (!this.historyReadingMode || this.chunks.length < previousLength || this.currentWindowStart < 0) {
+        this.currentWindowStart = -1;
+        this.currentWindowEnd = -1;
+      }
       this.scheduleWindowRender(true);
       if (shouldStick) {
         this.scrollToBottom();
@@ -3088,9 +3097,18 @@
         return;
       }
       const viewportHeight = this.listViewport.clientHeight || 1;
-      const item = this.windowContainer
+      let item = this.windowContainer
         ? this.windowContainer.querySelector("[data-index='" + index + "']")
         : null;
+      if (!item && this.chunks.length > HISTORY_RENDER_WINDOW) {
+        const windowSize = Math.min(this.chunks.length, HISTORY_RENDER_WINDOW);
+        const start = Math.max(0, Math.min(this.chunks.length - windowSize, index - Math.floor(windowSize * 0.35)));
+        this.setHistoryRenderStart(start);
+        this.renderWindow();
+        item = this.windowContainer
+          ? this.windowContainer.querySelector("[data-index='" + index + "']")
+          : null;
+      }
       if (!item) {
         return;
       }
@@ -3192,6 +3210,23 @@
       }
       this.exitHistoryReadingMode("scroll-bottom");
       this.stickToBottom = true;
+      const count = Array.isArray(this.chunks) ? this.chunks.length : 0;
+      let shouldRender = false;
+      if (count > HISTORY_RENDER_WINDOW) {
+        const maxStart = Math.max(0, count - HISTORY_RENDER_WINDOW);
+        if (this.currentWindowStart !== maxStart || this.currentWindowEnd !== count - 1) {
+          this.setHistoryRenderStart(maxStart);
+          shouldRender = true;
+        }
+      }
+      if (this.futureRenderLimit > FUTURE_RENDER_BATCH) {
+        this.futureRenderLimit = Math.min(FUTURE_RENDER_BATCH, this.futureChunks.length);
+        this.currentFutureRenderedCount = -1;
+        shouldRender = true;
+      }
+      if (shouldRender) {
+        this.renderWindow();
+      }
       this.programmaticScrollUntil = Date.now() + 220;
       const target = Math.max(0, this.listViewport.scrollHeight - this.listViewport.clientHeight);
       this.listViewport.scrollTop = target;
@@ -3273,8 +3308,9 @@
         return;
       }
 
-      const start = 0;
-      const end = chunkCount - 1;
+      const range = this.getHistoryRenderRange(chunkCount);
+      const start = range.start;
+      const end = range.end;
       const futureKey = this.getFutureRenderKey();
       const caseFixEnabled = this.settings.caseFixEnabled !== false;
       const canAppendSingleChunk =
@@ -3294,7 +3330,7 @@
       this.topSpacer.style.height = "0px";
       this.bottomSpacer.style.height = "0px";
 
-      if (canAppendSingleChunk) {
+      if (canAppendSingleChunk && start === this.currentWindowStart) {
         const chunk = this.chunks[end];
         const nextButton = this.createChunkButton(chunk, end, false);
         this.windowContainer.append(nextButton);
@@ -3330,6 +3366,109 @@
 
       this.windowContainer.replaceChildren(fragment);
       this.replaceFutureSection(futureRenderCount, chunkCount);
+    }
+
+    getHistoryRenderRange(chunkCount) {
+      const count = Math.max(0, Number(chunkCount) || 0);
+      if (!count) {
+        return { start: 0, end: -1 };
+      }
+      const windowSize = Math.min(count, HISTORY_RENDER_WINDOW);
+      if (count <= windowSize) {
+        return { start: 0, end: count - 1 };
+      }
+      const maxStart = Math.max(0, count - windowSize);
+      if (this.historyReadingMode && this.currentWindowStart >= 0) {
+        const start = Math.max(0, Math.min(maxStart, this.currentWindowStart));
+        return { start: start, end: Math.min(count - 1, start + windowSize - 1) };
+      }
+      const anchor = Number.isInteger(this.activeIndex) && this.activeIndex >= 0
+        ? Math.min(count - 1, this.activeIndex)
+        : count - 1;
+      const start = this.stickToBottom || anchor >= count - 2
+        ? maxStart
+        : Math.max(0, Math.min(maxStart, anchor - Math.floor(windowSize * 0.68)));
+      return { start: start, end: Math.min(count - 1, start + windowSize - 1) };
+    }
+
+    setHistoryRenderStart(start) {
+      const count = Array.isArray(this.chunks) ? this.chunks.length : 0;
+      if (!count) {
+        this.currentWindowStart = -1;
+        this.currentWindowEnd = -1;
+        return;
+      }
+      const windowSize = Math.min(count, HISTORY_RENDER_WINDOW);
+      const maxStart = Math.max(0, count - windowSize);
+      const nextStart = Math.max(0, Math.min(maxStart, Number(start) || 0));
+      this.currentWindowStart = nextStart;
+      this.currentWindowEnd = Math.min(count - 1, nextStart + windowSize - 1);
+    }
+
+    handleHistoryWindowScroll() {
+      if (!this.historyReadingMode || !this.listViewport || !this.windowContainer) {
+        return false;
+      }
+      const count = Array.isArray(this.chunks) ? this.chunks.length : 0;
+      if (count <= HISTORY_RENDER_WINDOW || this.currentWindowStart < 0 || this.currentWindowEnd < 0) {
+        return false;
+      }
+      const nearTop = this.listViewport.scrollTop <= HISTORY_RENDER_EDGE_PX;
+      const nearBottom = this.getBottomDistance() <= HISTORY_RENDER_EDGE_PX;
+      if (nearTop && this.currentWindowStart > 0) {
+        const anchor = this.getScrollAnchorSnapshot();
+        this.setHistoryRenderStart(this.currentWindowStart - HISTORY_RENDER_STEP);
+        this.renderWindow();
+        this.restoreScrollAnchorSnapshot(anchor);
+        return true;
+      }
+      if (nearBottom && this.currentWindowEnd < count - 1) {
+        this.setHistoryRenderStart(this.currentWindowStart + HISTORY_RENDER_STEP);
+        this.renderWindow();
+        if (this.listViewport) {
+          this.programmaticScrollUntil = Date.now() + 120;
+          this.listViewport.scrollTop = Math.max(1, HISTORY_RENDER_EDGE_PX);
+          this.lastObservedScrollTop = this.listViewport.scrollTop;
+        }
+        return true;
+      }
+      return false;
+    }
+
+    trimMountedRowsForInteraction(patch) {
+      const source = patch && typeof patch === "object" ? patch : {};
+      const styleKeys = [
+        "activeWorkspacePreset",
+        "workspacePresetBaseline",
+        "panelOpacity",
+        "textScale",
+        "themeName",
+        "customThemeColor",
+        "fadeTowardVideoCenter",
+        "caseFixEnabled",
+        "futurePreviewEnabled"
+      ];
+      if (!styleKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key))) {
+        return;
+      }
+      let shouldRender = false;
+      if (this.futureRenderLimit > FUTURE_RENDER_BATCH) {
+        this.futureRenderLimit = Math.min(FUTURE_RENDER_BATCH, this.futureChunks.length);
+        this.currentFutureRenderedCount = -1;
+        shouldRender = true;
+      }
+      const count = Array.isArray(this.chunks) ? this.chunks.length : 0;
+      if (count > HISTORY_RENDER_WINDOW) {
+        const range = this.getHistoryRenderRange(count);
+        if (this.currentWindowStart !== range.start || this.currentWindowEnd !== range.end) {
+          this.currentWindowStart = range.start;
+          this.currentWindowEnd = range.end;
+          shouldRender = true;
+        }
+      }
+      if (shouldRender && this.windowContainer) {
+        this.renderWindow();
+      }
     }
 
     buildFutureChunksKey(chunks) {
