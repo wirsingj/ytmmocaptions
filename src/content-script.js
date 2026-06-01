@@ -17,6 +17,10 @@
   }
 
   const GLOBAL_CONTROLLER_KEY = "__dialogueCaptionsController";
+  const TRANSCRIPT_HEARTBEAT_GRACE_MS = 6500;
+  const TRANSCRIPT_HEARTBEAT_RECHECK_MS = 8200;
+  const TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS = 2400;
+  const MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3;
 
   function isTypingContext(target) {
     const element = target instanceof Element ? target : document.activeElement;
@@ -73,9 +77,14 @@
       this.captionsEnabledByExtension = false;
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
+      this.transcriptLoadInFlight = false;
+      this.transcriptLoadNonce = 0;
       this.transcriptUpgradeAttempts = 0;
       this.transcriptUpgradeInFlight = false;
       this.lastTranscriptUpgradeAt = 0;
+      this.transcriptLastActivityAt = 0;
+      this.transcriptHeartbeatTimerId = 0;
+      this.transcriptRecoveryAttempts = 0;
       this.pendingSeekFocus = null;
       this.liveCaptureSuppressedUntil = 0;
       this.liveBubbles = [];
@@ -132,6 +141,7 @@
         platform.cancelFrame(this.syncRafId);
         this.syncRafId = 0;
       }
+      this.stopTranscriptHeartbeat();
 
       for (const cleanup of this.cleanupFns) {
         cleanup();
@@ -1163,6 +1173,7 @@
       });
       if (changed || backfilled) {
         this.rebuildChunks();
+        this.noteTranscriptActivity("live-capture");
         this.syncActiveChunk(true);
         if (this.panel && this.cues.length === 1) {
           this.panel.setStatus("Live subtitle capture started.", true);
@@ -1379,14 +1390,20 @@
           this.startLiveCapturePolling();
         }
         this.syncActiveChunk(true);
+        if (!this.hasTranscriptActivity()) {
+          this.scheduleTranscriptHeartbeatCheck("caption-work-resume", TRANSCRIPT_HEARTBEAT_GRACE_MS);
+        }
         return;
       }
 
       this.captionWorkStarted = true;
+      this.transcriptLastActivityAt = 0;
+      this.transcriptRecoveryAttempts = 0;
       this.ensurePageBridgeForWatchPage();
       if (this.panel) {
         this.panel.setStatus("Loading subtitles...");
       }
+      this.scheduleTranscriptHeartbeatCheck("caption-work-start", TRANSCRIPT_HEARTBEAT_GRACE_MS);
       this.startCaptionEnsureLoop();
       this.enableLiveCaptureMode();
       await this.loadTranscript();
@@ -1748,6 +1765,7 @@
         this.revealedChunkCount = 0;
         this.rebuildChunks();
         this.transcriptPreviewChunks = this.allChunks.slice();
+        this.noteTranscriptActivity("transcript-upgrade");
         this.syncActiveChunk(true);
         if (this.panel) {
           this.panel.setStatus("Full caption timeline loaded. Next up previews are available.", true);
@@ -1765,6 +1783,9 @@
     async loadTranscript() {
       this.abortTranscriptLoad();
       this.loadAbortController = new AbortController();
+      const loadId = this.transcriptLoadNonce + 1;
+      this.transcriptLoadNonce = loadId;
+      this.transcriptLoadInFlight = true;
       this.transcriptMode = "loading";
       this.transcriptLoadAttempts += 1;
 
@@ -1772,23 +1793,36 @@
       const signal = this.loadAbortController.signal;
       const transcriptTimeoutMs = 10000;
       if (signal.aborted || this.destroyed) {
+        if (loadId === this.transcriptLoadNonce) {
+          this.transcriptLoadInFlight = false;
+        }
         return;
       }
       this.maybeProbeCaptions();
       await this.waitForCaptionContextReady(2400);
       if (signal.aborted || this.destroyed) {
+        if (loadId === this.transcriptLoadNonce) {
+          this.transcriptLoadInFlight = false;
+        }
         return;
       }
-      const response = await Promise.race([
-        captionTimeline.acquireFullTimeline(url, signal, {
-          videoElement: this.video
-        }),
-        new Promise((resolve) => {
-          window.setTimeout(() => {
-            resolve({ ok: false, reason: "Transcript loading timed out." });
-          }, transcriptTimeoutMs);
-        })
-      ]);
+      let response = null;
+      try {
+        response = await Promise.race([
+          captionTimeline.acquireFullTimeline(url, signal, {
+            videoElement: this.video
+          }),
+          new Promise((resolve) => {
+            window.setTimeout(() => {
+              resolve({ ok: false, reason: "Transcript loading timed out." });
+            }, transcriptTimeoutMs);
+          })
+        ]);
+      } finally {
+        if (loadId === this.transcriptLoadNonce) {
+          this.transcriptLoadInFlight = false;
+        }
+      }
 
       if (!response || !response.ok) {
         const reason = String(response && response.reason ? response.reason : "");
@@ -1847,6 +1881,7 @@
       this.revealedChunkCount = 0;
       this.rebuildChunks();
       this.transcriptPreviewChunks = this.allChunks.slice();
+      this.noteTranscriptActivity("full-transcript");
       diagnostics.record("captions:transcript-loaded", {
         cueCount: response.cues.length,
         mode: response.mode || response.sourceType || "direct transcript mode",
@@ -2416,6 +2451,7 @@
       if (changedPanelClosed && isClosed) {
         this.abortTranscriptLoad();
         this.stopLiveCapturePolling();
+        this.stopTranscriptHeartbeat();
         this.clearTimelineActionState("panel-closed");
         this.restoreSubtitlesIfExtensionEnabled();
         return;
@@ -2565,6 +2601,131 @@
         }
       }
       return this.video;
+    }
+
+    hasTranscriptActivity() {
+      if (Number.isFinite(this.transcriptLastActivityAt) && this.transcriptLastActivityAt > 0) {
+        return true;
+      }
+      return (
+        (Array.isArray(this.cues) && this.cues.length > 0) ||
+        (Array.isArray(this.allChunks) && this.allChunks.length > 0) ||
+        (Array.isArray(this.chunks) && this.chunks.length > 0)
+      );
+    }
+
+    noteTranscriptActivity(source) {
+      if (!this.hasTranscriptActivity()) {
+        return;
+      }
+      this.transcriptLastActivityAt = Date.now();
+      this.stopTranscriptHeartbeat();
+      diagnostics.record("captions:activity", { source: source || "unknown" });
+    }
+
+    stopTranscriptHeartbeat() {
+      if (this.transcriptHeartbeatTimerId) {
+        window.clearTimeout(this.transcriptHeartbeatTimerId);
+        this.transcriptHeartbeatTimerId = 0;
+      }
+    }
+
+    scheduleTranscriptHeartbeatCheck(reason, delayMs) {
+      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+        this.stopTranscriptHeartbeat();
+        return;
+      }
+      if (this.transcriptRecoveryAttempts >= MAX_TRANSCRIPT_RECOVERY_ATTEMPTS) {
+        this.stopTranscriptHeartbeat();
+        return;
+      }
+      if (this.transcriptHeartbeatTimerId) {
+        return;
+      }
+      const delay = Math.max(250, Number.isFinite(Number(delayMs)) ? Number(delayMs) : TRANSCRIPT_HEARTBEAT_GRACE_MS);
+      this.transcriptHeartbeatTimerId = window.setTimeout(() => {
+        this.transcriptHeartbeatTimerId = 0;
+        this.checkTranscriptHeartbeat(reason || "timer");
+      }, delay);
+    }
+
+    isVideoPlayableForTranscriptRecovery() {
+      const video = this.refreshVideoReference();
+      if (!(video instanceof HTMLVideoElement)) {
+        return false;
+      }
+      const readyState = Number(video.readyState || 0);
+      if (readyState < 1 || video.ended) {
+        return false;
+      }
+      const duration = Number(video.duration);
+      return Boolean(video.currentSrc || video.src || Number.isFinite(duration) || duration === Number.POSITIVE_INFINITY);
+    }
+
+    checkTranscriptHeartbeat(reason) {
+      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+        this.stopTranscriptHeartbeat();
+        return;
+      }
+      if (!this.isVideoPlayableForTranscriptRecovery()) {
+        this.scheduleTranscriptHeartbeatCheck("video-not-ready", TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS);
+        return;
+      }
+      this.recoverTranscriptActivity(reason || "heartbeat");
+    }
+
+    recoverTranscriptActivity(reason) {
+      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+        return;
+      }
+      if (this.transcriptRecoveryAttempts >= MAX_TRANSCRIPT_RECOVERY_ATTEMPTS) {
+        diagnostics.record("captions:heartbeat-exhausted", {
+          attempts: this.transcriptRecoveryAttempts,
+          reason: reason || ""
+        });
+        return;
+      }
+
+      this.transcriptRecoveryAttempts += 1;
+      diagnostics.record("captions:heartbeat-recovery", {
+        attempts: this.transcriptRecoveryAttempts,
+        reason: reason || ""
+      });
+
+      this.ensurePageBridgeForWatchPage();
+      this.startCaptionEnsureLoop();
+      this.ensureCaptionsEnabledOnce();
+      this.probeCaptionsNow();
+
+      if (!this.liveCaptureEnabled) {
+        this.enableLiveCaptureMode();
+      } else {
+        this.startLiveCapturePolling();
+        this.captureLiveCaptionLine();
+      }
+
+      if (!this.transcriptLoadInFlight) {
+        this.loadTranscript();
+      }
+      this.scheduleTranscriptHeartbeatCheck("post-recovery", TRANSCRIPT_HEARTBEAT_RECHECK_MS);
+    }
+
+    nudgeCaptionWork(reason) {
+      if (this.destroyed || this.settings.panelClosed) {
+        return;
+      }
+      this.refreshVideoReference();
+      if (!this.captionWorkStarted) {
+        this.startCaptionWork();
+        return;
+      }
+      this.ensureCaptionsEnabledOnce();
+      if (this.liveCaptureEnabled) {
+        this.startLiveCapturePolling();
+      }
+      if (!this.hasTranscriptActivity()) {
+        this.scheduleTranscriptHeartbeatCheck(reason || "nudge", TRANSCRIPT_HEARTBEAT_GRACE_MS);
+      }
     }
 
     isChunkIndexAlignedWithTime(chunks, index, time) {
@@ -2908,6 +3069,9 @@
       }
 
       if (videoId === this.activeVideoId && this.app) {
+        if (typeof this.app.nudgeCaptionWork === "function") {
+          this.app.nudgeCaptionWork("route-still-active");
+        }
         return;
       }
 

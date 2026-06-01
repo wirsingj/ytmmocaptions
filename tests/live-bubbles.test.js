@@ -130,6 +130,45 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(!closeBranch.includes("disableLiveCaptureMode()"));
   });
 
+  await runCase("transcript heartbeat recovers an open panel without becoming an unbounded poll loop", () => {
+    assert.ok(source.includes("MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3"));
+    assert.ok(source.includes("scheduleTranscriptHeartbeatCheck(reason, delayMs)"));
+    assert.ok(source.includes("checkTranscriptHeartbeat(reason)"));
+    assert.ok(source.includes("recoverTranscriptActivity(reason)"));
+    assert.ok(source.includes("this.transcriptRecoveryAttempts += 1;"));
+    assert.ok(source.includes("this.transcriptRecoveryAttempts >= MAX_TRANSCRIPT_RECOVERY_ATTEMPTS"));
+    assert.ok(source.includes("TRANSCRIPT_HEARTBEAT_RECHECK_MS"));
+    assert.ok(source.includes("window.setTimeout(() =>"));
+    assert.ok(!source.includes("transcriptHeartbeatPollId"));
+  });
+
+  await runCase("heartbeat recovery nudges caption ingestion without clearing existing live bubbles", () => {
+    const recoverStart = source.indexOf("    recoverTranscriptActivity(reason)");
+    const recoverBody = source.slice(
+      recoverStart,
+      source.indexOf("    nudgeCaptionWork(reason)", recoverStart)
+    );
+    assert.ok(recoverBody.includes("this.ensurePageBridgeForWatchPage();"));
+    assert.ok(recoverBody.includes("this.ensureCaptionsEnabledOnce();"));
+    assert.ok(recoverBody.includes("this.probeCaptionsNow();"));
+    assert.ok(recoverBody.includes("if (!this.liveCaptureEnabled)"));
+    assert.ok(recoverBody.includes("this.startLiveCapturePolling();"));
+    assert.ok(recoverBody.includes("this.captureLiveCaptionLine();"));
+    assert.ok(recoverBody.includes("if (!this.transcriptLoadInFlight)"));
+    assert.ok(recoverBody.includes("this.loadTranscript();"));
+    assert.ok(!recoverBody.includes("this.liveBubbles = []"));
+    assert.ok(!recoverBody.includes("this.liveBucketToBubble = new Map()"));
+  });
+
+  await runCase("same-video route and tab restore events nudge heartbeat for old open panels", () => {
+    const routeStart = source.indexOf("    async reconcileRoute()");
+    const routeBody = source.slice(routeStart, source.indexOf("    teardownApp()", routeStart));
+    assert.ok(source.includes("nudgeCaptionWork(reason)"));
+    assert.ok(routeBody.includes("this.app.nudgeCaptionWork"));
+    assert.ok(routeBody.includes("\"route-still-active\""));
+    assert.ok(source.includes("this.scheduleTranscriptHeartbeatCheck(reason || \"nudge\""));
+  });
+
   await runCase("video sync listeners are rebound and cleaned when YouTube swaps video elements", () => {
     assert.ok(source.includes("this.videoCleanupFns = [];"));
     assert.ok(source.includes("this.boundVideo = null;"));
