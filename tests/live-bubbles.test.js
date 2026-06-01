@@ -263,18 +263,22 @@ exports.run = async function runLiveBubbleTests(ctx) {
 
   await runCase("future caption previews use the full transcript timeline when available", () => {
     const futureMethod = source.slice(
-      source.indexOf("    getFuturePreviewChunks()"),
+      source.indexOf("    getFuturePreviewChunks(activeTimelineIndex)"),
       source.indexOf("    findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)")
     );
     const liveFallbackMethod = source.slice(
       source.indexOf("    readFuturePreviewChunksFromTextTracks(currentBucketIndex)"),
       source.indexOf("    shouldContinueOverlayUtterance(previousCanonical, nextCanonical)")
     );
-    assert.ok(source.includes("getFuturePreviewChunks()"));
+    assert.ok(source.includes("getFuturePreviewChunks(activeTimelineIndex)"));
     assert.ok(source.includes("findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)"));
     assert.ok(source.includes("readFuturePreviewChunksFromTextTracks(currentBucketIndex)"));
     assert.ok(source.includes("this.settings.futurePreviewEnabled === false"));
     assert.ok(liveFallbackMethod.includes("offset <= 4"));
+    assert.ok(source.includes("getFuturePreviewSignature(activeTimelineIndex)"));
+    assert.ok(source.includes("signature === this.futurePreviewSignature"));
+    assert.ok(source.includes("this.futurePreviewSignature = signature"));
+    assert.ok(source.includes("this.updateFuturePreviewChunks(nextIndex)"));
     assert.ok(futureMethod.includes("transcriptSource.slice(previewStart).map"));
     assert.ok(futureMethod.includes("for (let index = previewStart; index < this.allChunks.length; index += 1)"));
     assert.ok(futureMethod.includes("futurePreviewOnly"));
@@ -282,7 +286,7 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(futureMethod.includes("actualIndex: index"));
     assert.ok(!futureMethod.includes("transcriptSource.slice(previewStart, previewStart + 4)"));
     assert.ok(!futureMethod.includes("previewStart + 4"));
-    assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks())"));
+    assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks(activeTimelineIndex))"));
   });
 
   await runCase("full transcript timelines use conversational chunks instead of keyboard skip buckets", () => {

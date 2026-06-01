@@ -385,6 +385,10 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("dc-chunk-future"));
     assert.ok(panelSource.includes("previousScrollTop"));
     assert.ok(panelSource.includes("nextList.scrollTop"));
+    assert.ok(panelSource.includes("FUTURE_RENDER_BATCH = 80"));
+    assert.ok(panelSource.includes("buildFutureChunksKey(chunks)"));
+    assert.ok(panelSource.includes("getFutureRenderCount()"));
+    assert.ok(panelSource.includes("handleFutureListScroll(futureList)"));
     assert.ok(panelSource.includes('role", "separator"'));
     assert.ok(!panelSource.includes('divider.textContent = "Next up"'));
     assert.ok(!panelSource.includes('divider.addEventListener("click"'));
@@ -402,6 +406,26 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("white-space: nowrap"));
     assert.ok(css.includes("cursor: ns-resize"));
     assert.ok(css.includes("touch-action: none"));
+  });
+
+  await runCase("future preview rendering stays lazy for long transcript timelines", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const renderKeyStart = panelSource.indexOf("    getFutureRenderKey()");
+    const renderKeyEnd = panelSource.indexOf("    createFutureSection", renderKeyStart);
+    const sectionStart = panelSource.indexOf("    createFutureSection(futureRenderCount, chunkCount)");
+    const sectionEnd = panelSource.indexOf("    replaceFutureSection(futureRenderCount, chunkCount)", sectionStart);
+    assert.ok(renderKeyStart >= 0);
+    assert.ok(renderKeyEnd > renderKeyStart);
+    assert.ok(sectionStart >= 0);
+    assert.ok(sectionEnd > sectionStart);
+    const renderKeyBody = panelSource.slice(renderKeyStart, renderKeyEnd);
+    const sectionBody = panelSource.slice(sectionStart, sectionEnd);
+    assert.ok(renderKeyBody.includes("this.futureChunksKey"));
+    assert.ok(renderKeyBody.includes("this.getFutureRenderCount()"));
+    assert.ok(!renderKeyBody.includes("this.getChunkDisplayText(chunk)"));
+    assert.ok(sectionBody.includes("index < futureRenderCount"));
+    assert.ok(sectionBody.includes("handleFutureListScroll"));
+    assert.ok(!sectionBody.includes("index < futureCount"));
   });
 
   await runCase("panel scroll containers do not chain wheel scroll into the YouTube page", () => {

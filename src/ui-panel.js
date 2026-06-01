@@ -30,6 +30,8 @@
   const DEFAULT_FUTURE_PREVIEW_HEIGHT = 96;
   const MIN_FUTURE_PREVIEW_HEIGHT = 52;
   const MAX_FUTURE_PREVIEW_HEIGHT = 360;
+  const FUTURE_RENDER_BATCH = 80;
+  const FUTURE_RENDER_BUFFER_PX = 90;
   const RAINBOW_THEME_CYCLE_MS = 15000;
   const RAINBOW_THEME_FRAME_MS = 33;
   const RAINBOW_THEME_SATURATION = 0.84;
@@ -143,6 +145,8 @@
 
       this.chunks = [];
       this.futureChunks = [];
+      this.futureChunksKey = "";
+      this.futureRenderLimit = FUTURE_RENDER_BATCH;
       this.timelineChunks = [];
       this.timelineDuration = Number.NaN;
       this.timelineDataKey = "";
@@ -157,6 +161,7 @@
       this.currentWindowStart = -1;
       this.currentWindowEnd = -1;
       this.currentFutureCount = -1;
+      this.currentFutureRenderedCount = -1;
       this.currentFutureCollapsed = false;
       this.currentFutureKey = "";
       this.currentCaseFixEnabled = null;
@@ -2945,14 +2950,16 @@
 
     setFutureChunks(chunks) {
       const normalized = Array.isArray(chunks) ? chunks : [];
-      const key = normalized
-        .map((chunk) => [chunk.actualIndex, chunk.start, chunk.end, chunk.text].join(":"))
-        .join("|");
+      const key = this.buildFutureChunksKey(normalized);
       if (key === this.futureChunksKey && this.futureChunks.length === normalized.length) {
         return;
       }
       this.futureChunks = normalized;
       this.futureChunksKey = key;
+      this.futureRenderLimit = Math.min(
+        normalized.length,
+        Math.max(FUTURE_RENDER_BATCH, Number(this.futureRenderLimit) || FUTURE_RENDER_BATCH)
+      );
       this.scheduleWindowRender(true);
       this.updateJumpBottomVisibility();
     }
@@ -3257,6 +3264,7 @@
 
       const chunkCount = this.chunks.length;
       const futureCount = this.futureChunks.length;
+      const futureRenderCount = this.getFutureRenderCount();
       if (!chunkCount && !futureCount) {
         this.topSpacer.style.height = "0px";
         this.bottomSpacer.style.height = "0px";
@@ -3280,6 +3288,7 @@
         start !== this.currentWindowStart ||
         end !== this.currentWindowEnd ||
         futureCount !== this.currentFutureCount ||
+        futureRenderCount !== this.currentFutureRenderedCount ||
         this.futureCollapsed !== this.currentFutureCollapsed ||
         this.currentCaseFixEnabled !== caseFixEnabled;
       this.topSpacer.style.height = "0px";
@@ -3290,7 +3299,7 @@
         const nextButton = this.createChunkButton(chunk, end, false);
         this.windowContainer.append(nextButton);
         this.currentWindowEnd = end;
-        this.replaceFutureSection(futureCount, chunkCount);
+        this.replaceFutureSection(futureRenderCount, chunkCount);
         this.updateActiveClass();
         this.updateActiveReadingGlow();
         return;
@@ -3298,7 +3307,7 @@
 
       if (!shouldRebuild) {
         if (futureKey !== this.currentFutureKey) {
-          this.replaceFutureSection(futureCount, chunkCount);
+          this.replaceFutureSection(futureRenderCount, chunkCount);
         }
         this.updateActiveClass();
         this.updateActiveReadingGlow();
@@ -3308,6 +3317,7 @@
       this.currentWindowStart = start;
       this.currentWindowEnd = end;
       this.currentFutureCount = futureCount;
+      this.currentFutureRenderedCount = futureRenderCount;
       this.currentFutureCollapsed = this.futureCollapsed;
       this.currentFutureKey = futureKey;
       this.currentCaseFixEnabled = caseFixEnabled;
@@ -3319,18 +3329,48 @@
       }
 
       this.windowContainer.replaceChildren(fragment);
-      this.replaceFutureSection(futureCount, chunkCount);
+      this.replaceFutureSection(futureRenderCount, chunkCount);
+    }
+
+    buildFutureChunksKey(chunks) {
+      const source = Array.isArray(chunks) ? chunks : [];
+      const length = source.length;
+      if (!length) {
+        return "0";
+      }
+      // Sample the edges instead of hashing every row; long future timelines should not tax normal playback renders.
+      const sample = [];
+      const sampleEdgeCount = Math.min(4, length);
+      for (let index = 0; index < sampleEdgeCount; index += 1) {
+        sample.push(source[index]);
+      }
+      for (let index = Math.max(sampleEdgeCount, length - sampleEdgeCount); index < length; index += 1) {
+        sample.push(source[index]);
+      }
+      return [length].concat(sample.map((chunk) => [
+        chunk && chunk.actualIndex,
+        chunk && chunk.start,
+        chunk && chunk.end,
+        chunk && chunk.seekStart,
+        chunk && chunk.text
+      ].join(":"))).join("|");
+    }
+
+    getFutureRenderCount() {
+      const total = Array.isArray(this.futureChunks) ? this.futureChunks.length : 0;
+      if (!total) {
+        return 0;
+      }
+      const limit = Math.max(FUTURE_RENDER_BATCH, Number(this.futureRenderLimit) || FUTURE_RENDER_BATCH);
+      return Math.min(total, limit);
     }
 
     getFutureRenderKey() {
-      const source = Array.isArray(this.futureChunks) ? this.futureChunks : [];
       const caseFixFlag = this.settings.caseFixEnabled !== false ? "case-on" : "case-off";
-      return source
-        .map((chunk) => [caseFixFlag, chunk && chunk.actualIndex, chunk && chunk.start, chunk && chunk.end, this.getChunkDisplayText(chunk)].join(":"))
-        .join("|");
+      return [caseFixFlag, this.futureChunksKey, this.getFutureRenderCount()].join("|");
     }
 
-    createFutureSection(futureCount, chunkCount) {
+    createFutureSection(futureRenderCount, chunkCount) {
       const section = document.createElement("div");
       section.className = "dc-future-section";
 
@@ -3343,8 +3383,9 @@
 
       const futureList = document.createElement("div");
       futureList.className = "dc-future-list";
+      futureList.addEventListener("scroll", () => this.handleFutureListScroll(futureList), { passive: true });
 
-      for (let index = 0; index < futureCount; index += 1) {
+      for (let index = 0; index < futureRenderCount; index += 1) {
         const preview = this.futureChunks[index];
         const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
         futureList.append(this.createChunkButton(preview, actualIndex, true));
@@ -3354,7 +3395,7 @@
       return section;
     }
 
-    replaceFutureSection(futureCount, chunkCount) {
+    replaceFutureSection(futureRenderCount, chunkCount) {
       if (!this.windowContainer) {
         return;
       }
@@ -3365,8 +3406,8 @@
       if (existing) {
         existing.remove();
       }
-      if (futureCount) {
-        const nextSection = this.createFutureSection(futureCount, chunkCount);
+      if (futureRenderCount) {
+        const nextSection = this.createFutureSection(futureRenderCount, chunkCount);
         if (this.bottomSpacer && this.bottomSpacer.parentElement === parent) {
           parent.insertBefore(nextSection, this.bottomSpacer);
         } else {
@@ -3377,9 +3418,22 @@
           nextList.scrollTop = Math.min(previousScrollTop, Math.max(0, nextList.scrollHeight - nextList.clientHeight));
         }
       }
-      this.currentFutureCount = futureCount;
+      this.currentFutureCount = this.futureChunks.length;
+      this.currentFutureRenderedCount = futureRenderCount;
       this.currentFutureCollapsed = this.futureCollapsed;
       this.currentFutureKey = this.getFutureRenderKey();
+    }
+
+    handleFutureListScroll(futureList) {
+      if (!futureList || !this.futureChunks || this.futureRenderLimit >= this.futureChunks.length) {
+        return;
+      }
+      const bottomDistance = futureList.scrollHeight - (futureList.scrollTop + futureList.clientHeight);
+      if (bottomDistance > FUTURE_RENDER_BUFFER_PX) {
+        return;
+      }
+      this.futureRenderLimit = Math.min(this.futureChunks.length, this.futureRenderLimit + FUTURE_RENDER_BATCH);
+      this.replaceFutureSection(this.getFutureRenderCount(), this.chunks.length);
     }
 
     createChunkButton(chunk, index, isFuture) {

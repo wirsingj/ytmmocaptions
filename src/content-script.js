@@ -95,6 +95,7 @@
       this.liveNextBubbleUid = 1;
       this.liveFuturePreviewChunks = [];
       this.transcriptPreviewChunks = [];
+      this.futurePreviewSignature = "";
     }
 
     async init() {
@@ -1431,6 +1432,7 @@
       this.liveLastFutureBackfillAt = 0;
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveFuturePreviewChunks = [];
+      this.futurePreviewSignature = "";
       if (!Array.isArray(this.transcriptPreviewChunks)) {
         this.transcriptPreviewChunks = [];
       }
@@ -1459,6 +1461,7 @@
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveFuturePreviewChunks = [];
       this.transcriptPreviewChunks = [];
+      this.futurePreviewSignature = "";
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.liveBubbles = [];
@@ -1544,7 +1547,45 @@
         .join("|");
     }
 
-    getFuturePreviewChunks() {
+    getFuturePreviewSignature(activeTimelineIndex) {
+      if (!this.canShowFuturePreviewChunks()) {
+        return "empty";
+      }
+      const transcriptSource = Array.isArray(this.transcriptPreviewChunks) && this.transcriptPreviewChunks.length
+        ? this.transcriptPreviewChunks
+        : [];
+      if (transcriptSource.length) {
+        const currentTime = this.video ? Number(this.video.currentTime || 0) : 0;
+        const currentIndex = Number.isInteger(activeTimelineIndex)
+          ? activeTimelineIndex
+          : this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
+        const previewStart = Math.max(0, currentIndex + 1);
+        const first = transcriptSource[previewStart];
+        const last = transcriptSource[transcriptSource.length - 1];
+        return [
+          "transcript",
+          transcriptSource.length,
+          previewStart,
+          first ? [first.start, first.end, first.seekStart, first.text].join(":") : "",
+          last ? [last.start, last.end, last.seekStart, last.text].join(":") : ""
+        ].join("|");
+      }
+      if (this.liveCaptureEnabled) {
+        return "live|" + this.getFuturePreviewKey();
+      }
+      const previewStart = Math.max(0, Number(this.revealedChunkCount || 0));
+      const first = this.allChunks[previewStart];
+      const last = this.allChunks[this.allChunks.length - 1];
+      return [
+        "chunks",
+        this.allChunks.length,
+        previewStart,
+        first ? [first.start, first.end, first.seekStart, first.text].join(":") : "",
+        last ? [last.start, last.end, last.seekStart, last.text].join(":") : ""
+      ].join("|");
+    }
+
+    getFuturePreviewChunks(activeTimelineIndex) {
       if (!this.canShowFuturePreviewChunks()) {
         return [];
       }
@@ -1553,7 +1594,9 @@
         : [];
       if (transcriptSource.length) {
         const currentTime = this.video ? Number(this.video.currentTime || 0) : 0;
-        const currentIndex = this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
+        const currentIndex = Number.isInteger(activeTimelineIndex)
+          ? activeTimelineIndex
+          : this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
         const previewStart = Math.max(0, currentIndex + 1);
         return transcriptSource.slice(previewStart).map((chunk, offset) => ({
           ...chunk,
@@ -1645,9 +1688,15 @@
       return now >= start - startTolerance && now <= activeUntil + 0.25 ? index : -1;
     }
 
-    updateFuturePreviewChunks() {
+    updateFuturePreviewChunks(activeTimelineIndex, options) {
+      // Full transcript previews can span long videos; avoid rebuilding the same future list on every playback frame.
+      const signature = this.getFuturePreviewSignature(activeTimelineIndex);
+      if (!(options && options.force) && signature === this.futurePreviewSignature) {
+        return;
+      }
+      this.futurePreviewSignature = signature;
       if (this.panel && typeof this.panel.setFutureChunks === "function") {
-        this.panel.setFutureChunks(this.getFuturePreviewChunks());
+        this.panel.setFutureChunks(this.getFuturePreviewChunks(activeTimelineIndex));
       }
       if (
         this.panel &&
@@ -1683,11 +1732,11 @@
         if (typeof this.panel.setPlaybackTime === "function") {
           this.panel.setPlaybackTime(currentTime, { forceGlowReset: true });
         }
-        this.updateFuturePreviewChunks();
+        this.updateFuturePreviewChunks(nextIndex);
         return;
       }
       this.ensureChunkVisible(nextIndex);
-      this.updateFuturePreviewChunks();
+      this.updateFuturePreviewChunks(nextIndex);
       this.activeIndex = Math.max(0, Math.min(nextIndex, this.chunks.length - 1));
       this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
       if (typeof this.panel.setPlaybackTime === "function") {
@@ -1859,6 +1908,7 @@
           if (!this.cues.length) {
             this.panel.setChunks([]);
             if (typeof this.panel.setFutureChunks === "function") {
+              this.futurePreviewSignature = "";
               this.panel.setFutureChunks([]);
             }
             if (typeof this.panel.setTimelineData === "function") {
