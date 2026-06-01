@@ -440,6 +440,7 @@ exports.run = async function runComplianceTests(ctx) {
   await runCase("history reading mode treats upward scroll as explicit reading intent", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     assert.ok(panelSource.includes("historyReadingMode"));
+    assert.ok(panelSource.includes("HISTORY_BOTTOM_EXIT_PX = 36"));
     assert.ok(panelSource.includes("enterHistoryReadingMode(\"scroll-up\")"));
     assert.ok(panelSource.includes("getScrollAnchorSnapshot"));
     assert.ok(panelSource.includes("preserveScrollAnchorDuringModeChange"));
@@ -449,6 +450,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.scrollAnchorRafId"));
     assert.ok(panelSource.includes("exitHistoryReadingMode(\"current\")"));
     assert.ok(panelSource.includes("exitHistoryReadingMode(\"latest\")"));
+    assert.ok(panelSource.includes("this.historyReadingMode && bottomDistance <= HISTORY_BOTTOM_EXIT_PX"));
+    assert.ok(panelSource.includes("!this.historyReadingMode && this.isNearBottom(2.6)"));
     assert.ok(panelSource.includes("!this.historyReadingMode && (this.stickToBottom || this.isNearBottom(2.6))"));
     assert.ok(panelSource.includes("this.historyReadingMode && !options.exitHistoryMode"));
   });

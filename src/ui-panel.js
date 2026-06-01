@@ -12,6 +12,7 @@
   const COLOR_PICKER_ID = "dc-color-picker";
   const ACTIVE_PAGE_CLASS = "dc-panel-open";
   const BOTTOM_PROXIMITY_PX = 140;
+  const HISTORY_BOTTOM_EXIT_PX = 36;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
   const MIN_RESTORED_PANEL_WIDTH = 340;
@@ -936,13 +937,17 @@
         }
         const delta = scrollTop - this.lastObservedScrollTop;
         this.lastObservedScrollTop = scrollTop;
-        if (delta < -4 && this.getBottomDistance() > BOTTOM_PROXIMITY_PX) {
+        const bottomDistance = this.getBottomDistance();
+        const enteredHistoryMode = delta < -4 && bottomDistance > BOTTOM_PROXIMITY_PX;
+        if (enteredHistoryMode) {
           this.enterHistoryReadingMode("scroll-up");
         }
-        if (this.isNearBottom(2.6)) {
+        if (this.historyReadingMode && bottomDistance <= HISTORY_BOTTOM_EXIT_PX) {
           this.exitHistoryReadingMode("near-bottom");
           this.stickToBottom = true;
-        } else if (this.historyReadingMode || this.getBottomDistance() > BOTTOM_PROXIMITY_PX * 2) {
+        } else if (!this.historyReadingMode && this.isNearBottom(2.6)) {
+          this.stickToBottom = true;
+        } else if (this.historyReadingMode || bottomDistance > BOTTOM_PROXIMITY_PX * 2) {
           this.stickToBottom = false;
         }
         this.updateJumpBottomVisibility();
