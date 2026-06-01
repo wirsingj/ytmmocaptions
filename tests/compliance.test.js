@@ -452,6 +452,20 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('jumpLabel.textContent = "Jump to"'));
     assert.ok(panelSource.includes('this.jumpCurrentButton.textContent = "Current"'));
     assert.ok(panelSource.includes('this.jumpLatestButton.textContent = "Latest"'));
+    assert.ok(panelSource.includes('this.helpButton.textContent = "?"'));
+    assert.ok(panelSource.includes('aria-label", "Open quick guide"'));
+    assert.ok(panelSource.includes('helpTitle.textContent = "Quick Guide"'));
+    assert.ok(panelSource.includes('"Click any bubble to seek."'));
+    assert.ok(panelSource.includes('"Current returns to the active caption."'));
+    assert.ok(panelSource.includes('"Latest jumps to the newest reached caption."'));
+    assert.ok(panelSource.includes('"Next previews upcoming captions."'));
+    assert.ok(panelSource.includes('"Case Fix softens all-caps captions."'));
+    assert.ok(panelSource.includes('"Use the color picker, opacity, and text controls to tune readability."'));
+    assert.ok(panelSource.includes('"Lock keeps the workspace across videos."'));
+    assert.ok(panelSource.includes('"Reset restores the default panel layout."'));
+    assert.ok(panelSource.includes('"Drag the header to move; drag edges or corners to resize."'));
+    assert.ok(panelSource.includes("toggleHelpPopover"));
+    assert.ok(panelSource.includes("updateHelpPopoverPosition"));
     assert.ok(panelSource.includes("jumpToLatestCaption"));
     assert.ok(panelSource.includes("seekLeadSeconds: 0"));
     assert.ok(panelSource.includes("dc-theme-select"));
@@ -468,6 +482,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("position: fixed;"));
     assert.ok(css.includes("z-index: 2147483646"));
     assert.ok(css.includes(".dc-color-wheel"));
+    assert.ok(css.includes(".dc-help-popover"));
+    assert.ok(css.includes(".dc-btn-help"));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 

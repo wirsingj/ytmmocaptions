@@ -119,6 +119,8 @@
       this.timelineModeButton = null;
       this.timelineFeatureEnabled = TIMELINE_MODE_EXPERIMENT_ENABLED;
       this.layoutLockButton = null;
+      this.helpButton = null;
+      this.helpPopover = null;
       this.timelineLayer = null;
       this.timelineTrack = null;
       this.timelineTooltip = null;
@@ -235,6 +237,41 @@
       this.layoutLockButton.textContent = "Lock";
       this.layoutLockButton.title = "Save panel layout across videos";
       this.layoutLockButton.setAttribute("aria-pressed", this.settings.layoutLocked ? "true" : "false");
+
+      this.helpButton = document.createElement("button");
+      this.helpButton.type = "button";
+      this.helpButton.className = "dc-btn dc-btn-help";
+      this.helpButton.textContent = "?";
+      this.helpButton.title = "Quick guide";
+      this.helpButton.setAttribute("aria-label", "Open quick guide");
+      this.helpButton.setAttribute("aria-expanded", "false");
+
+      this.helpPopover = document.createElement("div");
+      this.helpPopover.className = "dc-help-popover";
+      this.helpPopover.dataset.dcInstanceId = this.instanceId || "youtube";
+      this.helpPopover.hidden = true;
+      this.helpPopover.setAttribute("role", "dialog");
+      this.helpPopover.setAttribute("aria-label", "Quick guide");
+      const helpTitle = document.createElement("h3");
+      helpTitle.textContent = "Quick Guide";
+      const helpList = document.createElement("ul");
+      const helpItems = [
+        "Click any bubble to seek.",
+        "Current returns to the active caption.",
+        "Latest jumps to the newest reached caption.",
+        "Next previews upcoming captions.",
+        "Case Fix softens all-caps captions.",
+        "Use the color picker, opacity, and text controls to tune readability.",
+        "Lock keeps the workspace across videos.",
+        "Reset restores the default panel layout.",
+        "Drag the header to move; drag edges or corners to resize."
+      ];
+      for (let index = 0; index < helpItems.length; index += 1) {
+        const item = document.createElement("li");
+        item.textContent = helpItems[index];
+        helpList.append(item);
+      }
+      this.helpPopover.append(helpTitle, helpList);
 
       this.themeSelect = document.createElement("select");
       this.themeSelect.className = "dc-theme-select";
@@ -361,7 +398,7 @@
       }
       const actionControls = document.createElement("div");
       actionControls.className = "dc-control-actions";
-      actionControls.append(this.layoutLockButton, this.resetButton, this.closeButton);
+      actionControls.append(this.helpButton, this.layoutLockButton, this.resetButton, this.closeButton);
       controls.append(actionControls);
       header.append(titleWrap, controls);
 
@@ -423,6 +460,7 @@
         this.root.append(this.resizeHandles[index]);
       }
       (this.mountElement || document.body).append(this.root);
+      document.body.append(this.helpPopover);
       document.body.append(this.colorPickerPopover);
 
       this.timelineLayer = document.createElement("div");
@@ -473,6 +511,10 @@
       if (this.root) {
         this.root.remove();
         this.root = null;
+      }
+      if (this.helpPopover) {
+        this.helpPopover.remove();
+        this.helpPopover = null;
       }
       if (this.launcherButton) {
         this.launcherButton.remove();
@@ -617,6 +659,35 @@
       this.addListener(this.closeButton, "click", onClose);
       this.addListener(this.resetButton, "click", onReset);
 
+      const onHelpClick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleHelpPopover();
+      };
+      this.addListener(this.helpButton, "click", onHelpClick);
+
+      const onHelpPopoverPointerDown = (event) => {
+        event.stopPropagation();
+      };
+      this.addListener(this.helpPopover, "pointerdown", onHelpPopoverPointerDown);
+      this.addListener(this.helpPopover, "click", onHelpPopoverPointerDown);
+
+      const onHelpOutside = (event) => {
+        if (!this.helpPopover || this.helpPopover.hidden) {
+          return;
+        }
+        const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+        if (path.includes(this.helpPopover) || path.includes(this.helpButton)) {
+          return;
+        }
+        const target = event.target;
+        if (target instanceof Element && (target.closest(".dc-help-popover") || target.closest(".dc-btn-help"))) {
+          return;
+        }
+        this.closeHelpPopover();
+      };
+      this.addListener(document, "pointerdown", onHelpOutside);
+
       const onLayoutLockToggle = () => {
         this.updateSettings({ layoutLocked: !this.settings.layoutLocked });
       };
@@ -662,6 +733,7 @@
       const onColorPickerEscape = (event) => {
         if (event.key === "Escape") {
           this.closeColorPicker();
+          this.closeHelpPopover();
         }
       };
       this.addListener(this.root, "keydown", onColorPickerEscape);
@@ -810,12 +882,14 @@
       const onResize = () => {
         this.applySettings();
         this.updateColorPickerPosition();
+        this.updateHelpPopoverPosition();
       };
       this.addListener(window, "resize", onResize);
 
       const onWindowScroll = () => {
         this.refreshAnchorLayout();
         this.updateColorPickerPosition();
+        this.updateHelpPopoverPosition();
       };
       this.addListener(window, "scroll", onWindowScroll, { passive: true });
 
@@ -905,6 +979,7 @@
       }
       if (panelClosed) {
         this.pointerInside = false;
+        this.closeHelpPopover();
       }
       const timelineActive = this.timelineFeatureEnabled && Boolean(this.settings.timelineModeEnabled);
       this.body.style.display = timelineActive ? "none" : "flex";
@@ -1118,6 +1193,40 @@
       }
     }
 
+    toggleHelpPopover() {
+      if (!this.helpPopover) {
+        return;
+      }
+      const nextOpen = Boolean(this.helpPopover.hidden);
+      if (nextOpen) {
+        this.closeColorPicker();
+        this.openHelpPopover();
+      } else {
+        this.closeHelpPopover();
+      }
+    }
+
+    openHelpPopover() {
+      if (!this.helpPopover) {
+        return;
+      }
+      this.helpPopover.hidden = false;
+      if (this.helpButton) {
+        this.helpButton.setAttribute("aria-expanded", "true");
+      }
+      this.updateHelpPopoverPosition();
+    }
+
+    closeHelpPopover() {
+      if (!this.helpPopover) {
+        return;
+      }
+      this.helpPopover.hidden = true;
+      if (this.helpButton) {
+        this.helpButton.setAttribute("aria-expanded", "false");
+      }
+    }
+
     pickColorFromWheel(event) {
       if (!this.colorWheel) {
         return;
@@ -1174,6 +1283,26 @@
       );
       this.colorPickerPopover.style.left = Math.round(left) + "px";
       this.colorPickerPopover.style.top = Math.round(top) + "px";
+    }
+
+    updateHelpPopoverPosition() {
+      if (!this.helpPopover || !this.helpButton || this.helpPopover.hidden) {
+        return;
+      }
+      const rect = this.helpButton.getBoundingClientRect();
+      const popoverWidth = this.helpPopover.offsetWidth || 280;
+      const popoverHeight = this.helpPopover.offsetHeight || 220;
+      const margin = 8;
+      const left = Math.max(
+        margin,
+        Math.min(window.innerWidth - popoverWidth - margin, rect.right - popoverWidth)
+      );
+      const top = Math.max(
+        margin,
+        Math.min(window.innerHeight - popoverHeight - margin, rect.bottom + 6)
+      );
+      this.helpPopover.style.left = Math.round(left) + "px";
+      this.helpPopover.style.top = Math.round(top) + "px";
     }
 
     hexToRgb(hex) {

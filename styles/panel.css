@@ -454,6 +454,50 @@
   display: none;
 }
 
+.dc-help-popover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483646;
+  width: min(280px, calc(100vw - 16px));
+  padding: 10px 12px 11px;
+  border: 1px solid rgba(var(--dc-accent-rgb), 0.34);
+  border-radius: 10px;
+  color: var(--dc-text);
+  background:
+    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.07), rgba(var(--dc-text-rgb), 0.018)),
+    rgba(10, 10, 12, 0.98);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.46),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(8px);
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.dc-help-popover[hidden] {
+  display: none;
+}
+
+.dc-help-popover h3 {
+  margin: 0 0 7px;
+  color: var(--dc-accent);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.dc-help-popover ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0 0 0 16px;
+}
+
+.dc-help-popover li {
+  color: rgba(var(--dc-text-rgb), 0.9);
+  font-size: 11px;
+  line-height: 1.24;
+}
+
 .dc-color-wheel {
   position: relative;
   display: block;
@@ -513,6 +557,14 @@
   min-width: 38px;
   padding: 0 8px;
   opacity: 0.78;
+}
+
+.dc-btn-help {
+  min-width: 24px;
+  width: 24px;
+  padding: 0;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .dc-btn-lock.is-active {
