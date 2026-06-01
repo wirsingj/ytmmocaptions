@@ -430,6 +430,16 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.historyReadingMode && !options.exitHistoryMode"));
   });
 
+  await runCase("caption hierarchy emphasizes current text without resizing bubbles", () => {
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(css.includes("line-height: 1.38"));
+    assert.ok(css.includes(".dc-chunk:not(.is-current):not(.dc-chunk-future) .dc-chunk-text"));
+    assert.ok(css.includes(".dc-chunk.is-current .dc-chunk-text"));
+    assert.ok(css.includes("text-shadow: 0 0 9px rgba(var(--dc-accent-rgb), 0.12);"));
+    assert.ok(!css.includes(".dc-chunk.is-current .dc-chunk-text {\n  font-size"));
+    assert.ok(!css.includes(".dc-chunk.is-current .dc-chunk-text {\n  font-weight"));
+  });
+
   await runCase("panel exposes basic accessibility labels and reduced-motion CSS", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
