@@ -27,6 +27,10 @@
   const DEFAULT_FUTURE_PREVIEW_HEIGHT = 96;
   const MIN_FUTURE_PREVIEW_HEIGHT = 52;
   const MAX_FUTURE_PREVIEW_HEIGHT = 360;
+  const RAINBOW_THEME_CYCLE_MS = 15000;
+  const RAINBOW_THEME_FRAME_MS = 33;
+  const RAINBOW_THEME_SATURATION = 0.84;
+  const RAINBOW_THEME_VALUE = 0.88;
   // Timeline mode is intentionally shipped dormant until it gets a focused UX pass.
   const TIMELINE_MODE_EXPERIMENT_ENABLED = false;
   const THEME_PRESETS = Object.freeze({
@@ -113,6 +117,7 @@
       this.colorPickerPopover = null;
       this.colorWheel = null;
       this.colorPickerIndicator = null;
+      this.rainbowThemeButton = null;
       this.centerFadeInput = null;
       this.futurePreviewInput = null;
       this.caseFixInput = null;
@@ -167,6 +172,13 @@
       this.activeArrivalIndex = -1;
       this.activeArrivalElement = null;
       this.activeArrivalTimer = 0;
+      this.rainbowThemeRafId = 0;
+      this.rainbowThemeStartTime = 0;
+      this.rainbowThemeStartHue = 0;
+      this.rainbowThemeLastFrameTime = 0;
+      this.rainbowThemeEnabled = false;
+      this.rainbowThemePreviewColor = null;
+      this.rainbowThemeRestoreSnapshot = null;
 
       this.cleanupFns = [];
       this.activePointerCleanupFns = [];
@@ -321,7 +333,14 @@
       this.colorPickerIndicator = document.createElement("span");
       this.colorPickerIndicator.className = "dc-color-indicator";
       this.colorWheel.append(this.colorPickerIndicator);
-      this.colorPickerPopover.append(this.colorWheel);
+      this.rainbowThemeButton = document.createElement("button");
+      this.rainbowThemeButton.type = "button";
+      this.rainbowThemeButton.className = "dc-rainbow-toggle";
+      this.rainbowThemeButton.textContent = ">";
+      this.rainbowThemeButton.title = "Cycle theme color";
+      this.rainbowThemeButton.setAttribute("aria-label", "Cycle theme color");
+      this.rainbowThemeButton.setAttribute("aria-pressed", "false");
+      this.colorPickerPopover.append(this.colorWheel, this.rainbowThemeButton);
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
@@ -529,6 +548,7 @@
         this.statusTimer = 0;
       }
       this.clearActiveArrivalFeedback();
+      this.cancelRainbowThemePreview(false);
       for (let index = 0; index < this.layoutRefreshTimers.length; index += 1) {
         window.clearTimeout(this.layoutRefreshTimers[index]);
       }
@@ -562,6 +582,7 @@
         this.colorPickerPopover = null;
         this.colorWheel = null;
         this.colorPickerIndicator = null;
+        this.rainbowThemeButton = null;
       }
       this.removeExistingUiNodes();
       if (this.mountElement) {
@@ -731,6 +752,7 @@
       this.addListener(this.opacityInput, "change", onOpacityInput);
 
       const onThemeChange = () => {
+        this.cancelRainbowThemePreview(false);
         this.updateSettings({ themeName: this.themeSelect.value || "stone" });
         if (this.themeSelect.value !== "custom") {
           this.closeColorPicker();
@@ -759,6 +781,11 @@
         if (event.buttons === 1) {
           this.pickColorFromWheel(event);
         }
+      });
+      this.addListener(this.rainbowThemeButton, "click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleRainbowThemeMode();
       });
 
       const onColorPickerEscape = (event) => {
@@ -1256,6 +1283,8 @@
         this.themeColorButton.classList.toggle("is-active", this.getThemeName() === "custom");
       }
       this.updateColorPickerIndicator();
+      this.updateRainbowThemeButton();
+      this.syncRainbowThemeCycle();
       this.updateColorPickerPosition();
       this.applyFuturePreviewHeight();
       if (this.stickToBottom) {
@@ -1321,11 +1350,17 @@
     }
 
     getThemeName() {
+      if (this.rainbowThemeEnabled) {
+        return "custom";
+      }
       const name = String(this.settings.themeName || "stone").toLowerCase();
       return name === "custom" || Object.prototype.hasOwnProperty.call(THEME_PRESETS, name) ? name : "stone";
     }
 
     getCustomThemeColor() {
+      if (this.rainbowThemeEnabled && /^#[0-9a-f]{6}$/i.test(String(this.rainbowThemePreviewColor || ""))) {
+        return String(this.rainbowThemePreviewColor).toLowerCase();
+      }
       const color = String(this.settings.customThemeColor || "#ded6c3").trim();
       return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#ded6c3";
     }
@@ -1417,6 +1452,7 @@
       const saturation = Math.max(0, Math.min(1, distance / radius));
       const hue = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
       const color = this.hsvToHex(hue, saturation, 0.92);
+      this.cancelRainbowThemePreview(false);
       this.updateSettings({ themeName: "custom", customThemeColor: color });
       if (this.colorPickerPopover) {
         this.colorPickerPopover.hidden = false;
@@ -1425,6 +1461,113 @@
       if (this.themeColorButton) {
         this.themeColorButton.setAttribute("aria-expanded", "true");
       }
+    }
+
+    toggleRainbowThemeMode() {
+      const nextEnabled = !this.isRainbowThemeEnabled();
+      if (nextEnabled) {
+        this.rainbowThemeRestoreSnapshot = {
+          themeName: this.settings.themeName || "stone",
+          customThemeColor: this.settings.customThemeColor || "#ded6c3"
+        };
+        const hsv = this.hexToHsv(this.getCustomThemeColor());
+        this.rainbowThemePreviewColor = this.hsvToHex(hsv.h, RAINBOW_THEME_SATURATION, RAINBOW_THEME_VALUE);
+        this.rainbowThemeEnabled = true;
+        this.updateRainbowThemeButton();
+        this.applyRainbowThemeColor(this.rainbowThemePreviewColor);
+        this.startRainbowThemeCycle();
+        return;
+      }
+      this.cancelRainbowThemePreview(true);
+    }
+
+    isRainbowThemeEnabled() {
+      return Boolean(this.rainbowThemeEnabled);
+    }
+
+    updateRainbowThemeButton() {
+      if (!this.rainbowThemeButton) {
+        return;
+      }
+      const enabled = this.isRainbowThemeEnabled();
+      this.rainbowThemeButton.classList.toggle("is-active", enabled);
+      this.rainbowThemeButton.textContent = enabled ? "||" : ">";
+      this.rainbowThemeButton.title = enabled ? "Stop cycling theme color" : "Cycle theme color";
+      this.rainbowThemeButton.setAttribute("aria-label", this.rainbowThemeButton.title);
+      this.rainbowThemeButton.setAttribute("aria-pressed", enabled ? "true" : "false");
+    }
+
+    syncRainbowThemeCycle() {
+      if (this.isRainbowThemeEnabled()) {
+        this.startRainbowThemeCycle();
+      } else {
+        this.stopRainbowThemeCycle();
+      }
+    }
+
+    startRainbowThemeCycle() {
+      if (this.rainbowThemeRafId) {
+        return;
+      }
+      const hsv = this.hexToHsv(this.getCustomThemeColor());
+      this.rainbowThemeStartHue = Number.isFinite(hsv.h) ? hsv.h : 0;
+      this.rainbowThemeStartTime = Date.now();
+      this.rainbowThemeLastFrameTime = 0;
+      const tick = () => {
+        if (!this.isRainbowThemeEnabled()) {
+          this.stopRainbowThemeCycle();
+          return;
+        }
+        const now = Date.now();
+        if (!this.rainbowThemeLastFrameTime || now - this.rainbowThemeLastFrameTime >= RAINBOW_THEME_FRAME_MS) {
+          this.rainbowThemeLastFrameTime = now;
+          const elapsed = now - this.rainbowThemeStartTime;
+          const hue = (this.rainbowThemeStartHue + (elapsed / RAINBOW_THEME_CYCLE_MS) * 360) % 360;
+          this.applyRainbowThemeColor(this.hsvToHex(hue, RAINBOW_THEME_SATURATION, RAINBOW_THEME_VALUE));
+        }
+        this.rainbowThemeRafId = platform.requestFrame(tick);
+      };
+      this.rainbowThemeRafId = platform.requestFrame(tick);
+    }
+
+    stopRainbowThemeCycle() {
+      if (this.rainbowThemeRafId) {
+        platform.cancelFrame(this.rainbowThemeRafId);
+        this.rainbowThemeRafId = 0;
+      }
+      this.rainbowThemeLastFrameTime = 0;
+    }
+
+    cancelRainbowThemePreview(restorePrevious) {
+      const restore = Boolean(restorePrevious && this.rainbowThemeRestoreSnapshot);
+      const snapshot = this.rainbowThemeRestoreSnapshot;
+      this.stopRainbowThemeCycle();
+      this.rainbowThemeEnabled = false;
+      this.rainbowThemePreviewColor = null;
+      this.rainbowThemeRestoreSnapshot = null;
+      this.updateRainbowThemeButton();
+      if (restore && snapshot) {
+        this.updateSettings({
+          themeName: snapshot.themeName,
+          customThemeColor: snapshot.customThemeColor
+        });
+      }
+    }
+
+    applyRainbowThemeColor(color) {
+      const nextColor = /^#[0-9a-f]{6}$/i.test(String(color || "")) ? String(color).toLowerCase() : this.getCustomThemeColor();
+      this.rainbowThemePreviewColor = nextColor;
+      this.applyTheme();
+      if (this.themeSelect && this.themeSelect.value !== "custom") {
+        this.themeSelect.value = "custom";
+      }
+      if (this.themeColorSwatch) {
+        this.themeColorSwatch.style.background = nextColor;
+      }
+      if (this.themeColorButton) {
+        this.themeColorButton.classList.add("is-active");
+      }
+      this.updateColorPickerIndicator();
     }
 
     updateColorPickerIndicator() {

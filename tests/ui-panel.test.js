@@ -147,4 +147,37 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.settings.textScale, settingsStore.DEFAULTS.textScale);
     assert.equal(panel.settings.panelClosed, false);
   });
+
+  await runCase("rainbow theme toggle previews live color and restores prior color", () => {
+    const module = loadPanelModule();
+    const settingsStore = module.settingsStore;
+    const changes = [];
+    const panel = new module.DialoguePanel({
+      settings: settingsStore.normalizeSettings({
+        themeName: "custom",
+        customThemeColor: "#336699"
+      }),
+      onSettingsChange(settings, patch) {
+        changes.push({ settings, patch });
+      }
+    });
+
+    panel.toggleRainbowThemeMode();
+    assert.equal(panel.settings.themeName, "custom");
+    assert.equal(panel.settings.customThemeColor, "#336699");
+    assert.equal(panel.isRainbowThemeEnabled(), true);
+    assert.equal(changes.length, 0);
+
+    panel.applyRainbowThemeColor("#77aa44");
+    assert.equal(panel.getCustomThemeColor(), "#77aa44");
+    assert.equal(panel.settings.customThemeColor, "#336699");
+    assert.equal(changes.length, 0);
+
+    panel.toggleRainbowThemeMode();
+    assert.equal(panel.isRainbowThemeEnabled(), false);
+    assert.equal(panel.settings.customThemeColor, "#336699");
+    assert.equal(changes.length, 1);
+    assert.equal(changes[0].patch.themeName, "custom");
+    assert.equal(changes[0].patch.customThemeColor, "#336699");
+  });
 };

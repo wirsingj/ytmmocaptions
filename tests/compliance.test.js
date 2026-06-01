@@ -481,7 +481,13 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("seekLeadSeconds: 0"));
     assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(panelSource.includes("dc-color-popover"));
+    assert.ok(panelSource.includes("dc-rainbow-toggle"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
+    assert.ok(panelSource.includes("toggleRainbowThemeMode"));
+    assert.ok(panelSource.includes("RAINBOW_THEME_CYCLE_MS = 15000"));
+    assert.ok(panelSource.includes("RAINBOW_THEME_FRAME_MS = 33"));
+    assert.ok(panelSource.includes("RAINBOW_THEME_SATURATION = 0.84"));
+    assert.ok(panelSource.includes("rainbowThemeRestoreSnapshot"));
     assert.ok(panelSource.includes("Math.atan2(dx, -dy)"));
     assert.ok(panelSource.includes("Math.sin(radians)"));
     assert.ok(panelSource.includes("50 - Math.cos(radians)"));
@@ -493,6 +499,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("position: fixed;"));
     assert.ok(css.includes("z-index: 2147483646"));
     assert.ok(css.includes(".dc-color-wheel"));
+    assert.ok(css.includes(".dc-rainbow-toggle"));
     assert.ok(css.includes(".dc-help-popover"));
     assert.ok(css.includes(".dc-btn-help"));
     assert.ok(css.includes("flex-wrap: wrap"));
@@ -538,6 +545,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes("caseFixEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
     assert.ok(source.includes("layoutLocked"));
+    assert.ok(!source.includes("rainbowThemeEnabled"));
     assert.ok(source.includes("workspacePresets"));
     assert.ok(source.includes("activeWorkspacePreset"));
     assert.ok(source.includes("workspacePresetBaseline"));
