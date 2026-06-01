@@ -361,7 +361,7 @@ exports.run = async function runComplianceTests(ctx) {
   await runCase("panel header sliders shrink before controls wrap", () => {
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(css.includes("flex-wrap: nowrap;"));
-    assert.ok(css.includes(".dc-opacity-wrap,\n.dc-text-scale-wrap"));
+    assert.ok(/\.dc-opacity-wrap,\s*\.dc-text-scale-wrap\s*\{/.test(css));
     assert.ok(css.includes("flex: 1 1 68px;"));
     assert.ok(css.includes("min-width: 0;"));
     assert.ok(css.includes("flex: 1 1 28px;"));
