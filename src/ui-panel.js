@@ -291,6 +291,7 @@
         "Next previews upcoming captions.",
         "Case Fix softens all-caps captions.",
         "Use the color picker, opacity, and text controls to tune readability.",
+        "Presets apply saved workspace snapshots; the lower Save area captures one.",
         "Lock keeps the workspace across videos.",
         "Reset restores the panel workspace shape.",
         "Drag the header to move; drag edges or corners to resize."

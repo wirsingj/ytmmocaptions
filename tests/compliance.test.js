@@ -571,6 +571,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('"Next previews upcoming captions."'));
     assert.ok(panelSource.includes('"Case Fix softens all-caps captions."'));
     assert.ok(panelSource.includes('"Use the color picker, opacity, and text controls to tune readability."'));
+    assert.ok(panelSource.includes('"Presets apply saved workspace snapshots; the lower Save area captures one."'));
     assert.ok(panelSource.includes('"Lock keeps the workspace across videos."'));
     assert.ok(panelSource.includes('"Reset restores the panel workspace shape."'));
     assert.ok(panelSource.includes('"Drag the header to move; drag edges or corners to resize."'));
