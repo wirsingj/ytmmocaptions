@@ -102,14 +102,14 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const { normalize } = makeStore();
     const result = normalize({});
     assert.equal(result.panelClosed, true);
-    assert.equal(result.panelOpacity, 55);
+    assert.equal(result.panelOpacity, 48);
     assert.equal(result.textScale, 120);
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");
     assert.equal(result.futurePreviewHeight, 96);
     assert.equal(result.futurePreviewEnabled, true);
     assert.equal(result.caseFixEnabled, true);
-    assert.equal(result.fadeTowardVideoCenter, true);
+    assert.equal(result.fadeTowardVideoCenter, false);
     assert.equal(result.videoCenterFadeStrength, 84);
     assert.equal(result.videoCenterFadeMidpoint, 50);
     assert.equal(result.videoCenterFadeMinOpacity, 12);

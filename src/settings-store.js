@@ -8,7 +8,7 @@
   let saveQueue = Promise.resolve();
   const DEFAULTS = Object.freeze({
     schemaVersion: SCHEMA_VERSION,
-    panelOpacity: 55,
+    panelOpacity: 48,
     textScale: 120,
     themeName: "stone",
     customThemeColor: "#ded6c3",
@@ -17,7 +17,7 @@
     futurePreviewHeight: 96,
     futurePreviewEnabled: true,
     caseFixEnabled: true,
-    fadeTowardVideoCenter: true,
+    fadeTowardVideoCenter: false,
     videoCenterFadeStrength: 84,
     videoCenterFadeMidpoint: 50,
     videoCenterFadeMinOpacity: 12,

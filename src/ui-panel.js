@@ -365,7 +365,7 @@
       this.opacityInput.min = "10";
       this.opacityInput.max = "100";
       this.opacityInput.step = "1";
-      this.opacityInput.value = String(this.settings.panelOpacity || 55);
+      this.opacityInput.value = String(this.settings.panelOpacity || 48);
       this.opacityInput.title = "Panel opacity";
       opacityWrap.append(this.opacityInput);
 
@@ -1336,7 +1336,7 @@
         }
       }
 
-      const panelOpacity = Number(this.settings.panelOpacity || 55);
+      const panelOpacity = Number(this.settings.panelOpacity || 48);
       const normalizedOpacity = Math.max(10, Math.min(100, panelOpacity));
       this.applyTheme();
       this.applyPanelBlend(normalizedOpacity);
@@ -1924,7 +1924,7 @@
       this.root.style.setProperty("--dc-fade-y", fadeY.toFixed(1) + "%");
       const enabled = this.settings.fadeTowardVideoCenter !== false;
       const strength = Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100;
-      const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 55)));
+      const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 48)));
       const opacityBlend = (opacityPercent - 10) / 90;
       const centerAlpha = enabled ? Math.min(0.86, 0.36 + opacityBlend * 0.38 + (1 - strength) * 0.08) : 1;
       const midAlpha = enabled ? centerAlpha + (1 - centerAlpha) * 0.46 : 1;
