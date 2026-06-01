@@ -164,6 +164,9 @@
       this.historyReadingMode = false;
       this.lastObservedScrollTop = 0;
       this.programmaticScrollUntil = 0;
+      this.activeArrivalIndex = -1;
+      this.activeArrivalElement = null;
+      this.activeArrivalTimer = 0;
 
       this.cleanupFns = [];
       this.activePointerCleanupFns = [];
@@ -525,6 +528,7 @@
         window.clearTimeout(this.statusTimer);
         this.statusTimer = 0;
       }
+      this.clearActiveArrivalFeedback();
       for (let index = 0; index < this.layoutRefreshTimers.length; index += 1) {
         window.clearTimeout(this.layoutRefreshTimers[index]);
       }
@@ -2741,11 +2745,13 @@
     setActiveIndex(index, options) {
       if (!Array.isArray(this.chunks) || !this.chunks.length) {
         this.activeIndex = -1;
+        this.clearActiveArrivalFeedback();
         return;
       }
       if (!Number.isInteger(index) || index < 0) {
         const hadActive = this.activeIndex !== -1;
         this.activeIndex = -1;
+        this.clearActiveArrivalFeedback();
         this.clearReadingGlowExcept(-1);
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
@@ -2759,6 +2765,7 @@
       this.activeIndex = bounded;
 
       if (hasChanged) {
+        this.activeArrivalIndex = bounded;
         this.clearReadingGlowExcept(bounded);
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
@@ -3146,6 +3153,7 @@
       item.append(content);
       if (!isFuture && index === this.activeIndex) {
         item.classList.add("is-current");
+        this.playActiveArrivalFeedback(item, index);
       }
       this.renderChunkText(text, chunk, !isFuture && index === this.activeIndex);
       return item;
@@ -3209,7 +3217,45 @@
       const next = this.windowContainer.querySelector("[data-index='" + this.activeIndex + "']");
       if (next) {
         next.classList.add("is-current");
+        this.playActiveArrivalFeedback(next, this.activeIndex);
       }
+    }
+
+    playActiveArrivalFeedback(item, index) {
+      if (!item || index !== this.activeArrivalIndex) {
+        return;
+      }
+      this.activeArrivalIndex = -1;
+      if (this.activeArrivalElement && this.activeArrivalElement !== item) {
+        this.activeArrivalElement.classList.remove("is-arriving");
+      }
+      if (this.activeArrivalTimer) {
+        window.clearTimeout(this.activeArrivalTimer);
+        this.activeArrivalTimer = 0;
+      }
+      this.activeArrivalElement = item;
+      item.classList.add("is-arriving");
+      this.activeArrivalTimer = window.setTimeout(() => {
+        if (item.isConnected) {
+          item.classList.remove("is-arriving");
+        }
+        if (this.activeArrivalElement === item) {
+          this.activeArrivalElement = null;
+        }
+        this.activeArrivalTimer = 0;
+      }, 560);
+    }
+
+    clearActiveArrivalFeedback() {
+      if (this.activeArrivalTimer) {
+        window.clearTimeout(this.activeArrivalTimer);
+        this.activeArrivalTimer = 0;
+      }
+      if (this.activeArrivalElement) {
+        this.activeArrivalElement.classList.remove("is-arriving");
+        this.activeArrivalElement = null;
+      }
+      this.activeArrivalIndex = -1;
     }
 
     clearReadingGlowExcept(activeIndex) {
