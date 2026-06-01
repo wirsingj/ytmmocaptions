@@ -350,6 +350,9 @@ exports.run = async function runComplianceTests(ctx) {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     assert.ok(panelSource.includes("MIN_RESTORED_PANEL_WIDTH"));
     assert.ok(panelSource.includes("MIN_RESTORED_PANEL_HEIGHT"));
+    assert.ok(panelSource.includes("MIN_DEFAULT_PANEL_WIDTH = 650"));
+    assert.ok(panelSource.includes("DEFAULT_PANEL_WIDTH_RATIO = 0.52"));
+    assert.ok(panelSource.includes("maxFrameWidth"));
     assert.ok(panelSource.includes("isRestorablePanelLayout"));
     assert.ok(panelSource.includes("cramped && pinnedTopLeft"));
     assert.ok(panelSource.includes("!this.isRestorablePanelLayout(rect, rect)"));

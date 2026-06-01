@@ -16,8 +16,10 @@
   const MIN_PANEL_HEIGHT = 220;
   const MIN_RESTORED_PANEL_WIDTH = 340;
   const MIN_RESTORED_PANEL_HEIGHT = 250;
+  const MIN_DEFAULT_PANEL_WIDTH = 650;
   const DEFAULT_PANEL_MAX_WIDTH = 680;
   const DEFAULT_PANEL_MAX_HEIGHT = 500;
+  const DEFAULT_PANEL_WIDTH_RATIO = 0.52;
   const DEFAULT_PANEL_MARGIN = 12;
   const PANEL_CONTROL_BAR_GAP = 64;
   const LAUNCHER_MARGIN = 14;
@@ -1827,10 +1829,12 @@
       if (frameWidth < 160 || frameHeight < 90) {
         return null;
       }
-      const width = Math.max(
-        MIN_PANEL_WIDTH,
-        Math.min(DEFAULT_PANEL_MAX_WIDTH, Math.round(frameWidth * 0.42))
+      const maxFrameWidth = Math.max(MIN_PANEL_WIDTH, frameWidth - DEFAULT_PANEL_MARGIN * 2);
+      const preferredWidth = Math.min(
+        DEFAULT_PANEL_MAX_WIDTH,
+        Math.max(MIN_DEFAULT_PANEL_WIDTH, Math.round(frameWidth * DEFAULT_PANEL_WIDTH_RATIO))
       );
+      const width = Math.max(MIN_PANEL_WIDTH, Math.min(maxFrameWidth, preferredWidth));
       const height = Math.max(
         MIN_PANEL_HEIGHT,
         Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.round(frameHeight * 0.56))
