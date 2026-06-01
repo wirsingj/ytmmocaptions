@@ -447,13 +447,20 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.historyReadingMode && !options.exitHistoryMode"));
   });
 
-  await runCase("caption hierarchy emphasizes current text without resizing bubbles", () => {
+  await runCase("caption hierarchy separates past current and history reading modes", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
-    assert.ok(css.includes("line-height: 1.38"));
+    assert.ok(css.includes(".dc-panel:not(.is-reading-history) .dc-chunk:not(.is-current):not(.dc-chunk-future)"));
+    assert.ok(css.includes(".dc-panel.is-reading-history .dc-chunk:not(.is-current):not(.dc-chunk-future)"));
     assert.ok(css.includes(".dc-chunk:not(.is-current):not(.dc-chunk-future) .dc-chunk-text"));
     assert.ok(css.includes(".dc-chunk.is-current .dc-chunk-text"));
-    assert.ok(css.includes("text-shadow: 0 0 9px rgba(var(--dc-accent-rgb), 0.12);"));
+    assert.ok(css.includes("font-size: calc(12.2px * var(--dc-text-scale));"));
+    assert.ok(css.includes("line-height: 1.32;"));
+    assert.ok(css.includes("font-size: calc(13px * var(--dc-text-scale));"));
+    assert.ok(css.includes("line-height: 1.38;"));
+    assert.ok(css.includes("font-size: calc(14px * var(--dc-text-scale));"));
+    assert.ok(css.includes("line-height: 1.48;"));
+    assert.ok(css.includes("text-shadow: 0 0 9px rgba(var(--dc-accent-rgb), 0.13);"));
     assert.ok(panelSource.includes("activeArrivalIndex"));
     assert.ok(panelSource.includes("playActiveArrivalFeedback"));
     assert.ok(panelSource.includes('item.classList.add("is-arriving")'));
@@ -461,8 +468,6 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("@keyframes dc-active-arrival"));
     assert.ok(css.includes("translateX(3px) scale(1.012)"));
     assert.ok(css.includes(".dc-chunk.is-current.is-arriving .dc-chunk-text"));
-    assert.ok(!css.includes(".dc-chunk.is-current .dc-chunk-text {\n  font-size"));
-    assert.ok(!css.includes(".dc-chunk.is-current .dc-chunk-text {\n  font-weight"));
   });
 
   await runCase("panel exposes basic accessibility labels and reduced-motion CSS", () => {

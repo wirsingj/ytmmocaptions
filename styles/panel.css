@@ -1086,6 +1086,13 @@
   transform-origin: center left;
 }
 
+.dc-panel:not(.is-reading-history) .dc-chunk:not(.is-current):not(.dc-chunk-future) {
+  border-color: rgba(var(--dc-text-rgb), 0.15);
+  background:
+    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.018), transparent 35%),
+    rgba(var(--dc-card-rgb), calc(var(--dc-card-alpha, 0.72) * 0.82));
+}
+
 .dc-chunk:hover {
   border-color: rgba(var(--dc-accent-rgb), 0.58);
   background:
@@ -1236,6 +1243,29 @@
   color: rgba(var(--dc-text-rgb), 0.9);
 }
 
+.dc-panel:not(.is-reading-history) .dc-chunk:not(.is-current):not(.dc-chunk-future) .dc-chunk-time {
+  opacity: 0.72;
+}
+
+.dc-panel:not(.is-reading-history) .dc-chunk:not(.is-current):not(.dc-chunk-future) .dc-chunk-text {
+  font-size: calc(12.2px * var(--dc-text-scale));
+  line-height: 1.32;
+  color: rgba(var(--dc-text-rgb), 0.78);
+}
+
+.dc-panel.is-reading-history .dc-chunk:not(.is-current):not(.dc-chunk-future) {
+  border-color: rgba(var(--dc-text-rgb), 0.2);
+  background:
+    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.03), transparent 35%),
+    var(--dc-card);
+}
+
+.dc-panel.is-reading-history .dc-chunk:not(.is-current):not(.dc-chunk-future) .dc-chunk-text {
+  font-size: calc(13px * var(--dc-text-scale));
+  line-height: 1.38;
+  color: rgba(var(--dc-text-rgb), 0.9);
+}
+
 .dc-reading-glow {
   position: relative;
   border-radius: 6px;
@@ -1250,9 +1280,12 @@
 
 .dc-chunk.is-current {
   border-color: rgba(var(--dc-accent-rgb), 0.7);
-  box-shadow: 0 0 0 1px rgba(var(--dc-accent-rgb), 0.2);
+  box-shadow:
+    0 0 0 1px rgba(var(--dc-accent-rgb), 0.24),
+    0 0 18px rgba(var(--dc-accent-rgb), 0.1);
   background:
-    radial-gradient(circle at top right, rgba(var(--dc-accent-rgb), 0.14), transparent 40%),
+    radial-gradient(circle at top right, rgba(var(--dc-accent-rgb), 0.18), transparent 42%),
+    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.045), transparent 36%),
     var(--dc-card-current);
 }
 
@@ -1262,8 +1295,10 @@
 }
 
 .dc-chunk.is-current .dc-chunk-text {
+  font-size: calc(14px * var(--dc-text-scale));
+  line-height: 1.48;
   color: rgba(var(--dc-text-rgb), 0.98);
-  text-shadow: 0 0 9px rgba(var(--dc-accent-rgb), 0.12);
+  text-shadow: 0 0 9px rgba(var(--dc-accent-rgb), 0.13);
 }
 
 .dc-chunk.is-current:hover {
