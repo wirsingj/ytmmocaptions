@@ -383,6 +383,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("handleFutureDividerPointerDown"));
     assert.ok(panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
+    assert.ok(panelSource.includes("previousScrollTop"));
+    assert.ok(panelSource.includes("nextList.scrollTop"));
     assert.ok(panelSource.includes('role", "separator"'));
     assert.ok(!panelSource.includes('divider.textContent = "Next up"'));
     assert.ok(!panelSource.includes('divider.addEventListener("click"'));

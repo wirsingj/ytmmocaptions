@@ -312,7 +312,7 @@
       const futureStart = Math.max(0, revealThrough + 1);
       const future = this.settings.futurePreviewEnabled === false
         ? []
-        : this.allChunks.slice(futureStart, futureStart + 4).map((chunk, offset) => ({
+        : this.allChunks.slice(futureStart).map((chunk, offset) => ({
           ...chunk,
           actualIndex: futureStart + offset,
           futurePreviewOnly: true

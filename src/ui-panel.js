@@ -3360,6 +3360,8 @@
       }
       const parent = this.windowContainer.parentElement || this.windowContainer;
       const existing = parent.querySelector(".dc-future-section");
+      const existingList = existing ? existing.querySelector(".dc-future-list") : null;
+      const previousScrollTop = existingList ? existingList.scrollTop : 0;
       if (existing) {
         existing.remove();
       }
@@ -3369,6 +3371,10 @@
           parent.insertBefore(nextSection, this.bottomSpacer);
         } else {
           parent.append(nextSection);
+        }
+        const nextList = nextSection.querySelector(".dc-future-list");
+        if (nextList && previousScrollTop > 0) {
+          nextList.scrollTop = Math.min(previousScrollTop, Math.max(0, nextList.scrollHeight - nextList.clientHeight));
         }
       }
       this.currentFutureCount = futureCount;

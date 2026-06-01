@@ -1555,7 +1555,7 @@
         const currentTime = this.video ? Number(this.video.currentTime || 0) : 0;
         const currentIndex = this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
         const previewStart = Math.max(0, currentIndex + 1);
-        return transcriptSource.slice(previewStart, previewStart + 4).map((chunk, offset) => ({
+        return transcriptSource.slice(previewStart).map((chunk, offset) => ({
           ...chunk,
           actualIndex: previewStart + offset,
           futurePreviewOnly: true
@@ -1570,12 +1570,12 @@
         }));
       }
       const previewStart = Math.max(0, Number(this.revealedChunkCount || 0));
-      const previewEnd = Math.min(this.allChunks.length, previewStart + 4);
       const previews = [];
-      for (let index = previewStart; index < previewEnd; index += 1) {
+      for (let index = previewStart; index < this.allChunks.length; index += 1) {
         previews.push({
           ...this.allChunks[index],
-          actualIndex: index
+          actualIndex: index,
+          futurePreviewOnly: true
         });
       }
       return previews;

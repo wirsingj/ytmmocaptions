@@ -261,15 +261,27 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(activeBody.includes("this.getChunkActiveStart(source[index + 1])"));
   });
 
-  await runCase("future caption previews are limited, honest, and clickable", () => {
+  await runCase("future caption previews use the full transcript timeline when available", () => {
+    const futureMethod = source.slice(
+      source.indexOf("    getFuturePreviewChunks()"),
+      source.indexOf("    findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)")
+    );
+    const liveFallbackMethod = source.slice(
+      source.indexOf("    readFuturePreviewChunksFromTextTracks(currentBucketIndex)"),
+      source.indexOf("    shouldContinueOverlayUtterance(previousCanonical, nextCanonical)")
+    );
     assert.ok(source.includes("getFuturePreviewChunks()"));
     assert.ok(source.includes("findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)"));
     assert.ok(source.includes("readFuturePreviewChunksFromTextTracks(currentBucketIndex)"));
     assert.ok(source.includes("this.settings.futurePreviewEnabled === false"));
-    assert.ok(source.includes("offset <= 4"));
-    assert.ok(source.includes("futurePreviewOnly"));
-    assert.ok(source.includes("currentIndex + 1"));
-    assert.ok(source.includes("actualIndex: index"));
+    assert.ok(liveFallbackMethod.includes("offset <= 4"));
+    assert.ok(futureMethod.includes("transcriptSource.slice(previewStart).map"));
+    assert.ok(futureMethod.includes("for (let index = previewStart; index < this.allChunks.length; index += 1)"));
+    assert.ok(futureMethod.includes("futurePreviewOnly"));
+    assert.ok(futureMethod.includes("currentIndex + 1"));
+    assert.ok(futureMethod.includes("actualIndex: index"));
+    assert.ok(!futureMethod.includes("transcriptSource.slice(previewStart, previewStart + 4)"));
+    assert.ok(!futureMethod.includes("previewStart + 4"));
     assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks())"));
   });
 
