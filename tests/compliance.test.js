@@ -540,6 +540,20 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(privacy.includes("Fade setting"));
   });
 
+  await runCase("workspace model is documented without pinned defaults implementation", () => {
+    const architecture = fs.readFileSync(path.join(ROOT_DIR, "ARCHITECTURE.md"), "utf8");
+    const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
+    const qa = fs.readFileSync(path.join(ROOT_DIR, "QA_CHECKLIST.md"), "utf8");
+    assert.ok(architecture.includes("## Workspace / Preferences Model"));
+    assert.ok(architecture.includes("Layout Lock off: each video starts from the default panel workspace."));
+    assert.ok(architecture.includes("Layout Lock on: the same workspace follows the user across YouTube videos."));
+    assert.ok(architecture.includes("Reset: returns the panel workspace shape to defaults"));
+    assert.ok(architecture.includes("Pinned defaults are deferred."));
+    assert.ok(readme.includes("Reset restores the current workspace shape to defaults"));
+    assert.ok(readme.includes("The quick guide in the panel header summarizes"));
+    assert.ok(qa.includes("Confirm no pinned-default UI or second persistence layer is present."));
+  });
+
   await runCase("generic video experiment is source-only and not in release manifests", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "universal-captions.js"), "utf8");
     assert.ok(source.includes("HTMLVideoElement"));

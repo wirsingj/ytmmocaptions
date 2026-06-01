@@ -61,6 +61,18 @@ All playback interactions should agree on one canonical current time from the as
 - Controls should stay compact and obvious without turning the panel into settings UI.
 - Any new UI affordance should answer: does this make caption reading or navigation better?
 
+## Workspace / Preferences Model
+
+The panel treats layout as a local workspace, not as video data. Transcript text, playback position, active bubble, and revealed history are runtime state only and should not be stored.
+
+Current model:
+
+- Layout Lock off: each video starts from the default panel workspace. Global readability preferences such as theme, custom color, opacity, Fade, and open/closed state still persist because they are not tied to a particular workspace geometry.
+- Layout Lock on: the same workspace follows the user across YouTube videos. This includes panel position, panel size, text size, Future / Next Up state, Case Fix state, future preview height, launcher position, and open/closed state.
+- Reset: returns the panel workspace shape to defaults for the current session: text size, panel position, panel size, future preview height, center fade geometry, Timeline mode, launcher position, and open panel state. It intentionally preserves theme, custom color, opacity, Fade enabled/disabled, Future / Next Up enabled/disabled, and Case Fix enabled/disabled.
+
+Pinned defaults are deferred. They would create a second persistence layer between "default workspace" and "locked workspace," and the current product model does not yet justify that added complexity. Revisit only if usage shows users want a personal baseline that is different from both the shipped default and the locked cross-video workspace.
+
 ## Branching Rules
 
 - Use `feature/*` branches for experiments and implementation work.

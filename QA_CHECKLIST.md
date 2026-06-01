@@ -14,6 +14,7 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 - Open a captioned YouTube video.
 - Confirm the MMOCC pill appears while the player is in view.
 - Open the panel and confirm caption bubbles appear after playback starts.
+- If the panel opens with no bubbles on a captioned video, wait several seconds and confirm caption capture recovers without closing/reopening the panel.
 - Confirm YouTube native captions are hidden while the panel is open, then restored if MMOCC enabled them.
 - Confirm the panel stays anchored to the video area and hides instead of floating over comments when the player scrolls away.
 - Confirm resizing/dragging the panel keeps it within the video frame and remains responsive.
@@ -46,7 +47,18 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 - Hover the panel and press `Shift+Space`; playback should move backward about 8 seconds.
 - Confirm shortcuts do nothing while typing in inputs, textareas, selects, or editable content.
 - Click old and new caption bubbles repeatedly; the selected timestamp should be repeatable and no words should teleport between locked bubbles.
+- Scroll upward in the panel while playback continues and confirm the panel does not jump back down until Current, Latest, or the live edge is selected.
+- Click Current and confirm the active caption returns into view.
+- Click Latest and confirm playback seeks to the newest reached bubble.
+- Open the quick guide and confirm it concisely covers click-to-seek, Current, Latest, Next, Case Fix, color, opacity, Lock, Reset, drag, and resize.
 - Scrub the YouTube timeline manually and confirm active/future state catches up without stale highlights.
+
+## Workspace Preferences
+
+- With Layout Lock off, move/resize the panel, navigate to another video, and confirm the next video starts from the default workspace shape.
+- With Layout Lock on, move/resize the panel, adjust text size/Future/Case Fix/preview height, navigate to another video, and confirm the workspace follows.
+- Click Reset and confirm panel position, size, text size, preview height, Timeline mode, and launcher position return to defaults while theme, custom color, opacity, Fade, Future / Next Up, and Case Fix choices are preserved.
+- Confirm no pinned-default UI or second persistence layer is present.
 
 ## No-Captions / Edge Cases
 
