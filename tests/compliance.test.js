@@ -492,6 +492,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('"Drag the header to move; drag edges or corners to resize."'));
     assert.ok(panelSource.includes("toggleHelpPopover"));
     assert.ok(panelSource.includes("updateHelpPopoverPosition"));
+    assert.ok(panelSource.includes('this.addListener(document, "keydown", onColorPickerEscape);'));
+    assert.ok(panelSource.includes("this.closeHelpPopover();"));
     assert.ok(panelSource.includes("jumpToLatestCaption"));
     assert.ok(panelSource.includes("seekLeadSeconds: 0"));
     assert.ok(panelSource.includes("dc-theme-select"));

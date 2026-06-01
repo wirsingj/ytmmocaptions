@@ -180,4 +180,36 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(changes[0].patch.themeName, "custom");
     assert.equal(changes[0].patch.customThemeColor, "#336699");
   });
+
+  await runCase("workspace preset apply cancels temporary rainbow preview", () => {
+    const module = loadPanelModule();
+    const settingsStore = module.settingsStore;
+    const preset = {
+      panelOpacity: 70,
+      textScale: 135,
+      themeName: "forest",
+      customThemeColor: "#225588",
+      fadeTowardVideoCenter: true,
+      panelPosition: null,
+      panelSize: null,
+      futurePreviewEnabled: true,
+      caseFixEnabled: true
+    };
+    const panel = new module.DialoguePanel({
+      settings: settingsStore.normalizeSettings({
+        themeName: "custom",
+        customThemeColor: "#336699",
+        workspacePresets: [preset, null, null]
+      })
+    });
+
+    panel.toggleRainbowThemeMode();
+    panel.applyRainbowThemeColor("#77aa44");
+    panel.toggleWorkspacePreset(1);
+
+    assert.equal(panel.isRainbowThemeEnabled(), false);
+    assert.equal(panel.settings.activeWorkspacePreset, 1);
+    assert.equal(panel.settings.themeName, "forest");
+    assert.equal(panel.getThemeName(), "forest");
+  });
 };

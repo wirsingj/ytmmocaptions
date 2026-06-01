@@ -796,7 +796,7 @@
           this.closeHelpPopover();
         }
       };
-      this.addListener(this.root, "keydown", onColorPickerEscape);
+      this.addListener(document, "keydown", onColorPickerEscape);
 
       const onColorPickerOutside = (event) => {
         if (!this.colorPickerPopover || this.colorPickerPopover.hidden) {
@@ -1059,6 +1059,7 @@
       if (!preset) {
         return;
       }
+      this.cancelRainbowThemePreview(false);
       // Keep the first baseline while switching presets so toggle-off returns to the pre-preset workspace.
       const baseline = this.settings.workspacePresetBaseline
         ? this.normalizeWorkspaceSnapshot(this.settings.workspacePresetBaseline)
@@ -1075,6 +1076,7 @@
       const baseline = this.settings.workspacePresetBaseline
         ? this.normalizeWorkspaceSnapshot(this.settings.workspacePresetBaseline)
         : this.normalizeWorkspaceSnapshot(settingsStore && settingsStore.DEFAULTS ? settingsStore.DEFAULTS : {});
+      this.cancelRainbowThemePreview(false);
       this.updateSettings({
         ...baseline,
         activeWorkspacePreset: null,
@@ -1391,6 +1393,7 @@
       this.colorPickerPopover.hidden = !nextOpen;
       this.themeColorButton.setAttribute("aria-expanded", nextOpen ? "true" : "false");
       if (nextOpen) {
+        this.closeHelpPopover();
         this.updateColorPickerPosition();
         this.updateColorPickerIndicator();
       }
