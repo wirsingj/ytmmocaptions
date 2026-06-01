@@ -379,11 +379,12 @@
 .dc-controls {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   flex: 1 1 auto;
   gap: 7px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .dc-controls * {
@@ -568,6 +569,7 @@
 .dc-control-actions {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 5px;
   margin-left: auto;
 }
@@ -636,16 +638,25 @@
 .dc-text-scale-wrap {
   display: inline-flex;
   align-items: center;
+  flex: 1 1 68px;
   gap: 4px;
+  min-width: 0;
+  max-width: 108px;
   font-size: 10px;
   line-height: 1;
   color: var(--dc-muted);
   white-space: nowrap;
+  overflow: hidden;
+}
+
+.dc-opacity-wrap {
+  flex-basis: 82px;
 }
 
 .dc-center-fade-wrap {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 4px;
   font-size: 10px;
   color: var(--dc-muted);
@@ -774,6 +785,8 @@
 .dc-text-scale-input {
   appearance: none;
   -webkit-appearance: none;
+  flex: 1 1 28px;
+  min-width: 16px;
   width: 68px;
   height: 14px;
   accent-color: var(--dc-accent);

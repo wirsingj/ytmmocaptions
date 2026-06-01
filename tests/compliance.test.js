@@ -358,6 +358,18 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("!this.isRestorablePanelLayout(rect, rect)"));
   });
 
+  await runCase("panel header sliders shrink before controls wrap", () => {
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(css.includes("flex-wrap: nowrap;"));
+    assert.ok(css.includes(".dc-opacity-wrap,\n.dc-text-scale-wrap"));
+    assert.ok(css.includes("flex: 1 1 68px;"));
+    assert.ok(css.includes("min-width: 0;"));
+    assert.ok(css.includes("flex: 1 1 28px;"));
+    assert.ok(css.includes("min-width: 16px;"));
+    assert.ok(css.includes(".dc-control-actions"));
+    assert.ok(css.includes("flex: 0 0 auto;"));
+  });
+
   await runCase("future preview UI uses a movable divider and visually ghosted rows", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
