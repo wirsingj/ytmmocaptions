@@ -402,6 +402,20 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("touch-action: none"));
   });
 
+  await runCase("panel scroll containers do not chain wheel scroll into the YouTube page", () => {
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    const viewportStart = css.indexOf(".dc-list-viewport {");
+    const viewportEnd = css.indexOf(".dc-list-viewport::-webkit-scrollbar", viewportStart);
+    const futureStart = css.indexOf(".dc-future-list {");
+    const futureEnd = css.indexOf(".dc-future-list::-webkit-scrollbar", futureStart);
+    assert.ok(viewportStart >= 0);
+    assert.ok(viewportEnd > viewportStart);
+    assert.ok(futureStart >= 0);
+    assert.ok(futureEnd > futureStart);
+    assert.ok(css.slice(viewportStart, viewportEnd).includes("overscroll-behavior: contain;"));
+    assert.ok(css.slice(futureStart, futureEnd).includes("overscroll-behavior: contain;"));
+  });
+
   await runCase("panel reset preserves the selected theme", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const resetStart = panelSource.indexOf("resetPanelDefaults() {");
