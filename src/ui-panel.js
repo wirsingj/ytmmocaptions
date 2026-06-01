@@ -245,6 +245,7 @@
       this.helpButton.title = "Quick guide";
       this.helpButton.setAttribute("aria-label", "Open quick guide");
       this.helpButton.setAttribute("aria-expanded", "false");
+      this.helpButton.setAttribute("aria-haspopup", "dialog");
 
       this.helpPopover = document.createElement("div");
       this.helpPopover.className = "dc-help-popover";
@@ -263,7 +264,7 @@
         "Case Fix softens all-caps captions.",
         "Use the color picker, opacity, and text controls to tune readability.",
         "Lock keeps the workspace across videos.",
-        "Reset restores the default panel layout.",
+        "Reset restores the panel workspace shape.",
         "Drag the header to move; drag edges or corners to resize."
       ];
       for (let index = 0; index < helpItems.length; index += 1) {

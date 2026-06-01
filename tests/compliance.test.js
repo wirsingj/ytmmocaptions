@@ -229,6 +229,8 @@ exports.run = async function runComplianceTests(ctx) {
     }
     const sourcePackage = fs.readFileSync(path.join(ROOT_DIR, "scripts", "package-source.ps1"), "utf8");
     assert.ok(sourcePackage.includes('StartsWith("artifacts/"'), "source package must exclude local test artifacts");
+    assert.ok(sourcePackage.includes("Sort-Object -Property FullName"), "source package entries should be deterministic");
+    assert.ok(sourcePackage.includes("entry.LastWriteTime"), "source package timestamps should be deterministic");
   });
 
   await runCase("release automation is tag-gated and manually approved before store publishing", () => {
@@ -454,6 +456,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('this.jumpLatestButton.textContent = "Latest"'));
     assert.ok(panelSource.includes('this.helpButton.textContent = "?"'));
     assert.ok(panelSource.includes('aria-label", "Open quick guide"'));
+    assert.ok(panelSource.includes('aria-haspopup", "dialog"'));
     assert.ok(panelSource.includes('helpTitle.textContent = "Quick Guide"'));
     assert.ok(panelSource.includes('"Click any bubble to seek."'));
     assert.ok(panelSource.includes('"Current returns to the active caption."'));
@@ -462,7 +465,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('"Case Fix softens all-caps captions."'));
     assert.ok(panelSource.includes('"Use the color picker, opacity, and text controls to tune readability."'));
     assert.ok(panelSource.includes('"Lock keeps the workspace across videos."'));
-    assert.ok(panelSource.includes('"Reset restores the default panel layout."'));
+    assert.ok(panelSource.includes('"Reset restores the panel workspace shape."'));
     assert.ok(panelSource.includes('"Drag the header to move; drag edges or corners to resize."'));
     assert.ok(panelSource.includes("toggleHelpPopover"));
     assert.ok(panelSource.includes("updateHelpPopoverPosition"));
@@ -484,6 +487,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-color-wheel"));
     assert.ok(css.includes(".dc-help-popover"));
     assert.ok(css.includes(".dc-btn-help"));
+    assert.ok(css.includes("flex-wrap: wrap"));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 

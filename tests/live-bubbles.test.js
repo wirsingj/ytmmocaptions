@@ -137,6 +137,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("recoverTranscriptActivity(reason)"));
     assert.ok(source.includes("this.transcriptRecoveryAttempts += 1;"));
     assert.ok(source.includes("this.transcriptRecoveryAttempts >= MAX_TRANSCRIPT_RECOVERY_ATTEMPTS"));
+    assert.ok(source.includes("MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS = 20"));
+    assert.ok(source.includes("isTranscriptHeartbeatExhausted()"));
     assert.ok(source.includes("TRANSCRIPT_HEARTBEAT_RECHECK_MS"));
     assert.ok(source.includes("window.setTimeout(() =>"));
     assert.ok(!source.includes("transcriptHeartbeatPollId"));
@@ -167,6 +169,10 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(routeBody.includes("this.app.nudgeCaptionWork"));
     assert.ok(routeBody.includes("\"route-still-active\""));
     assert.ok(source.includes("this.scheduleTranscriptHeartbeatCheck(reason || \"nudge\""));
+    const nudgeStart = source.indexOf("    nudgeCaptionWork(reason)");
+    const nudgeBody = source.slice(nudgeStart, source.indexOf("    isChunkIndexAlignedWithTime", nudgeStart));
+    assert.ok(nudgeBody.includes("this.hasTranscriptActivity() || this.transcriptHeartbeatTimerId || this.isTranscriptHeartbeatExhausted()"));
+    assert.ok(nudgeBody.indexOf("return;") < nudgeBody.indexOf("this.ensureCaptionsEnabledOnce();"));
   });
 
   await runCase("video sync listeners are rebound and cleaned when YouTube swaps video elements", () => {
