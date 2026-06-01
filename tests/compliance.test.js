@@ -441,6 +441,12 @@ exports.run = async function runComplianceTests(ctx) {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     assert.ok(panelSource.includes("historyReadingMode"));
     assert.ok(panelSource.includes("enterHistoryReadingMode(\"scroll-up\")"));
+    assert.ok(panelSource.includes("getScrollAnchorSnapshot"));
+    assert.ok(panelSource.includes("preserveScrollAnchorDuringModeChange"));
+    assert.ok(panelSource.includes("restoreScrollAnchorSnapshot"));
+    assert.ok(panelSource.includes("preserveScrollBottomDuringModeChange"));
+    assert.ok(panelSource.includes("restoreScrollBottomPosition"));
+    assert.ok(panelSource.includes("this.scrollAnchorRafId"));
     assert.ok(panelSource.includes("exitHistoryReadingMode(\"current\")"));
     assert.ok(panelSource.includes("exitHistoryReadingMode(\"latest\")"));
     assert.ok(panelSource.includes("!this.historyReadingMode && (this.stickToBottom || this.isNearBottom(2.6))"));
@@ -460,6 +466,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("line-height: 1.38;"));
     assert.ok(css.includes("font-size: calc(14px * var(--dc-text-scale));"));
     assert.ok(css.includes("line-height: 1.48;"));
+    assert.ok(css.includes("font-size 180ms ease"));
+    assert.ok(css.includes("line-height 180ms ease"));
     assert.ok(css.includes("text-shadow: 0 0 9px rgba(var(--dc-accent-rgb), 0.13);"));
     assert.ok(panelSource.includes("activeArrivalIndex"));
     assert.ok(panelSource.includes("playActiveArrivalFeedback"));

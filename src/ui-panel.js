@@ -187,6 +187,7 @@
       this.layoutRefreshTimers = [];
       this.rafRenderId = 0;
       this.resizeMoveRafId = 0;
+      this.scrollAnchorRafId = 0;
       this.statusTimer = 0;
       this.timelineLayerVisible = false;
     }
@@ -549,6 +550,7 @@
         window.clearTimeout(this.statusTimer);
         this.statusTimer = 0;
       }
+      this.cancelScrollAnchorFrames();
       this.clearActiveArrivalFeedback();
       this.cancelRainbowThemePreview(false);
       for (let index = 0; index < this.layoutRefreshTimers.length; index += 1) {
@@ -1121,20 +1123,111 @@
       if (this.historyReadingMode) {
         return;
       }
+      const anchor = this.getScrollAnchorSnapshot();
       this.historyReadingMode = true;
       this.stickToBottom = false;
       if (this.root) {
         this.root.classList.add("is-reading-history");
       }
+      this.preserveScrollAnchorDuringModeChange(anchor);
     }
 
     exitHistoryReadingMode(reason) {
       if (!this.historyReadingMode) {
         return;
       }
+      const shouldPreserveBottom = reason === "near-bottom" || reason === "scroll-bottom" || reason === "latest";
       this.historyReadingMode = false;
       if (this.root) {
         this.root.classList.remove("is-reading-history");
+      }
+      if (shouldPreserveBottom) {
+        this.preserveScrollBottomDuringModeChange();
+      }
+    }
+
+    getScrollAnchorSnapshot() {
+      if (!this.listViewport || !this.windowContainer) {
+        return null;
+      }
+      const viewTop = this.listViewport.scrollTop;
+      const items = this.windowContainer.querySelectorAll(".dc-chunk:not(.dc-chunk-future)");
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        const top = Number(item.offsetTop || 0);
+        const bottom = top + Number(item.offsetHeight || 0);
+        if (bottom >= viewTop) {
+          const chunkIndex = Number(item.getAttribute("data-index"));
+          if (Number.isInteger(chunkIndex)) {
+            return {
+              index: chunkIndex,
+              offsetTop: top - viewTop
+            };
+          }
+        }
+      }
+      return null;
+    }
+
+    restoreScrollAnchorSnapshot(anchor) {
+      if (!anchor || !this.listViewport || !this.windowContainer) {
+        return;
+      }
+      const item = this.windowContainer.querySelector("[data-index='" + anchor.index + "']");
+      if (!item) {
+        return;
+      }
+      const nextScrollTop = Math.max(0, Number(item.offsetTop || 0) - Number(anchor.offsetTop || 0));
+      this.programmaticScrollUntil = Date.now() + 160;
+      this.listViewport.scrollTop = nextScrollTop;
+      this.lastObservedScrollTop = nextScrollTop;
+    }
+
+    preserveScrollAnchorDuringModeChange(anchor) {
+      this.cancelScrollAnchorFrames();
+      if (!anchor) {
+        return;
+      }
+      const startedAt = Date.now();
+      const durationMs = 220;
+      const tick = () => {
+        this.scrollAnchorRafId = 0;
+        this.restoreScrollAnchorSnapshot(anchor);
+        if (Date.now() - startedAt < durationMs) {
+          this.scrollAnchorRafId = platform.requestFrame(tick);
+        }
+      };
+      tick();
+    }
+
+    preserveScrollBottomDuringModeChange() {
+      this.cancelScrollAnchorFrames();
+      const startedAt = Date.now();
+      const durationMs = 220;
+      const tick = () => {
+        this.scrollAnchorRafId = 0;
+        this.restoreScrollBottomPosition();
+        if (Date.now() - startedAt < durationMs) {
+          this.scrollAnchorRafId = platform.requestFrame(tick);
+        }
+      };
+      tick();
+    }
+
+    restoreScrollBottomPosition() {
+      if (!this.listViewport) {
+        return;
+      }
+      const target = Math.max(0, this.listViewport.scrollHeight - this.listViewport.clientHeight);
+      this.programmaticScrollUntil = Date.now() + 160;
+      this.listViewport.scrollTop = target;
+      this.lastObservedScrollTop = target;
+    }
+
+    cancelScrollAnchorFrames() {
+      if (this.scrollAnchorRafId) {
+        platform.cancelFrame(this.scrollAnchorRafId);
+        this.scrollAnchorRafId = 0;
       }
     }
 

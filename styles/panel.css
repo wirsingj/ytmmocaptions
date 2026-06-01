@@ -1226,6 +1226,7 @@
 .dc-chunk-time {
   font-size: calc(11px * var(--dc-text-scale));
   color: var(--dc-accent);
+  transition: opacity 180ms ease;
 }
 
 .dc-chunk-text {
@@ -1237,6 +1238,11 @@
   line-height: 1.38;
   overflow-wrap: anywhere;
   word-break: break-word;
+  transition:
+    color 180ms ease,
+    font-size 180ms ease,
+    line-height 180ms ease,
+    text-shadow 180ms ease;
 }
 
 .dc-chunk:not(.is-current):not(.dc-chunk-future) .dc-chunk-text {
@@ -1369,6 +1375,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .dc-chunk,
+  .dc-chunk-time,
+  .dc-chunk-text,
   .dc-launcher {
     transition: none;
   }
