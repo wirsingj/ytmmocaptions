@@ -131,6 +131,7 @@
       this.jumpControls = null;
       this.jumpCurrentButton = null;
       this.jumpLatestButton = null;
+      this.workspacePresetControls = [];
 
       this.chunks = [];
       this.futureChunks = [];
@@ -453,7 +454,32 @@
       footerDivider.setAttribute("aria-hidden", "true");
       footerDivider.textContent = "|";
       footerToggles.append(futurePreviewWrap, footerDivider, caseFixWrap);
-      footer.append(footerToggles, this.jumpControls);
+
+      const presetRail = document.createElement("div");
+      presetRail.className = "dc-preset-rail";
+      presetRail.setAttribute("aria-label", "Workspace presets");
+      for (let index = 1; index <= 3; index += 1) {
+        const shell = document.createElement("div");
+        shell.className = "dc-preset-pill";
+        shell.setAttribute("data-preset-id", String(index));
+        const applyButton = document.createElement("button");
+        applyButton.type = "button";
+        applyButton.className = "dc-preset-apply";
+        applyButton.textContent = String(index);
+        applyButton.title = "Apply workspace preset " + index;
+        applyButton.setAttribute("aria-label", "Apply workspace preset " + index);
+        const captureButton = document.createElement("button");
+        captureButton.type = "button";
+        captureButton.className = "dc-preset-capture";
+        captureButton.textContent = "Save";
+        captureButton.title = "Save current workspace to preset " + index;
+        captureButton.setAttribute("aria-label", "Save current workspace to preset " + index);
+        shell.append(applyButton, captureButton);
+        presetRail.append(shell);
+        this.workspacePresetControls.push({ id: index, shell, applyButton, captureButton });
+      }
+
+      footer.append(footerToggles, presetRail, this.jumpControls);
 
       this.body.append(this.statusEl, this.listViewport, footer);
       this.root.append(header, this.body);
@@ -856,6 +882,15 @@
       this.addListener(this.jumpCurrentButton, "click", onJumpBottom);
       this.addListener(this.jumpLatestButton, "click", onJumpLatest);
 
+      for (let index = 0; index < this.workspacePresetControls.length; index += 1) {
+        const control = this.workspacePresetControls[index];
+        this.addListener(control.applyButton, "click", () => this.toggleWorkspacePreset(control.id));
+        this.addListener(control.captureButton, "click", (event) => {
+          event.stopPropagation();
+          this.captureWorkspacePreset(control.id);
+        });
+      }
+
       const onScroll = () => {
         const scrollTop = this.listViewport ? this.listViewport.scrollTop : 0;
         if (Date.now() < this.programmaticScrollUntil) {
@@ -910,6 +945,141 @@
       const source = patch && typeof patch === "object" ? patch : {};
       const layoutKeys = ["panelClosed", "panelPosition", "panelSize", "launcherPosition", "timelineModeEnabled"];
       return !layoutKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key));
+    }
+
+    normalizeWorkspacePresetId(value) {
+      const number = Number(value);
+      return Number.isInteger(number) && number >= 1 && number <= 3 ? number : null;
+    }
+
+    normalizeWorkspaceSnapshot(value) {
+      const source = value && typeof value === "object" ? value : {};
+      const normalized = settingsStore && typeof settingsStore.normalizeSettings === "function"
+        ? settingsStore.normalizeSettings({
+            ...settingsStore.DEFAULTS,
+            ...source
+          })
+        : source;
+      return {
+        panelPosition: normalized.panelPosition || null,
+        panelSize: normalized.panelSize || null,
+        textScale: normalized.textScale,
+        panelOpacity: normalized.panelOpacity,
+        fadeTowardVideoCenter: normalized.fadeTowardVideoCenter !== false,
+        themeName: normalized.themeName || "stone",
+        customThemeColor: normalized.customThemeColor || "#ded6c3",
+        futurePreviewEnabled: normalized.futurePreviewEnabled !== false,
+        caseFixEnabled: normalized.caseFixEnabled !== false
+      };
+    }
+
+    getWorkspacePresets() {
+      const source = Array.isArray(this.settings.workspacePresets) ? this.settings.workspacePresets : [];
+      const presets = [];
+      for (let index = 0; index < 3; index += 1) {
+        presets.push(source[index] ? this.normalizeWorkspaceSnapshot(source[index]) : null);
+      }
+      return presets;
+    }
+
+    getCurrentWorkspaceSnapshot() {
+      const snapshot = this.normalizeWorkspaceSnapshot(this.settings);
+      if (this.root && this.root.style.display !== "none") {
+        const rect = this.getElementLocalRect(this.root);
+        if (this.isRestorablePanelLayout(rect, rect)) {
+          snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
+          snapshot.panelSize = {
+            width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
+            height: Math.max(MIN_PANEL_HEIGHT, Math.round(rect.height))
+          };
+        }
+      }
+      return snapshot;
+    }
+
+    captureWorkspacePreset(id) {
+      const presetId = this.normalizeWorkspacePresetId(id);
+      if (!presetId) {
+        return;
+      }
+      const presets = this.getWorkspacePresets();
+      presets[presetId - 1] = this.getCurrentWorkspaceSnapshot();
+      this.updateSettings({ workspacePresets: presets });
+    }
+
+    toggleWorkspacePreset(id) {
+      const presetId = this.normalizeWorkspacePresetId(id);
+      if (!presetId) {
+        return;
+      }
+      if (this.settings.activeWorkspacePreset === presetId) {
+        this.disableWorkspacePreset();
+        return;
+      }
+      this.applyWorkspacePreset(presetId);
+    }
+
+    applyWorkspacePreset(id) {
+      const presetId = this.normalizeWorkspacePresetId(id);
+      const presets = this.getWorkspacePresets();
+      const preset = presetId ? presets[presetId - 1] : null;
+      if (!preset) {
+        return;
+      }
+      // Keep the first baseline while switching presets so toggle-off returns to the pre-preset workspace.
+      const baseline = this.settings.workspacePresetBaseline
+        ? this.normalizeWorkspaceSnapshot(this.settings.workspacePresetBaseline)
+        : this.getCurrentWorkspaceSnapshot();
+      this.updateSettings({
+        ...preset,
+        workspacePresets: presets,
+        activeWorkspacePreset: presetId,
+        workspacePresetBaseline: baseline
+      });
+    }
+
+    disableWorkspacePreset() {
+      const baseline = this.settings.workspacePresetBaseline
+        ? this.normalizeWorkspaceSnapshot(this.settings.workspacePresetBaseline)
+        : this.normalizeWorkspaceSnapshot(settingsStore && settingsStore.DEFAULTS ? settingsStore.DEFAULTS : {});
+      this.updateSettings({
+        ...baseline,
+        activeWorkspacePreset: null,
+        workspacePresetBaseline: null
+      });
+    }
+
+    updateWorkspacePresetControls() {
+      if (!Array.isArray(this.workspacePresetControls) || !this.workspacePresetControls.length) {
+        return;
+      }
+      const presets = this.getWorkspacePresets();
+      const activeId = this.normalizeWorkspacePresetId(this.settings.activeWorkspacePreset);
+      for (let index = 0; index < this.workspacePresetControls.length; index += 1) {
+        const control = this.workspacePresetControls[index];
+        const hasSnapshot = Boolean(presets[control.id - 1]);
+        const isActive = activeId === control.id;
+        control.shell.classList.toggle("is-saved", hasSnapshot);
+        control.shell.classList.toggle("is-active", isActive);
+        control.applyButton.disabled = !hasSnapshot;
+        control.applyButton.title = hasSnapshot
+          ? isActive
+            ? "Return to workspace before preset " + control.id
+            : "Apply workspace preset " + control.id
+          : "Preset " + control.id + " is empty";
+        control.applyButton.setAttribute(
+          "aria-label",
+          hasSnapshot
+            ? isActive
+              ? "Disable workspace preset " + control.id
+              : "Apply workspace preset " + control.id
+            : "Workspace preset " + control.id + " is empty"
+        );
+        control.captureButton.title = hasSnapshot
+          ? "Overwrite workspace preset " + control.id
+          : "Save current workspace to preset " + control.id;
+        control.captureButton.setAttribute("aria-label", control.captureButton.title);
+      }
     }
 
     enterHistoryReadingMode(reason) {
@@ -1047,6 +1217,7 @@
       if (this.caseFixInput) {
         this.caseFixInput.checked = this.settings.caseFixEnabled !== false;
       }
+      this.updateWorkspacePresetControls();
       if (this.layoutLockButton) {
         const locked = Boolean(this.settings.layoutLocked);
         this.layoutLockButton.classList.toggle("is-active", locked);
@@ -1545,6 +1716,8 @@
         videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 12,
         timelineModeEnabled: Boolean(defaults.timelineModeEnabled),
         launcherPosition: null,
+        activeWorkspacePreset: null,
+        workspacePresetBaseline: null,
         panelClosed: false
       });
     }

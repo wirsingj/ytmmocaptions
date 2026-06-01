@@ -57,6 +57,8 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 
 - With Layout Lock off, move/resize the panel, navigate to another video, and confirm the next video starts from the default workspace shape.
 - With Layout Lock on, move/resize the panel, adjust text size/Future/Case Fix/preview height, navigate to another video, and confirm the workspace follows.
+- Capture a workspace preset after moving/resizing the panel and changing text size, opacity, Future / Next Up, Case Fix, Fade, and color. Change the workspace, click the preset, and confirm the saved snapshot applies without changing the saved slot.
+- Click the active preset again and confirm the panel returns to the pre-preset workspace baseline where practical.
 - Click Reset and confirm panel position, size, text size, preview height, Timeline mode, and launcher position return to defaults while theme, custom color, opacity, Fade, Future / Next Up, and Case Fix choices are preserved.
 - Confirm no pinned-default UI or second persistence layer is present.
 

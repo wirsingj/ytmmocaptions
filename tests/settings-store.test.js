@@ -5,6 +5,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const saved = {};
     let currentStored = storedSettings || null;
     let pendingStorageSet = null;
+    let releaseRequested = false;
     const platform = {
       async storageGet() {
         return currentStored
@@ -13,9 +14,12 @@ exports.run = async function runSettingsStoreTests(ctx) {
       },
       async storageSet(values) {
         if (options && options.deferStorageSet) {
-          await new Promise((resolve) => {
-            pendingStorageSet = resolve;
-          });
+          if (!releaseRequested) {
+            await new Promise((resolve) => {
+              pendingStorageSet = resolve;
+            });
+          }
+          releaseRequested = false;
         }
         Object.assign(saved, values);
         if (values && values["dialogueCaptions.settings.v1"]) {
@@ -39,6 +43,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
           const release = pendingStorageSet;
           pendingStorageSet = null;
           release();
+        } else {
+          releaseRequested = true;
         }
       },
       normalize(input) {
@@ -258,6 +264,109 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(stored.caseFixEnabled, false);
     assert.deepEqual(stored.launcherPosition, { left: 12, top: 34 });
     assert.equal(stored.panelClosed, false);
+  });
+
+  await runCase("workspace presets persist as explicit snapshots outside layout lock", async () => {
+    const { store, saved } = makeStore();
+    const preset = {
+      panelOpacity: 76,
+      textScale: 155,
+      themeName: "custom",
+      customThemeColor: "#3366aa",
+      fadeTowardVideoCenter: false,
+      panelPosition: { anchor: "player", left: 92, top: 48 },
+      panelSize: { width: 610, height: 360 },
+      futurePreviewEnabled: false,
+      caseFixEnabled: false,
+      activeVideoId: "should-not-persist",
+      transcriptText: "should-not-persist"
+    };
+    const baseline = {
+      panelOpacity: 45,
+      textScale: 120,
+      themeName: "stone",
+      customThemeColor: "#ded6c3",
+      fadeTowardVideoCenter: true,
+      panelPosition: null,
+      panelSize: null,
+      futurePreviewEnabled: true,
+      caseFixEnabled: true
+    };
+
+    const persisted = await store.savePatch({
+      layoutLocked: false,
+      workspacePresets: [preset, null, null],
+      activeWorkspacePreset: 1,
+      workspacePresetBaseline: baseline
+    });
+
+    assert.equal(persisted.layoutLocked, false);
+    assert.equal(persisted.activeWorkspacePreset, 1);
+    assert.equal(persisted.workspacePresets.length, 3);
+    assert.equal(persisted.workspacePresets[0].panelOpacity, 76);
+    assert.equal(persisted.workspacePresets[0].textScale, 155);
+    assert.deepEqual(persisted.workspacePresets[0].panelPosition, { anchor: "player", left: 92, top: 48 });
+    assert.deepEqual(persisted.workspacePresets[0].panelSize, { width: 610, height: 360 });
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted.workspacePresets[0], "activeVideoId"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted.workspacePresets[0], "transcriptText"), false);
+
+    const stored = saved["dialogueCaptions.settings.v1"];
+    assert.equal(stored.layoutLocked, false);
+    assert.equal(stored.activeWorkspacePreset, 1);
+    assert.equal(stored.workspacePresets[0].textScale, 155);
+    assert.equal(stored.workspacePresetBaseline.textScale, 120);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "activeVideoId"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, "transcriptText"), false);
+  });
+
+  await runCase("active workspace preset reapplies over unlocked baseline on fresh load", async () => {
+    const preset = {
+      panelOpacity: 78,
+      textScale: 165,
+      themeName: "ocean",
+      customThemeColor: "#ded6c3",
+      fadeTowardVideoCenter: false,
+      panelPosition: { anchor: "player", left: 120, top: 66 },
+      panelSize: { width: 640, height: 380 },
+      futurePreviewEnabled: false,
+      caseFixEnabled: false
+    };
+    const { store } = makeStore(null, {
+      panelOpacity: 38,
+      themeName: "stone",
+      customThemeColor: "#ded6c3",
+      layoutLocked: false,
+      textScale: 130,
+      panelPosition: { anchor: "player", left: 20, top: 22 },
+      panelSize: { width: 400, height: 300 },
+      futurePreviewEnabled: true,
+      caseFixEnabled: true,
+      workspacePresets: [preset, null, null],
+      activeWorkspacePreset: 1,
+      workspacePresetBaseline: {
+        panelOpacity: 38,
+        textScale: 120,
+        themeName: "stone",
+        customThemeColor: "#ded6c3",
+        fadeTowardVideoCenter: true,
+        panelPosition: null,
+        panelSize: null,
+        futurePreviewEnabled: true,
+        caseFixEnabled: true
+      }
+    });
+
+    const loaded = await store.load();
+    assert.equal(loaded.layoutLocked, false);
+    assert.equal(loaded.activeWorkspacePreset, 1);
+    assert.equal(loaded.panelOpacity, 78);
+    assert.equal(loaded.textScale, 165);
+    assert.equal(loaded.themeName, "ocean");
+    assert.equal(loaded.fadeTowardVideoCenter, false);
+    assert.deepEqual(loaded.panelPosition, { anchor: "player", left: 120, top: 66 });
+    assert.deepEqual(loaded.panelSize, { width: 640, height: 380 });
+    assert.equal(loaded.futurePreviewEnabled, false);
+    assert.equal(loaded.caseFixEnabled, false);
   });
 
   await runCase("locked layout survives follow-up geometry patch saves", async () => {

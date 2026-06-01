@@ -22,7 +22,8 @@ The extension stores only local preference settings in extension storage:
 - panel opacity/transparency;
 - Fade setting, which makes the panel more transparent toward the center of the associated video;
 - panel open/closed state;
-- Layout Lock preference.
+- Layout Lock preference;
+- three optional local workspace preset snapshots containing panel position, panel size, text size, opacity, Fade, theme/custom color, Future / Next Up, and Case Fix settings.
 
 When Layout Lock is enabled, the extension also stores the user's local panel layout preferences:
 - text size;
@@ -36,7 +37,7 @@ When Layout Lock is off, layout preferences reset for each YouTube video/session
 
 These settings remain on the user's browser profile unless removed by uninstalling the extension or clearing extension storage.
 
-The extension does not store transcript text, chat bubble history, the active bubble, playback position, or per-video viewing history.
+The extension does not store transcript text, chat bubble history, the active bubble, playback position, current timestamp, current video id, or per-video viewing history.
 
 ## Permissions Used
 

@@ -530,6 +530,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes("caseFixEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
     assert.ok(source.includes("layoutLocked"));
+    assert.ok(source.includes("workspacePresets"));
+    assert.ok(source.includes("activeWorkspacePreset"));
+    assert.ok(source.includes("workspacePresetBaseline"));
     assert.ok(source.includes("toStoredSettings"));
     assert.ok(source.includes("timelineModeEnabled"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
@@ -542,19 +545,32 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(privacy.includes("Case Fix"));
     assert.ok(privacy.includes("Layout Lock"));
     assert.ok(privacy.includes("Fade setting"));
+    assert.ok(privacy.includes("workspace preset snapshots"));
   });
 
   await runCase("workspace model is documented without pinned defaults implementation", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     const architecture = fs.readFileSync(path.join(ROOT_DIR, "ARCHITECTURE.md"), "utf8");
     const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
     const qa = fs.readFileSync(path.join(ROOT_DIR, "QA_CHECKLIST.md"), "utf8");
+    assert.ok(panelSource.includes("dc-preset-rail"));
+    assert.ok(panelSource.includes("toggleWorkspacePreset"));
+    assert.ok(panelSource.includes("captureWorkspacePreset"));
+    assert.ok(panelSource.includes("workspacePresetBaseline"));
+    assert.ok(css.includes(".dc-preset-pill"));
+    assert.ok(css.includes("grid-template-rows: 2fr 1fr"));
     assert.ok(architecture.includes("## Workspace / Preferences Model"));
     assert.ok(architecture.includes("Layout Lock off: each video starts from the default panel workspace."));
     assert.ok(architecture.includes("Layout Lock on: the same workspace follows the user across YouTube videos."));
+    assert.ok(architecture.includes("Workspace presets: three local snapshot slots act as temporary loadouts"));
+    assert.ok(architecture.includes("It does not store video identity, transcript content, current timestamp, active bubble, Lock state"));
     assert.ok(architecture.includes("Reset: returns the panel workspace shape to defaults"));
     assert.ok(architecture.includes("Pinned defaults are deferred."));
+    assert.ok(readme.includes("Three local workspace preset slots can save and apply temporary panel layout/readability snapshots"));
     assert.ok(readme.includes("Reset restores the current workspace shape to defaults"));
     assert.ok(readme.includes("The quick guide in the panel header summarizes"));
+    assert.ok(qa.includes("Capture a workspace preset after moving/resizing the panel"));
     assert.ok(qa.includes("Confirm no pinned-default UI or second persistence layer is present."));
   });
 
