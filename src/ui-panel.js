@@ -3035,7 +3035,7 @@
         this.lastGlowWordStart = -1;
         this.lastGlowWordEnd = -1;
       }
-      if (hasChanged && options && options.ensureVisible) {
+      if (options && options.ensureVisible) {
         if (this.historyReadingMode && !options.exitHistoryMode) {
           this.updateJumpBottomVisibility();
           this.scheduleWindowRender(!hasChanged);

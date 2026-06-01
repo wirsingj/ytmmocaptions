@@ -212,4 +212,90 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.settings.themeName, "forest");
     assert.equal(panel.getThemeName(), "forest");
   });
+
+  await runCase("bounded history render range includes active and latest rows", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.chunks = Array.from({ length: 500 }, (_, index) => ({ start: index, end: index + 0.5, text: "line " + index }));
+
+    panel.activeIndex = 250;
+    panel.stickToBottom = false;
+    let range = panel.getHistoryRenderRange(panel.chunks.length);
+    assert.ok(range.start <= 250 && range.end >= 250, JSON.stringify(range));
+    assert.ok(range.end - range.start + 1 <= 220, JSON.stringify(range));
+
+    panel.activeIndex = 499;
+    panel.stickToBottom = true;
+    range = panel.getHistoryRenderRange(panel.chunks.length);
+    assert.equal(range.end, 499);
+    assert.ok(range.start > 0);
+    assert.ok(range.end - range.start + 1 <= 220, JSON.stringify(range));
+  });
+
+  await runCase("bounded history window shifts without gaps or duplicates", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.chunks = Array.from({ length: 500 }, (_, index) => ({ start: index, end: index + 0.5, text: "line " + index }));
+
+    panel.setHistoryRenderStart(200);
+    assert.equal(panel.currentWindowStart, 200);
+    assert.equal(panel.currentWindowEnd, 419);
+    panel.setHistoryRenderStart(panel.currentWindowStart - 110);
+    assert.equal(panel.currentWindowStart, 90);
+    assert.equal(panel.currentWindowEnd, 309);
+    panel.setHistoryRenderStart(panel.currentWindowStart + 110);
+    assert.equal(panel.currentWindowStart, 200);
+    assert.equal(panel.currentWindowEnd, 419);
+
+    const seen = new Set();
+    for (let index = panel.currentWindowStart; index <= panel.currentWindowEnd; index += 1) {
+      assert.equal(seen.has(index), false);
+      seen.add(index);
+    }
+    assert.equal(seen.size, 220);
+  });
+
+  await runCase("style trimming keeps transcript data logically available", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({ textScale: 120 }) });
+    let renderCount = 0;
+    panel.chunks = Array.from({ length: 500 }, (_, index) => ({ start: index, end: index + 0.5, text: "line " + index }));
+    panel.futureChunks = Array.from({ length: 300 }, (_, index) => ({ start: index + 500, end: index + 500.5, text: "future " + index }));
+    panel.currentWindowStart = 120;
+    panel.currentWindowEnd = 339;
+    panel.futureRenderLimit = 240;
+    panel.currentFutureRenderedCount = 240;
+    panel.root = {};
+    panel.body = {};
+    panel.windowContainer = {};
+    panel.renderWindow = () => {
+      renderCount += 1;
+    };
+    panel.applySettings = () => {};
+
+    panel.updateSettings({ textScale: 140 });
+    assert.equal(panel.chunks.length, 500);
+    assert.equal(panel.futureChunks.length, 300);
+    assert.equal(panel.futureRenderLimit, 80);
+    assert.equal(panel.currentWindowEnd - panel.currentWindowStart + 1, 220);
+    assert.equal(renderCount, 1);
+  });
+
+  await runCase("setActiveIndex ensures visible even when active index is unchanged", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    let ensured = -1;
+    panel.chunks = Array.from({ length: 500 }, (_, index) => ({ start: index, end: index + 0.5, text: "line " + index }));
+    panel.activeIndex = 250;
+    panel.currentWindowStart = 0;
+    panel.currentWindowEnd = 219;
+    panel.ensureIndexVisible = (index) => {
+      ensured = index;
+    };
+    panel.updateJumpBottomVisibility = () => {};
+    panel.scheduleWindowRender = () => {};
+
+    panel.setActiveIndex(250, { ensureVisible: true });
+    assert.equal(ensured, 250);
+  });
 };
