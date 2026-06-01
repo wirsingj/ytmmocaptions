@@ -1937,8 +1937,18 @@
 
     getDefaultPanelRect() {
       const frame = this.getYouTubeFrameRect();
-      const frameWidth = Math.max(0, frame.right - frame.left);
-      const frameHeight = Math.max(0, frame.bottom - frame.top);
+      const mountRect = this.getMountViewportRect();
+      // The panel is mounted inside the player host, so default coordinates must
+      // be local to that host. Viewport coordinates would double-count theater
+      // mode/player offsets and push the reset/default panel too far right.
+      const localFrame = {
+        left: frame.left - mountRect.left,
+        top: frame.top - mountRect.top,
+        right: frame.right - mountRect.left,
+        bottom: frame.bottom - mountRect.top
+      };
+      const frameWidth = Math.max(0, localFrame.right - localFrame.left);
+      const frameHeight = Math.max(0, localFrame.bottom - localFrame.top);
       if (frameWidth < 160 || frameHeight < 90) {
         return null;
       }
@@ -1953,8 +1963,8 @@
         Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.round(frameHeight * 0.56))
       );
       const clamped = this.clampPositionToRect(
-        frame.left + DEFAULT_PANEL_MARGIN,
-        frame.bottom - height - DEFAULT_PANEL_MARGIN,
+        localFrame.left + DEFAULT_PANEL_MARGIN,
+        localFrame.bottom - height - DEFAULT_PANEL_MARGIN,
         width,
         height,
         this.getDefaultPanelFrameRect(),

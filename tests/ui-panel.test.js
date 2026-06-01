@@ -213,6 +213,20 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.getThemeName(), "forest");
   });
 
+  await runCase("default panel rect uses player-local coordinates", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.getYouTubeFrameRect = () => ({ left: 28, top: 12, right: 1492, bottom: 836 });
+    panel.getMountViewportRect = () => ({ left: 28, top: 12, right: 1492, bottom: 836 });
+
+    const rect = panel.getDefaultPanelRect();
+
+    assert.equal(rect.left, 12);
+    assert.equal(rect.width, 680);
+    assert.ok(rect.top >= 0);
+    assert.ok(rect.top + rect.height <= 824 - 64 - 12);
+  });
+
   await runCase("bounded history render range includes active and latest rows", () => {
     const module = loadPanelModule();
     const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
