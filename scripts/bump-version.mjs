@@ -5,6 +5,7 @@ const projectRoot = path.resolve(process.cwd());
 
 const targetFiles = [
   "package.json",
+  "package-lock.json",
   "manifest.chrome.json",
   "manifest.firefox.json",
   "manifest.json"
@@ -43,6 +44,9 @@ async function run() {
     const filePath = targetFiles[index];
     const json = await readJson(filePath);
     json.version = nextVersion;
+    if (json.packages && json.packages[""]) {
+      json.packages[""].version = nextVersion;
+    }
     await writeJson(filePath, json);
   }
 

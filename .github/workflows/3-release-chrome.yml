@@ -1,4 +1,4 @@
-name: Publish Chrome Web Store
+name: 3) Release Chrome
 
 on:
   workflow_dispatch:
@@ -7,25 +7,16 @@ on:
         description: "Existing release tag to publish, for example v1.1.4"
         required: true
         type: string
-      chrome_action:
-        description: "Chrome Web Store action"
-        required: true
-        default: "upload"
-        type: choice
-        options:
-          - "upload"
-          - "publish"
 
 permissions:
   contents: read
 
 jobs:
   publish-chrome:
-    name: Publish Chrome Web Store
+    name: Upload and submit Chrome Web Store package
     runs-on: windows-latest
     environment: store-publish
     env:
-      CHROME_STORE_ACTION: ${{ inputs.chrome_action }}
       CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
       CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
       CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
@@ -84,7 +75,7 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          node scripts/publish-chrome.mjs --mode="$env:CHROME_STORE_ACTION" --zip="build/chrome/ytmmocaptions-chrome-v$version.zip"
+          node scripts/publish-chrome.mjs --mode="publish" --zip="build/chrome/ytmmocaptions-chrome-v$version.zip"
 
       - name: Publish summary
         shell: pwsh
@@ -92,4 +83,4 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Chrome Web Store"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Release tag: ``${{ inputs.release_tag }}``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Action: ``$env:CHROME_STORE_ACTION``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Action: ``publish``"

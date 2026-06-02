@@ -1,0 +1,109 @@
+name: 1) Prepare Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    name: Bump, validate, tag, and create release
+    runs-on: windows-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify workflow is preparing main
+        shell: pwsh
+        run: |
+          git fetch origin main:refs/remotes/origin/main --tags
+          $head = git rev-parse HEAD
+          $originMain = git rev-parse origin/main
+          if ($head -ne $originMain) {
+            throw "Prepare Release must run from the current origin/main commit."
+          }
+
+      - name: Bump patch version
+        run: npm run version:bump
+
+      - name: Capture release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if (-not ($version -match '^\d+\.\d+\.\d+$')) {
+            throw "Invalid release version: $version"
+          }
+          $tag = "v$version"
+          if (git rev-parse -q --verify "refs/tags/$tag") {
+            throw "Release tag already exists: $tag"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Run release sanity checks
+        run: npm run release:sanity
+
+      - name: Verify bumped release version
+        run: node scripts/verify-release-version.mjs "${{ steps.version.outputs.tag }}"
+
+      - name: Commit release prep
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json manifest.json manifest.chrome.json manifest.firefox.json "downloads/ytmmocaptions-source-${{ steps.version.outputs.tag }}.zip"
+          git commit -m "chore: prepare ${{ steps.version.outputs.tag }}"
+
+      - name: Tag release
+        run: git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+
+      - name: Push main and release tag
+        shell: pwsh
+        run: |
+          git push origin HEAD:main
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Collect release artifacts
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Path release-artifacts -Force | Out-Null
+          Copy-Item "build/chrome/ytmmocaptions-chrome-v$version.zip" "release-artifacts/"
+          Copy-Item "build/firefox/ytmmocaptions-firefox-v$version.xpi" "release-artifacts/"
+          Copy-Item "downloads/ytmmocaptions-source-v$version.zip" "release-artifacts/"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ytmmocaptions-${{ steps.version.outputs.tag }}
+          path: release-artifacts/*
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $artifactPaths = Get-ChildItem release-artifacts -File | ForEach-Object { $_.FullName }
+          gh release create $tag @artifactPaths --title "YTMMOCC $tag" --notes "Automated release artifacts for $tag."
+
+      - name: Prepare summary
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Prepared release"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Version: ``${{ steps.version.outputs.version }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Tag: ``${{ steps.version.outputs.tag }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Next: run ``2) Release Firefox`` and ``3) Release Chrome`` with this tag."
