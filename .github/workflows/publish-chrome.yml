@@ -1,0 +1,95 @@
+name: Publish Chrome Web Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to publish, for example v1.1.4"
+        required: true
+        type: string
+      chrome_action:
+        description: "Chrome Web Store action"
+        required: true
+        default: "upload"
+        type: choice
+        options:
+          - "upload"
+          - "publish"
+
+permissions:
+  contents: read
+
+jobs:
+  publish-chrome:
+    name: Publish Chrome Web Store
+    runs-on: windows-latest
+    environment: store-publish
+    env:
+      CHROME_STORE_ACTION: ${{ inputs.chrome_action }}
+      CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+      CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+      CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+      CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+      CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify tag matches package and manifests
+        run: node scripts/verify-release-version.mjs "${{ inputs.release_tag }}"
+
+      - name: Verify release tag is on main
+        shell: pwsh
+        run: |
+          git fetch origin main
+          $tagCommit = git rev-list -n 1 "${{ inputs.release_tag }}"
+          git merge-base --is-ancestor $tagCommit origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release tag ${{ inputs.release_tag }} must point to a commit reachable from origin/main."
+          }
+
+      - name: Build and run release sanity checks
+        run: npm run release:sanity
+
+      - name: Check Chrome Web Store credentials
+        shell: pwsh
+        run: |
+          $missing = @()
+          foreach ($name in @(
+            "CHROME_PUBLISHER_ID",
+            "CHROME_EXTENSION_ID",
+            "CHROME_CLIENT_ID",
+            "CHROME_CLIENT_SECRET",
+            "CHROME_REFRESH_TOKEN"
+          )) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              $missing += $name
+            } else {
+              Write-Output "$name is configured."
+            }
+          }
+          if ($missing.Count -gt 0) {
+            throw "Missing Chrome Web Store secrets: $($missing -join ', ')"
+          }
+
+      - name: Run selected Chrome Web Store action
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          node scripts/publish-chrome.mjs --mode="$env:CHROME_STORE_ACTION" --zip="build/chrome/ytmmocaptions-chrome-v$version.zip"
+
+      - name: Publish summary
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Chrome Web Store"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Release tag: ``${{ inputs.release_tag }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Action: ``$env:CHROME_STORE_ACTION``"

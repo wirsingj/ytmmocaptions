@@ -1,0 +1,80 @@
+name: Publish Firefox AMO
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to publish, for example v1.1.4"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-firefox:
+    name: Publish Firefox AMO
+    runs-on: windows-latest
+    environment: store-publish
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify tag matches package and manifests
+        run: node scripts/verify-release-version.mjs "${{ inputs.release_tag }}"
+
+      - name: Verify release tag is on main
+        shell: pwsh
+        run: |
+          git fetch origin main
+          $tagCommit = git rev-list -n 1 "${{ inputs.release_tag }}"
+          git merge-base --is-ancestor $tagCommit origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release tag ${{ inputs.release_tag }} must point to a commit reachable from origin/main."
+          }
+
+      - name: Build and run release sanity checks
+        run: npm run release:sanity
+
+      - name: Check Firefox AMO credentials
+        shell: pwsh
+        run: |
+          $missing = @()
+          foreach ($name in @(
+            "AMO_JWT_ISSUER",
+            "AMO_JWT_SECRET"
+          )) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              $missing += $name
+            } else {
+              Write-Output "$name is configured."
+            }
+          }
+          if ($missing.Count -gt 0) {
+            throw "Missing Firefox AMO secrets: $($missing -join ', ')"
+          }
+
+      - name: Publish Firefox AMO package
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          powershell -ExecutionPolicy Bypass -File scripts/publish-firefox.ps1 -Mode publish -SourceZip "downloads/ytmmocaptions-source-v$version.zip"
+
+      - name: Publish summary
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Firefox AMO"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Release tag: ``${{ inputs.release_tag }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Action: ``publish``"

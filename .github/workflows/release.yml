@@ -4,29 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Existing release tag to build or publish, for example v1.1.4"
-        required: true
-        type: string
-      chrome_action:
-        description: "Chrome Web Store action"
-        required: true
-        default: "skip"
-        type: choice
-        options:
-          - "skip"
-          - "upload"
-          - "publish"
-      firefox_action:
-        description: "Firefox AMO action"
-        required: true
-        default: "skip"
-        type: choice
-        options:
-          - "skip"
-          - "publish"
 
 permissions:
   contents: write
@@ -39,7 +16,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -47,7 +24,17 @@ jobs:
           node-version: "20"
 
       - name: Verify tag matches package and manifests
-        run: node scripts/verify-release-version.mjs "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
+        run: node scripts/verify-release-version.mjs "${{ github.ref_name }}"
+
+      - name: Verify release tag is on main
+        shell: pwsh
+        run: |
+          git fetch origin main
+          $tagCommit = git rev-list -n 1 "${{ github.ref_name }}"
+          git merge-base --is-ancestor $tagCommit origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release tag ${{ github.ref_name }} must point to a commit reachable from origin/main."
+          }
 
       - name: Run release sanity checks
         run: npm run release:sanity
@@ -64,7 +51,7 @@ jobs:
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ytmmocaptions-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          name: ytmmocaptions-${{ github.ref_name }}
           path: release-artifacts/*
           if-no-files-found: error
 
@@ -74,126 +61,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $tag = "${{ inputs.release_tag }}"
-          }
           $artifactPaths = Get-ChildItem release-artifacts -File | ForEach-Object { $_.FullName }
           if (gh release view $tag 2>$null) {
             gh release upload $tag @artifactPaths --clobber
           } else {
             gh release create $tag @artifactPaths --title "YTMMOCC $tag" --notes "Automated release artifacts for $tag."
           }
-
-  store-publish:
-    name: Selected browser store publish
-    needs: build-release
-    if: github.event_name == 'workflow_dispatch' && (inputs.chrome_action != 'skip' || inputs.firefox_action != 'skip')
-    runs-on: windows-latest
-    environment: store-publish
-    permissions:
-      contents: read
-    env:
-      CHROME_STORE_ACTION: ${{ inputs.chrome_action }}
-      FIREFOX_STORE_ACTION: ${{ inputs.firefox_action }}
-      CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
-      CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
-      CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
-      CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
-      CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
-      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
-      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.release_tag }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Verify tag matches package and manifests
-        run: node scripts/verify-release-version.mjs "${{ inputs.release_tag }}"
-
-      - name: Build store packages
-        run: npm run release:sanity
-
-      - name: Check store credentials
-        id: store-credentials
-        shell: pwsh
-        run: |
-          $chromeNames = @(
-            "CHROME_PUBLISHER_ID",
-            "CHROME_EXTENSION_ID",
-            "CHROME_CLIENT_ID",
-            "CHROME_CLIENT_SECRET",
-            "CHROME_REFRESH_TOKEN"
-          )
-          $firefoxNames = @(
-            "AMO_JWT_ISSUER",
-            "AMO_JWT_SECRET"
-          )
-
-          $missingChrome = @()
-          if ($env:CHROME_STORE_ACTION -ne "skip") {
-            foreach ($name in $chromeNames) {
-              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-                $missingChrome += $name
-              }
-            }
-          }
-
-          $missingFirefox = @()
-          if ($env:FIREFOX_STORE_ACTION -ne "skip") {
-            foreach ($name in $firefoxNames) {
-              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-                $missingFirefox += $name
-              }
-            }
-          }
-
-          $chromeReady = $env:CHROME_STORE_ACTION -ne "skip" -and $missingChrome.Count -eq 0
-          $firefoxReady = $env:FIREFOX_STORE_ACTION -ne "skip" -and $missingFirefox.Count -eq 0
-          "chrome_ready=$($chromeReady.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "firefox_ready=$($firefoxReady.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-          if ($env:CHROME_STORE_ACTION -ne "skip" -and -not $chromeReady) {
-            Write-Warning "Skipping Chrome Web Store upload; missing secrets: $($missingChrome -join ', ')"
-          }
-          if ($env:FIREFOX_STORE_ACTION -ne "skip" -and -not $firefoxReady) {
-            Write-Warning "Skipping Firefox AMO upload; missing secrets: $($missingFirefox -join ', ')"
-          }
-          if ($chromeReady) {
-            Write-Output "Chrome Web Store credentials are present for action=$env:CHROME_STORE_ACTION."
-          }
-          if ($firefoxReady) {
-            Write-Output "Firefox AMO credentials are present for action=$env:FIREFOX_STORE_ACTION."
-          }
-
-      - name: Run selected Chrome Web Store action
-        if: steps.store-credentials.outputs.chrome_ready == 'true'
-        shell: pwsh
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          node scripts/publish-chrome.mjs --mode="$env:CHROME_STORE_ACTION" --zip="build/chrome/ytmmocaptions-chrome-v$version.zip"
-
-      - name: Run selected Firefox AMO action
-        if: steps.store-credentials.outputs.firefox_ready == 'true'
-        shell: pwsh
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          powershell -ExecutionPolicy Bypass -File scripts/publish-firefox.ps1 -Mode "$env:FIREFOX_STORE_ACTION" -SourceZip "downloads/ytmmocaptions-source-v$version.zip"
-
-      - name: Store publish summary
-        shell: pwsh
-        run: |
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Store publish"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Release tag: ``${{ inputs.release_tag }}``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Chrome action: ``$env:CHROME_STORE_ACTION``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Firefox action: ``$env:FIREFOX_STORE_ACTION``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Chrome ready: ``${{ steps.store-credentials.outputs.chrome_ready }}``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Firefox ready: ``${{ steps.store-credentials.outputs.firefox_ready }}``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "If a selected store is not ready, add the missing GitHub Actions secrets and rerun this workflow after approving the ``store-publish`` environment."

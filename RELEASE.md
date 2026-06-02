@@ -5,14 +5,14 @@ artifacts, and optionally publish YTMMOCC to browser stores.
 
 Normal pushes and pull requests run test/package sanity checks only. Pushing a
 tag that matches `v*` builds release artifacts and creates or updates the GitHub
-Release. Store publishing is a separate manual workflow dispatch against an
-existing release tag and is gated by the protected GitHub Environment named
-`store-publish`.
+Release. Store publishing lives in separate manual-only workflows, one for
+Chrome and one for Firefox, and is gated by the protected GitHub Environment
+named `store-publish`.
 
 If store credentials are not configured yet, the release workflow still builds,
-validates, packages, and attaches GitHub Release artifacts. A manually selected
-store publish reports which Chrome or Firefox secrets are missing and skips that
-store instead of failing before the other store can be tested.
+validates, packages, and attaches GitHub Release artifacts. The publish workflows
+print which required secret names are configured or missing without printing
+secret values.
 
 ## Version Bump
 
@@ -32,7 +32,7 @@ Version changes are explicit. Builds must not mutate version files.
 3. Commit and push the version bump.
 
 The release workflow refuses to run if the tag version does not match all four
-version files.
+version files or if the tag does not point to a commit reachable from `main`.
 
 ## Create a Release Tag
 
@@ -43,27 +43,31 @@ git tag v1.1.0
 git push origin v1.1.0
 ```
 
-You can also create the tag from the GitHub website. The tag must point at the
-commit with matching version files.
+You can also create the tag from the GitHub website. The tag must point at a
+`main` commit with matching version files.
 
 ## What the Tag Workflow Does
 
 The tag workflow:
 
 1. verifies the tag version matches `package.json` and all browser manifests;
-2. runs `npm run release:sanity`;
-3. packages:
+2. verifies the tag points to a commit reachable from `main`;
+3. runs `npm run release:sanity`;
+4. packages:
    - Chrome ZIP;
    - Firefox XPI;
    - source ZIP for AMO/source review;
-4. uploads the artifacts to the GitHub Release.
+5. uploads the artifacts to the GitHub Release.
 
 ## Publish To Stores
 
-Use the GitHub Actions `Release` workflow manually after a release tag exists.
+Use the manual publish workflows only after the release tag workflow succeeds and
+the release checklist/manual QA is complete.
+
+### Chrome
 
 1. Open GitHub Actions.
-2. Select the `Release` workflow.
+2. Select the `Publish Chrome Web Store` workflow.
 3. Choose `Run workflow`.
 4. Enter the release tag, for example:
 
@@ -71,11 +75,10 @@ Use the GitHub Actions `Release` workflow manually after a release tag exists.
    v1.1.4
    ```
 
-5. Choose the per-store actions:
+5. Choose the Chrome action:
 
    ```text
-   chrome_action: skip | upload | publish
-   firefox_action: skip | publish
+   chrome_action: upload | publish
    ```
 
 6. Approve the `store-publish` environment when GitHub asks.
@@ -84,6 +87,19 @@ Chrome supports `upload` as a safe first step: it uploads the package to the
 Chrome Web Store item without submitting it for review. Chrome `publish` uploads
 the package, waits for Chrome's upload processing to finish, then submits the
 item for review.
+
+### Firefox
+
+1. Open GitHub Actions.
+2. Select the `Publish Firefox AMO` workflow.
+3. Choose `Run workflow`.
+4. Enter the release tag, for example:
+
+   ```text
+   v1.1.4
+   ```
+
+5. Approve the `store-publish` environment when GitHub asks.
 
 Firefox AMO does not have the same safe upload-only path through `web-ext`.
 Firefox `publish` runs `web-ext sign --channel=listed` and submits the version to
@@ -111,9 +127,9 @@ Useful GitHub setup links:
 ## Store Publish Mode
 
 Store publish mode is selected through manual workflow inputs rather than a
-repository-wide variable. Start with Chrome `upload` and Firefox `skip` while you
-confirm credentials. Switch Chrome to `publish` and Firefox to `publish` only
-after you are comfortable with the manual approval flow.
+repository-wide variable. Start with Chrome `upload` while you confirm
+credentials. Use Chrome `publish` and the Firefox publish workflow only after you
+are comfortable with the manual approval flow.
 
 ## Required Secrets
 
