@@ -116,6 +116,13 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.layoutLocked, false);
     assert.equal(result.timelineModeEnabled, false);
     assert.equal(result.schemaVersion, 1);
+    assert.equal(result.workspacePresets.length, 3);
+    assert.equal(result.workspacePresets[0].themeName, "stone");
+    assert.equal(result.workspacePresets[1].themeName, "custom");
+    assert.equal(result.workspacePresets[1].caseFixEnabled, false);
+    assert.equal(result.workspacePresets[1].panelOpacity, 10);
+    assert.equal(result.workspacePresets[2].themeName, "ocean");
+    assert.equal(result.workspacePresets[2].textScale, 140);
   });
 
   await runCase("settings normalization sanitizes theme preferences", () => {
@@ -307,6 +314,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.workspacePresets[0].textScale, 155);
     assert.deepEqual(persisted.workspacePresets[0].panelPosition, { anchor: "player", left: 92, top: 48 });
     assert.deepEqual(persisted.workspacePresets[0].panelSize, { width: 610, height: 360 });
+    assert.equal(persisted.workspacePresets[1].textScale, 175);
+    assert.equal(persisted.workspacePresets[2].textScale, 140);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted.workspacePresets[0], "activeVideoId"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted.workspacePresets[0], "transcriptText"), false);
 

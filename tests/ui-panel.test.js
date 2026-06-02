@@ -90,7 +90,7 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.ok(changes.length >= 4);
   });
 
-  await runCase("empty workspace preset apply is a no-op", () => {
+  await runCase("seeded music workspace preset applies and starts temporary rainbow", () => {
     const module = loadPanelModule();
     const settingsStore = module.settingsStore;
     const panel = new module.DialoguePanel({
@@ -102,9 +102,41 @@ exports.run = async function runUiPanelTests(ctx) {
     });
 
     panel.toggleWorkspacePreset(2);
-    assert.equal(panel.settings.activeWorkspacePreset, null);
-    assert.equal(panel.settings.panelOpacity, 64);
-    assert.equal(panel.settings.textScale, 140);
+    assert.equal(panel.settings.activeWorkspacePreset, 2);
+    assert.equal(panel.settings.panelOpacity, 10);
+    assert.equal(panel.settings.textScale, 175);
+    assert.equal(panel.settings.themeName, "custom");
+    assert.equal(panel.settings.caseFixEnabled, false);
+    assert.equal(panel.settings.fadeTowardVideoCenter, false);
+    assert.equal(panel.isRainbowThemeEnabled(), true);
+    assert.equal(panel.settings.customThemeColor, "#d62fbe");
+    assert.notEqual(panel.getCustomThemeColor(), "#d62fbe");
+  });
+
+  await runCase("overwritten music preset does not auto-start rainbow", () => {
+    const module = loadPanelModule();
+    const settingsStore = module.settingsStore;
+    const customMusicSlot = {
+      panelOpacity: 64,
+      textScale: 130,
+      themeName: "forest",
+      customThemeColor: "#ded6c3",
+      fadeTowardVideoCenter: false,
+      panelPosition: null,
+      panelSize: null,
+      futurePreviewEnabled: true,
+      caseFixEnabled: true
+    };
+    const panel = new module.DialoguePanel({
+      settings: settingsStore.normalizeSettings({
+        workspacePresets: [null, customMusicSlot, null]
+      })
+    });
+
+    panel.toggleWorkspacePreset(2);
+    assert.equal(panel.settings.activeWorkspacePreset, 2);
+    assert.equal(panel.settings.themeName, "forest");
+    assert.equal(panel.isRainbowThemeEnabled(), false);
   });
 
   await runCase("reset drops active preset override without deleting saved presets", () => {

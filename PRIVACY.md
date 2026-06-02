@@ -23,7 +23,7 @@ The extension stores only local preference settings in extension storage:
 - Fade setting, which makes the panel more transparent toward the center of the associated video;
 - panel open/closed state;
 - Layout Lock preference;
-- three optional local workspace preset snapshots containing panel position, panel size, text size, opacity, Fade, theme/custom color, Future / Next Up, and Case Fix settings.
+- three seeded or user-overwritten local workspace preset snapshots containing panel position, panel size, text size, opacity, Fade, theme/custom color, Future / Next Up, and Case Fix settings.
 
 When Layout Lock is enabled, the extension also stores the user's local panel layout preferences:
 - text size;

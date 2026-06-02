@@ -5,6 +5,41 @@
   const STORAGE_KEY = "dialogueCaptions.settings.v1";
   const SCHEMA_VERSION = 1;
   const WORKSPACE_PRESET_COUNT = 3;
+  const DEFAULT_WORKSPACE_PRESETS = Object.freeze([
+    Object.freeze({
+      panelOpacity: 48,
+      textScale: 120,
+      themeName: "stone",
+      customThemeColor: "#ded6c3",
+      panelPosition: null,
+      panelSize: null,
+      futurePreviewEnabled: true,
+      caseFixEnabled: true,
+      fadeTowardVideoCenter: false
+    }),
+    Object.freeze({
+      panelOpacity: 10,
+      textScale: 175,
+      themeName: "custom",
+      customThemeColor: "#d62fbe",
+      panelPosition: Object.freeze({ anchor: "player", left: 12, top: 12 }),
+      panelSize: Object.freeze({ width: 2400, height: 760 }),
+      futurePreviewEnabled: true,
+      caseFixEnabled: false,
+      fadeTowardVideoCenter: false
+    }),
+    Object.freeze({
+      panelOpacity: 58,
+      textScale: 140,
+      themeName: "ocean",
+      customThemeColor: "#a7cde3",
+      panelPosition: Object.freeze({ anchor: "player", left: 220, top: 64 }),
+      panelSize: Object.freeze({ width: 820, height: 460 }),
+      futurePreviewEnabled: true,
+      caseFixEnabled: true,
+      fadeTowardVideoCenter: false
+    })
+  ]);
   let saveQueue = Promise.resolve();
   const DEFAULTS = Object.freeze({
     schemaVersion: SCHEMA_VERSION,
@@ -24,7 +59,7 @@
     layoutLocked: false,
     timelineModeEnabled: false,
     launcherPosition: null,
-    workspacePresets: Object.freeze([null, null, null]),
+    workspacePresets: DEFAULT_WORKSPACE_PRESETS,
     activeWorkspacePreset: null,
     workspacePresetBaseline: null,
     panelClosed: true
@@ -167,7 +202,7 @@
     const source = Array.isArray(value) ? value : [];
     const presets = [];
     for (let index = 0; index < WORKSPACE_PRESET_COUNT; index += 1) {
-      presets.push(normalizeWorkspaceSnapshot(source[index]));
+      presets.push(normalizeWorkspaceSnapshot(source[index]) || normalizeWorkspaceSnapshot(DEFAULT_WORKSPACE_PRESETS[index]));
     }
     return presets;
   }

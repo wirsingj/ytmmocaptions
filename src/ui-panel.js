@@ -291,7 +291,7 @@
         "Next previews upcoming captions.",
         "Case Fix softens all-caps captions.",
         "Use the color picker, opacity, and text controls to tune readability.",
-        "Presets apply saved workspace snapshots; the lower Save area captures one.",
+        "Presets start as Default, Music, and Podcast loadouts; the lower Save area captures one.",
         "Lock keeps the workspace across videos.",
         "Reset restores the panel workspace shape.",
         "Drag the header to move; drag edges or corners to resize."
@@ -1027,9 +1027,18 @@
 
     getWorkspacePresets() {
       const source = Array.isArray(this.settings.workspacePresets) ? this.settings.workspacePresets : [];
+      const defaults = settingsStore && settingsStore.DEFAULTS && Array.isArray(settingsStore.DEFAULTS.workspacePresets)
+        ? settingsStore.DEFAULTS.workspacePresets
+        : [];
       const presets = [];
       for (let index = 0; index < 3; index += 1) {
-        presets.push(source[index] ? this.normalizeWorkspaceSnapshot(source[index]) : null);
+        presets.push(
+          source[index]
+            ? this.normalizeWorkspaceSnapshot(source[index])
+            : defaults[index]
+              ? this.normalizeWorkspaceSnapshot(defaults[index])
+              : null
+        );
       }
       return presets;
     }
@@ -1078,6 +1087,7 @@
       if (!preset) {
         return;
       }
+      const shouldStartRainbow = this.isBuiltInMusicWorkspacePreset(presetId, preset);
       this.cancelRainbowThemePreview(false);
       // Keep the first baseline while switching presets so toggle-off returns to the pre-preset workspace.
       const baseline = this.settings.workspacePresetBaseline
@@ -1089,6 +1099,9 @@
         activeWorkspacePreset: presetId,
         workspacePresetBaseline: baseline
       });
+      if (shouldStartRainbow) {
+        this.startRainbowThemePreview();
+      }
     }
 
     disableWorkspacePreset() {
@@ -1134,6 +1147,32 @@
           : "Save current workspace to preset " + control.id;
         control.captureButton.setAttribute("aria-label", control.captureButton.title);
       }
+    }
+
+    isBuiltInMusicWorkspacePreset(presetId, preset) {
+      if (presetId !== 2 || !settingsStore || !settingsStore.DEFAULTS || !Array.isArray(settingsStore.DEFAULTS.workspacePresets)) {
+        return false;
+      }
+      const musicPreset = settingsStore.DEFAULTS.workspacePresets[1];
+      if (!musicPreset) {
+        return false;
+      }
+      return this.areWorkspaceSnapshotsEquivalent(preset, this.normalizeWorkspaceSnapshot(musicPreset));
+    }
+
+    areWorkspaceSnapshotsEquivalent(left, right) {
+      const a = this.normalizeWorkspaceSnapshot(left);
+      const b = this.normalizeWorkspaceSnapshot(right);
+      const fields = ["textScale", "panelOpacity", "fadeTowardVideoCenter", "themeName", "customThemeColor", "futurePreviewEnabled", "caseFixEnabled"];
+      for (let index = 0; index < fields.length; index += 1) {
+        const field = fields[index];
+        if (a[field] !== b[field]) {
+          return false;
+        }
+      }
+      const positionsMatch = JSON.stringify(a.panelPosition || null) === JSON.stringify(b.panelPosition || null);
+      const sizesMatch = JSON.stringify(a.panelSize || null) === JSON.stringify(b.panelSize || null);
+      return positionsMatch && sizesMatch;
     }
 
     enterHistoryReadingMode(reason) {
@@ -1581,19 +1620,26 @@
     toggleRainbowThemeMode() {
       const nextEnabled = !this.isRainbowThemeEnabled();
       if (nextEnabled) {
-        this.rainbowThemeRestoreSnapshot = {
-          themeName: this.settings.themeName || "stone",
-          customThemeColor: this.settings.customThemeColor || "#ded6c3"
-        };
-        const hsv = this.hexToHsv(this.getCustomThemeColor());
-        this.rainbowThemePreviewColor = this.hsvToHex(hsv.h, RAINBOW_THEME_SATURATION, RAINBOW_THEME_VALUE);
-        this.rainbowThemeEnabled = true;
-        this.updateRainbowThemeButton();
-        this.applyRainbowThemeColor(this.rainbowThemePreviewColor);
-        this.startRainbowThemeCycle();
+        this.startRainbowThemePreview();
         return;
       }
       this.cancelRainbowThemePreview(true);
+    }
+
+    startRainbowThemePreview() {
+      if (this.isRainbowThemeEnabled()) {
+        return;
+      }
+      this.rainbowThemeRestoreSnapshot = {
+        themeName: this.settings.themeName || "stone",
+        customThemeColor: this.settings.customThemeColor || "#ded6c3"
+      };
+      const hsv = this.hexToHsv(this.getCustomThemeColor());
+      this.rainbowThemePreviewColor = this.hsvToHex(hsv.h, RAINBOW_THEME_SATURATION, RAINBOW_THEME_VALUE);
+      this.rainbowThemeEnabled = true;
+      this.updateRainbowThemeButton();
+      this.applyRainbowThemeColor(this.rainbowThemePreviewColor);
+      this.startRainbowThemeCycle();
     }
 
     isRainbowThemeEnabled() {

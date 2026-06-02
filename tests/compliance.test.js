@@ -571,7 +571,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('"Next previews upcoming captions."'));
     assert.ok(panelSource.includes('"Case Fix softens all-caps captions."'));
     assert.ok(panelSource.includes('"Use the color picker, opacity, and text controls to tune readability."'));
-    assert.ok(panelSource.includes('"Presets apply saved workspace snapshots; the lower Save area captures one."'));
+    assert.ok(panelSource.includes('"Presets start as Default, Music, and Podcast loadouts; the lower Save area captures one."'));
     assert.ok(panelSource.includes('"Lock keeps the workspace across videos."'));
     assert.ok(panelSource.includes('"Reset restores the panel workspace shape."'));
     assert.ok(panelSource.includes('"Drag the header to move; drag edges or corners to resize."'));
@@ -649,6 +649,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes("layoutLocked"));
     assert.ok(!source.includes("rainbowThemeEnabled"));
     assert.ok(source.includes("workspacePresets"));
+    assert.ok(source.includes("DEFAULT_WORKSPACE_PRESETS"));
     assert.ok(source.includes("activeWorkspacePreset"));
     assert.ok(source.includes("workspacePresetBaseline"));
     assert.ok(source.includes("toStoredSettings"));
@@ -681,11 +682,11 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(architecture.includes("## Workspace / Preferences Model"));
     assert.ok(architecture.includes("Layout Lock off: each video starts from the default panel workspace."));
     assert.ok(architecture.includes("Layout Lock on: the same workspace follows the user across YouTube videos."));
-    assert.ok(architecture.includes("Workspace presets: three local snapshot slots act as temporary loadouts"));
+    assert.ok(architecture.includes("Workspace presets: three seeded local snapshot slots act as temporary loadouts"));
     assert.ok(architecture.includes("It does not store video identity, transcript content, current timestamp, active bubble, Lock state"));
     assert.ok(architecture.includes("Reset: returns the panel workspace shape to defaults"));
     assert.ok(architecture.includes("Pinned defaults are deferred."));
-    assert.ok(readme.includes("Three local workspace preset slots can save and apply temporary panel layout/readability snapshots"));
+    assert.ok(readme.includes("Three seeded local workspace preset slots can save and apply temporary panel layout/readability snapshots"));
     assert.ok(readme.includes("Reset restores the current workspace shape to defaults"));
     assert.ok(readme.includes("The quick guide in the panel header summarizes"));
     assert.ok(qa.includes("Capture a workspace preset after moving/resizing the panel"));

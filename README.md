@@ -51,7 +51,7 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 - Custom color includes a temporary rainbow cycle mode for slow ambient hue rotation.
 - Layout Lock can also persist panel size/position, text size, Future / Next Up setting, Case Fix setting, and preview height.
 - With Layout Lock off, panel layout resets for each video/session.
-- Three local workspace preset slots can save and apply temporary panel layout/readability snapshots without changing Lock or Reset behavior.
+- Three seeded local workspace preset slots can save and apply temporary panel layout/readability snapshots without changing Lock or Reset behavior.
 - Reset restores the current workspace shape to defaults while preserving theme/color readability choices.
 - The quick guide in the panel header summarizes click-to-seek, Current, Latest, Next, Case Fix, color, opacity, Lock, Reset, drag, and resize behavior.
 - Transcript/chat contents, active bubble, and playback position are intentionally not saved.

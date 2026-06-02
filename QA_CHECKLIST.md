@@ -57,6 +57,8 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 
 - With Layout Lock off, move/resize the panel, navigate to another video, and confirm the next video starts from the default workspace shape.
 - With Layout Lock on, move/resize the panel, adjust text size/Future/Case Fix/preview height, navigate to another video, and confirm the workspace follows.
+- On a fresh profile, click preset 1, preset 2, and preset 3. Confirm they demonstrate Default, Music, and Podcast-style workspaces without opening a settings page.
+- Click preset 2 and confirm the temporary rainbow color cycle starts. Navigate to another video and confirm rainbow cycling does not persist as stored state.
 - Capture a workspace preset after moving/resizing the panel and changing text size, opacity, Future / Next Up, Case Fix, Fade, and color. Change the workspace, click the preset, and confirm the saved snapshot applies without changing the saved slot.
 - Click the active preset again and confirm the panel returns to the pre-preset workspace baseline where practical.
 - Click Reset and confirm panel position, size, text size, preview height, Timeline mode, and launcher position return to defaults while theme, custom color, opacity, Fade, Future / Next Up, and Case Fix choices are preserved.
