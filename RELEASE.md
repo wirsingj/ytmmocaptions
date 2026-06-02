@@ -3,95 +3,75 @@
 This project uses GitHub Actions to build, validate, package, attach release
 artifacts, and optionally publish YTMMOCC to browser stores.
 
-Normal pushes and pull requests run test/package sanity checks only. Pushing a
-tag that matches `v*` builds release artifacts and creates or updates the GitHub
-Release. Store publishing lives in separate manual-only workflows, one for
-Chrome and one for Firefox, and is gated by the protected GitHub Environment
-named `store-publish`.
+Normal pushes and pull requests run test/package sanity checks only. Releases
+use three numbered manual workflows:
+
+```text
+1) Prepare Release
+2) Release Firefox
+3) Release Chrome
+```
+
+`1) Prepare Release` runs from `main`, bumps the patch version, validates and
+packages the release, commits the version/source-package changes back to `main`,
+creates a matching `vX.Y.Z` tag, and creates the GitHub Release artifacts.
+Store publishing lives in separate manual-only workflows, one for Chrome and one
+for Firefox, and is gated by the protected GitHub Environment named
+`store-publish`.
 
 If store credentials are not configured yet, the release workflow still builds,
 validates, packages, and attaches GitHub Release artifacts. The publish workflows
 print which required secret names are configured or missing without printing
 secret values.
 
-## Version Bump
+## Release Flow
 
-Version changes are explicit. Builds must not mutate version files.
+1. Merge the release-ready work to `main`.
+2. Run the `1) Prepare Release` workflow from `main`.
+3. Confirm the workflow-created GitHub Release and artifacts.
+4. Run `2) Release Firefox` with the new tag.
+5. Run `3) Release Chrome` with the new tag.
 
-1. Edit all of these files to the same version:
+## Prepare Release
+
+Use this workflow to turn current `main` into the next patch release.
+
+1. Open GitHub Actions.
+2. Select `1) Prepare Release`.
+3. Choose `Run workflow`.
+4. Keep `Branch: main`.
+5. Run the workflow.
+
+The workflow:
+
+1. bumps all release version files:
    - `package.json`
+   - `package-lock.json`
    - `manifest.json`
    - `manifest.chrome.json`
-   - `manifest.firefox.json`
-2. Run:
-
-   ```powershell
-   npm run release:sanity
-   ```
-
-3. Commit and push the version bump.
-
-The release workflow refuses to run if the tag version does not match all four
-version files or if the tag does not point to a commit reachable from `main`.
-
-## Create a Release Tag
-
-Use a `vX.Y.Z` tag that matches the committed version exactly.
-
-```powershell
-git tag v1.1.0
-git push origin v1.1.0
-```
-
-You can also create the tag from the GitHub website. The tag must point at a
-`main` commit with matching version files.
-
-## What the Tag Workflow Does
-
-The tag workflow:
-
-1. verifies the tag version matches `package.json` and all browser manifests;
-2. verifies the tag points to a commit reachable from `main`;
-3. runs `npm run release:sanity`;
-4. packages:
+   - `manifest.firefox.json`;
+2. runs `npm run release:sanity`;
+3. commits the bumped version and source package to `main`;
+4. creates and pushes the matching `vX.Y.Z` tag;
+5. packages:
    - Chrome ZIP;
    - Firefox XPI;
    - source ZIP for AMO/source review;
-5. uploads the artifacts to the GitHub Release.
+6. uploads the artifacts to the GitHub Release.
 
-## Publish To Stores
+The workflow auto-increments the patch version only. For minor or major releases,
+make the version change intentionally in a normal PR instead of using the
+auto-bump path.
+
+## Release To Stores
 
 Use the manual publish workflows only after the release tag workflow succeeds and
 the release checklist/manual QA is complete.
 
-### Chrome
-
-1. Open GitHub Actions.
-2. Select the `Publish Chrome Web Store` workflow.
-3. Choose `Run workflow`.
-4. Enter the release tag, for example:
-
-   ```text
-   v1.1.4
-   ```
-
-5. Choose the Chrome action:
-
-   ```text
-   chrome_action: upload | publish
-   ```
-
-6. Approve the `store-publish` environment when GitHub asks.
-
-Chrome supports `upload` as a safe first step: it uploads the package to the
-Chrome Web Store item without submitting it for review. Chrome `publish` uploads
-the package, waits for Chrome's upload processing to finish, then submits the
-item for review.
-
 ### Firefox
 
 1. Open GitHub Actions.
-2. Select the `Publish Firefox AMO` workflow.
+2. Select `2) Release Firefox`.
 3. Choose `Run workflow`.
 4. Enter the release tag, for example:
 
@@ -101,9 +81,26 @@ item for review.
 
 5. Approve the `store-publish` environment when GitHub asks.
 
-Firefox AMO does not have the same safe upload-only path through `web-ext`.
-Firefox `publish` runs `web-ext sign --channel=listed` and submits the version to
+Firefox AMO does not have a separate safe upload-only path through `web-ext`.
+Firefox release runs `web-ext sign --channel=listed` and submits the version to
 AMO. The workflow uploads the source ZIP along with the AMO submission.
+
+### Chrome
+
+1. Open GitHub Actions.
+2. Select `3) Release Chrome`.
+3. Choose `Run workflow`.
+4. Enter the release tag, for example:
+
+   ```text
+   v1.1.4
+   ```
+
+5. Approve the `store-publish` environment when GitHub asks.
+
+Chrome release uploads the package, waits for Chrome's upload processing to
+finish, then submits the item for review. Chrome may still take time to approve
+and publish after the workflow succeeds.
 
 ## GitHub Environment
 
@@ -126,10 +123,9 @@ Useful GitHub setup links:
 
 ## Store Publish Mode
 
-Store publish mode is selected through manual workflow inputs rather than a
-repository-wide variable. Start with Chrome `upload` while you confirm
-credentials. Use Chrome `publish` and the Firefox publish workflow only after you
-are comfortable with the manual approval flow.
+Store publish mode is intentionally not a repository-wide variable. Firefox and
+Chrome are separate manual workflows so either store can be retried independently
+without retagging.
 
 ## Required Secrets
 
@@ -148,7 +144,8 @@ Where to get them:
 - `CHROME_EXTENSION_ID`: Chrome Web Store Developer Dashboard item ID. For the
   current YTMMOCC listing this is `cocgdaogbkknnhdpmojlmodalmblndgf`.
 - `CHROME_PUBLISHER_ID`: Chrome Web Store Developer Dashboard publisher/account
-  identifier.
+  identifier. It is shown under `Publisher > Settings`; the current YTMMOCC
+  publisher ID is `ad6905b1-f715-47f7-8140-25592b8fbca4`.
 - `CHROME_CLIENT_ID` and `CHROME_CLIENT_SECRET`: Google Cloud Console OAuth
   desktop client for a project with the Chrome Web Store API enabled.
 - `CHROME_REFRESH_TOKEN`: OAuth 2.0 Playground token created with your OAuth
