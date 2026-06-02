@@ -49,11 +49,15 @@ async function requestAccessToken() {
   return payload.access_token;
 }
 
-async function uploadPackage({ accessToken, extensionId, zipPath }) {
+function getPublisherName(extensionId) {
   const publisherId = requireEnv("CHROME_PUBLISHER_ID");
+  return `publishers/${encodeURIComponent(publisherId)}/items/${encodeURIComponent(extensionId)}`;
+}
+
+async function uploadPackage({ accessToken, extensionId, zipPath }) {
   const bytes = fs.readFileSync(zipPath);
   const response = await fetch(
-    `https://chromewebstore.googleapis.com/upload/v2/publishers/${encodeURIComponent(publisherId)}/items/${encodeURIComponent(extensionId)}:upload`,
+    `https://chromewebstore.googleapis.com/upload/v2/${getPublisherName(extensionId)}:upload`,
     {
       method: "POST",
       headers: {
@@ -68,18 +72,65 @@ async function uploadPackage({ accessToken, extensionId, zipPath }) {
     throw new Error(`Chrome upload failed: ${response.status} ${JSON.stringify(payload)}`);
   }
   console.log(`Chrome upload accepted with state: ${payload.uploadState || "unknown"}`);
+  return payload;
+}
+
+async function fetchItemStatus({ accessToken, extensionId }) {
+  const response = await fetch(
+    `https://chromewebstore.googleapis.com/v2/${getPublisherName(extensionId)}:fetchStatus`,
+    {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    }
+  );
+  const payload = await readJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(`Chrome fetchStatus failed: ${response.status} ${JSON.stringify(payload)}`);
+  }
+  return payload;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForUploadReady({ accessToken, extensionId, uploadPayload }) {
+  const initialState = uploadPayload && uploadPayload.uploadState ? String(uploadPayload.uploadState) : "";
+  if (initialState && initialState !== "UPLOAD_IN_PROGRESS") {
+    if (initialState === "FAILURE") {
+      throw new Error(`Chrome upload failed: ${JSON.stringify(uploadPayload)}`);
+    }
+    return uploadPayload;
+  }
+
+  for (let attempt = 1; attempt <= 36; attempt += 1) {
+    await sleep(5000);
+    const status = await fetchItemStatus({ accessToken, extensionId });
+    const state = status.lastAsyncUploadState ? String(status.lastAsyncUploadState) : "";
+    console.log(`Chrome upload status poll ${attempt}: ${state || "unknown"}`);
+    if (state && state !== "UPLOAD_IN_PROGRESS") {
+      if (state === "FAILURE") {
+        throw new Error(`Chrome upload failed after polling: ${JSON.stringify(status)}`);
+      }
+      return status;
+    }
+  }
+
+  throw new Error("Chrome upload did not finish within 3 minutes.");
 }
 
 async function publishPackage({ accessToken, extensionId }) {
-  const publisherId = requireEnv("CHROME_PUBLISHER_ID");
   const response = await fetch(
-    `https://chromewebstore.googleapis.com/v2/publishers/${encodeURIComponent(publisherId)}/items/${encodeURIComponent(extensionId)}:publish`,
+    `https://chromewebstore.googleapis.com/v2/${getPublisherName(extensionId)}:publish`,
     {
       method: "POST",
       headers: {
         authorization: `Bearer ${accessToken}`,
-        "content-length": "0"
-      }
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({})
     }
   );
   const payload = await readJsonResponse(response);
@@ -102,7 +153,8 @@ async function run() {
   }
 
   const accessToken = await requestAccessToken();
-  await uploadPackage({ accessToken, extensionId, zipPath });
+  const uploadPayload = await uploadPackage({ accessToken, extensionId, zipPath });
+  await waitForUploadReady({ accessToken, extensionId, uploadPayload });
 
   if (mode === "publish") {
     await publishPackage({ accessToken, extensionId });
