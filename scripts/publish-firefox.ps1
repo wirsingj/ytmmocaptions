@@ -1,6 +1,8 @@
 param(
   [ValidateSet("upload", "publish")]
-  [string]$Mode = $(if ($env:STORE_PUBLISH_MODE) { $env:STORE_PUBLISH_MODE } else { "upload" })
+  [string]$Mode = $(if ($env:STORE_PUBLISH_MODE) { $env:STORE_PUBLISH_MODE } else { "upload" }),
+
+  [string]$SourceZip = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,8 +16,8 @@ if (-not (Test-Path -LiteralPath $manifestPath)) {
 }
 
 if ($Mode -eq "upload") {
-  Write-Output "Firefox AMO publish skipped because mode=upload."
-  Write-Output "Running AMO-safe lint only. Set STORE_PUBLISH_MODE=publish after environment approval to submit with web-ext sign."
+  Write-Output "Firefox AMO does not support a safe upload-only update through web-ext."
+  Write-Output "Running AMO-safe lint only. Select firefox_action=publish after environment approval to submit with web-ext sign."
   npx --yes web-ext lint --source-dir $firefoxBuild
   exit $LASTEXITCODE
 }
@@ -45,8 +47,9 @@ $webExtArgs = @(
   "--timeout", "900000"
 )
 
-if ($env:FIREFOX_EXTENSION_ID) {
-  $webExtArgs += @("--id", $env:FIREFOX_EXTENSION_ID)
+if (-not [string]::IsNullOrWhiteSpace($SourceZip)) {
+  $resolvedSourceZip = Resolve-Path -LiteralPath $SourceZip -ErrorAction Stop
+  $webExtArgs += @("--upload-source-code", $resolvedSourceZip.Path)
 }
 
 npx @webExtArgs

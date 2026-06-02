@@ -4,6 +4,29 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to build or publish, for example v1.1.4"
+        required: true
+        type: string
+      chrome_action:
+        description: "Chrome Web Store action"
+        required: true
+        default: "skip"
+        type: choice
+        options:
+          - "skip"
+          - "upload"
+          - "publish"
+      firefox_action:
+        description: "Firefox AMO action"
+        required: true
+        default: "skip"
+        type: choice
+        options:
+          - "skip"
+          - "publish"
 
 permissions:
   contents: write
@@ -15,6 +38,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -22,7 +47,7 @@ jobs:
           node-version: "20"
 
       - name: Verify tag matches package and manifests
-        run: node scripts/verify-release-version.mjs "${{ github.ref_name }}"
+        run: node scripts/verify-release-version.mjs "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
 
       - name: Run release sanity checks
         run: npm run release:sanity
@@ -39,7 +64,7 @@ jobs:
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ytmmocaptions-${{ github.ref_name }}
+          name: ytmmocaptions-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           path: release-artifacts/*
           if-no-files-found: error
 
@@ -49,6 +74,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ inputs.release_tag }}"
+          }
           $artifactPaths = Get-ChildItem release-artifacts -File | ForEach-Object { $_.FullName }
           if (gh release view $tag 2>$null) {
             gh release upload $tag @artifactPaths --clobber
@@ -57,25 +85,28 @@ jobs:
           }
 
   store-publish:
-    name: Upload or publish to browser stores
+    name: Selected browser store publish
     needs: build-release
+    if: github.event_name == 'workflow_dispatch' && (inputs.chrome_action != 'skip' || inputs.firefox_action != 'skip')
     runs-on: windows-latest
     environment: store-publish
     permissions:
       contents: read
     env:
-      STORE_PUBLISH_MODE: ${{ vars.STORE_PUBLISH_MODE || 'upload' }}
+      CHROME_STORE_ACTION: ${{ inputs.chrome_action }}
+      FIREFOX_STORE_ACTION: ${{ inputs.firefox_action }}
       CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
       CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
       CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
       CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
       CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
-      FIREFOX_EXTENSION_ID: ${{ secrets.FIREFOX_EXTENSION_ID }}
       AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
       AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -83,7 +114,7 @@ jobs:
           node-version: "20"
 
       - name: Verify tag matches package and manifests
-        run: node scripts/verify-release-version.mjs "${{ github.ref_name }}"
+        run: node scripts/verify-release-version.mjs "${{ inputs.release_tag }}"
 
       - name: Build store packages
         run: npm run release:sanity
@@ -105,56 +136,64 @@ jobs:
           )
 
           $missingChrome = @()
-          foreach ($name in $chromeNames) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              $missingChrome += $name
+          if ($env:CHROME_STORE_ACTION -ne "skip") {
+            foreach ($name in $chromeNames) {
+              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+                $missingChrome += $name
+              }
             }
           }
 
           $missingFirefox = @()
-          foreach ($name in $firefoxNames) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              $missingFirefox += $name
+          if ($env:FIREFOX_STORE_ACTION -ne "skip") {
+            foreach ($name in $firefoxNames) {
+              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+                $missingFirefox += $name
+              }
             }
           }
 
-          $chromeReady = $missingChrome.Count -eq 0
-          $firefoxReady = $missingFirefox.Count -eq 0
+          $chromeReady = $env:CHROME_STORE_ACTION -ne "skip" -and $missingChrome.Count -eq 0
+          $firefoxReady = $env:FIREFOX_STORE_ACTION -ne "skip" -and $missingFirefox.Count -eq 0
           "chrome_ready=$($chromeReady.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "firefox_ready=$($firefoxReady.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-          if (-not $chromeReady) {
+          if ($env:CHROME_STORE_ACTION -ne "skip" -and -not $chromeReady) {
             Write-Warning "Skipping Chrome Web Store upload; missing secrets: $($missingChrome -join ', ')"
           }
-          if (-not $firefoxReady) {
+          if ($env:FIREFOX_STORE_ACTION -ne "skip" -and -not $firefoxReady) {
             Write-Warning "Skipping Firefox AMO upload; missing secrets: $($missingFirefox -join ', ')"
           }
           if ($chromeReady) {
-            Write-Output "Chrome Web Store credentials are present."
+            Write-Output "Chrome Web Store credentials are present for action=$env:CHROME_STORE_ACTION."
           }
           if ($firefoxReady) {
-            Write-Output "Firefox AMO credentials are present."
+            Write-Output "Firefox AMO credentials are present for action=$env:FIREFOX_STORE_ACTION."
           }
 
-      - name: Upload or publish Chrome Web Store package
+      - name: Run selected Chrome Web Store action
         if: steps.store-credentials.outputs.chrome_ready == 'true'
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          node scripts/publish-chrome.mjs --mode="$env:STORE_PUBLISH_MODE" --zip="build/chrome/ytmmocaptions-chrome-v$version.zip"
+          node scripts/publish-chrome.mjs --mode="$env:CHROME_STORE_ACTION" --zip="build/chrome/ytmmocaptions-chrome-v$version.zip"
 
-      - name: Upload or publish Firefox AMO package
+      - name: Run selected Firefox AMO action
         if: steps.store-credentials.outputs.firefox_ready == 'true'
         shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File scripts/publish-firefox.ps1 -Mode "$env:STORE_PUBLISH_MODE"
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          powershell -ExecutionPolicy Bypass -File scripts/publish-firefox.ps1 -Mode "$env:FIREFOX_STORE_ACTION" -SourceZip "downloads/ytmmocaptions-source-v$version.zip"
 
       - name: Store publish summary
         shell: pwsh
         run: |
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Store publish"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Mode: ``$env:STORE_PUBLISH_MODE``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Release tag: ``${{ inputs.release_tag }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Chrome action: ``$env:CHROME_STORE_ACTION``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Firefox action: ``$env:FIREFOX_STORE_ACTION``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Chrome ready: ``${{ steps.store-credentials.outputs.chrome_ready }}``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Firefox ready: ``${{ steps.store-credentials.outputs.firefox_ready }}``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "If a store is not ready, add the missing GitHub Actions secrets and rerun this job after approving the ``store-publish`` environment."
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "If a selected store is not ready, add the missing GitHub Actions secrets and rerun this workflow after approving the ``store-publish`` environment."

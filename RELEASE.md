@@ -3,14 +3,16 @@
 This project uses GitHub Actions to build, validate, package, attach release
 artifacts, and optionally publish YTMMOCC to browser stores.
 
-Normal pushes and pull requests run test/package sanity checks only. Store
-publishing runs only from tags that match `v*` and is gated by the protected
-GitHub Environment named `store-publish`.
+Normal pushes and pull requests run test/package sanity checks only. Pushing a
+tag that matches `v*` builds release artifacts and creates or updates the GitHub
+Release. Store publishing is a separate manual workflow dispatch against an
+existing release tag and is gated by the protected GitHub Environment named
+`store-publish`.
 
 If store credentials are not configured yet, the release workflow still builds,
-validates, packages, and attaches GitHub Release artifacts. The store job reports
-which Chrome or Firefox secrets are missing and skips that store instead of
-failing before the other store can be tested.
+validates, packages, and attaches GitHub Release artifacts. A manually selected
+store publish reports which Chrome or Firefox secrets are missing and skips that
+store instead of failing before the other store can be tested.
 
 ## Version Bump
 
@@ -54,10 +56,38 @@ The tag workflow:
    - Chrome ZIP;
    - Firefox XPI;
    - source ZIP for AMO/source review;
-4. uploads the artifacts to the GitHub Release;
-5. waits for approval on the `store-publish` environment before store work;
-6. uploads or publishes to Chrome Web Store and Firefox AMO depending on
-   `STORE_PUBLISH_MODE`.
+4. uploads the artifacts to the GitHub Release.
+
+## Publish To Stores
+
+Use the GitHub Actions `Release` workflow manually after a release tag exists.
+
+1. Open GitHub Actions.
+2. Select the `Release` workflow.
+3. Choose `Run workflow`.
+4. Enter the release tag, for example:
+
+   ```text
+   v1.1.4
+   ```
+
+5. Choose the per-store actions:
+
+   ```text
+   chrome_action: skip | upload | publish
+   firefox_action: skip | publish
+   ```
+
+6. Approve the `store-publish` environment when GitHub asks.
+
+Chrome supports `upload` as a safe first step: it uploads the package to the
+Chrome Web Store item without submitting it for review. Chrome `publish` uploads
+the package, waits for Chrome's upload processing to finish, then submits the
+item for review.
+
+Firefox AMO does not have the same safe upload-only path through `web-ext`.
+Firefox `publish` runs `web-ext sign --channel=listed` and submits the version to
+AMO. The workflow uploads the source ZIP along with the AMO submission.
 
 ## GitHub Environment
 
@@ -73,24 +103,17 @@ Recommended protection:
 - restrict approval to you;
 - keep all store credentials in repository or environment secrets.
 
+Useful GitHub setup links:
+
+- Repository secrets: `https://github.com/wirsingj/ytmmocaptions/settings/secrets/actions`
+- Repository environments: `https://github.com/wirsingj/ytmmocaptions/settings/environments`
+
 ## Store Publish Mode
 
-Set a GitHub Actions repository or environment variable:
-
-```text
-STORE_PUBLISH_MODE
-```
-
-Supported values:
-
-- `upload` - safer default. Chrome uploads the ZIP but does not call publish.
-  Firefox does not submit to AMO; it runs AMO-safe lint only because AMO's
-  `web-ext sign` path is effectively a real listed submission.
-- `publish` - after the `store-publish` environment approval, Chrome uploads
-  and publishes, and Firefox submits through `web-ext sign --channel=listed`.
-
-Start with `upload`. Switch to `publish` only after you are comfortable with the
-store credentials and manual approval flow.
+Store publish mode is selected through manual workflow inputs rather than a
+repository-wide variable. Start with Chrome `upload` and Firefox `skip` while you
+confirm credentials. Switch Chrome to `publish` and Firefox to `publish` only
+after you are comfortable with the manual approval flow.
 
 ## Required Secrets
 
@@ -115,6 +138,14 @@ Where to get them:
 - `CHROME_REFRESH_TOKEN`: OAuth 2.0 Playground token created with your OAuth
   client and the `https://www.googleapis.com/auth/chromewebstore` scope.
 
+Useful Chrome setup links:
+
+- Chrome Web Store Developer Dashboard: `https://chrome.google.com/webstore/devconsole`
+- Google Cloud APIs: `https://console.cloud.google.com/apis/library`
+- Google Cloud OAuth credentials: `https://console.cloud.google.com/apis/credentials`
+- OAuth 2.0 Playground: `https://developers.google.com/oauthplayground`
+- Chrome Web Store API docs: `https://developer.chrome.com/docs/webstore/api/reference/rest`
+
 Firefox AMO:
 
 ```text
@@ -122,20 +153,21 @@ AMO_JWT_ISSUER
 AMO_JWT_SECRET
 ```
 
-Optional Firefox secret:
-
-```text
-FIREFOX_EXTENSION_ID
-```
-
-`FIREFOX_EXTENSION_ID` is only needed if AMO/web-ext cannot infer the extension
-ID from `manifest.firefox.json`.
+No optional Firefox secret is normally needed. The stable Firefox extension ID is
+stored in `manifest.firefox.json`, which is the path required by current
+`web-ext` for listed updates.
 
 Where to get them:
 
 - `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`: AMO Developer Hub API credentials.
-- `FIREFOX_EXTENSION_ID`: the stable ID in `manifest.firefox.json`, currently
+- Firefox extension ID: the stable ID in `manifest.firefox.json`, currently
   `dialogue-captions@wirsingj.github.io`.
+
+Useful Firefox setup links:
+
+- AMO Developer Hub: `https://addons.mozilla.org/en-US/developers/`
+- AMO API keys: `https://addons.mozilla.org/en-US/developers/addon/api/key/`
+- `web-ext sign` docs: `https://extensionworkshop.com/documentation/develop/web-ext-command-reference/#web-ext-sign`
 
 ## Local Release Sanity Check
 
