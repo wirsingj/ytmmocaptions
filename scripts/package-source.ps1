@@ -75,10 +75,12 @@ $fileStream = [System.IO.File]::Open($sourceZip, [System.IO.FileMode]::CreateNew
 try {
   $zip = New-Object System.IO.Compression.ZipArchive($fileStream, [System.IO.Compression.ZipArchiveMode]::Create, $false)
   try {
-    $sourceFiles = Get-ChildItem -LiteralPath $tempRoot -Recurse -File
+    $sourceFiles = Get-ChildItem -LiteralPath $tempRoot -Recurse -File | Sort-Object -Property FullName
+    $entryTimestamp = [System.DateTimeOffset]::Parse("2024-01-01T00:00:00Z")
     foreach ($file in $sourceFiles) {
       $entryName = $file.FullName.Substring($tempRoot.Length + 1).Replace("\", "/")
       $entry = $zip.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Optimal)
+      $entry.LastWriteTime = $entryTimestamp
       $entryStream = $entry.Open()
       try {
         $inputStream = [System.IO.File]::OpenRead($file.FullName)

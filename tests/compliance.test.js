@@ -229,6 +229,8 @@ exports.run = async function runComplianceTests(ctx) {
     }
     const sourcePackage = fs.readFileSync(path.join(ROOT_DIR, "scripts", "package-source.ps1"), "utf8");
     assert.ok(sourcePackage.includes('StartsWith("artifacts/"'), "source package must exclude local test artifacts");
+    assert.ok(sourcePackage.includes("Sort-Object -Property FullName"), "source package entries should be deterministic");
+    assert.ok(sourcePackage.includes("entry.LastWriteTime"), "source package timestamps should be deterministic");
   });
 
   await runCase("release automation is tag-gated and manually approved before store publishing", () => {
@@ -348,9 +350,24 @@ exports.run = async function runComplianceTests(ctx) {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     assert.ok(panelSource.includes("MIN_RESTORED_PANEL_WIDTH"));
     assert.ok(panelSource.includes("MIN_RESTORED_PANEL_HEIGHT"));
+    assert.ok(panelSource.includes("MIN_DEFAULT_PANEL_WIDTH = 650"));
+    assert.ok(panelSource.includes("DEFAULT_PANEL_WIDTH_RATIO = 0.52"));
+    assert.ok(panelSource.includes("maxFrameWidth"));
     assert.ok(panelSource.includes("isRestorablePanelLayout"));
     assert.ok(panelSource.includes("cramped && pinnedTopLeft"));
     assert.ok(panelSource.includes("!this.isRestorablePanelLayout(rect, rect)"));
+  });
+
+  await runCase("panel header sliders shrink before controls wrap", () => {
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(css.includes("flex-wrap: nowrap;"));
+    assert.ok(/\.dc-opacity-wrap,\s*\.dc-text-scale-wrap\s*\{/.test(css));
+    assert.ok(css.includes("flex: 1 1 68px;"));
+    assert.ok(css.includes("min-width: 0;"));
+    assert.ok(css.includes("flex: 1 1 28px;"));
+    assert.ok(css.includes("min-width: 16px;"));
+    assert.ok(css.includes(".dc-control-actions"));
+    assert.ok(css.includes("flex: 0 0 auto;"));
   });
 
   await runCase("future preview UI uses a movable divider and visually ghosted rows", () => {
@@ -366,6 +383,12 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("handleFutureDividerPointerDown"));
     assert.ok(panelSource.includes("futureDividerDragState"));
     assert.ok(panelSource.includes("dc-chunk-future"));
+    assert.ok(panelSource.includes("previousScrollTop"));
+    assert.ok(panelSource.includes("nextList.scrollTop"));
+    assert.ok(panelSource.includes("FUTURE_RENDER_BATCH = 80"));
+    assert.ok(panelSource.includes("buildFutureChunksKey(chunks)"));
+    assert.ok(panelSource.includes("getFutureRenderCount()"));
+    assert.ok(panelSource.includes("handleFutureListScroll(futureList)"));
     assert.ok(panelSource.includes('role", "separator"'));
     assert.ok(!panelSource.includes('divider.textContent = "Next up"'));
     assert.ok(!panelSource.includes('divider.addEventListener("click"'));
@@ -383,6 +406,68 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("white-space: nowrap"));
     assert.ok(css.includes("cursor: ns-resize"));
     assert.ok(css.includes("touch-action: none"));
+  });
+
+  await runCase("future preview rendering stays lazy for long transcript timelines", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const renderKeyStart = panelSource.indexOf("    getFutureRenderKey()");
+    const renderKeyEnd = panelSource.indexOf("    createFutureSection", renderKeyStart);
+    const sectionStart = panelSource.indexOf("    createFutureSection(futureRenderCount, chunkCount)");
+    const sectionEnd = panelSource.indexOf("    replaceFutureSection(futureRenderCount, chunkCount)", sectionStart);
+    assert.ok(renderKeyStart >= 0);
+    assert.ok(renderKeyEnd > renderKeyStart);
+    assert.ok(sectionStart >= 0);
+    assert.ok(sectionEnd > sectionStart);
+    const renderKeyBody = panelSource.slice(renderKeyStart, renderKeyEnd);
+    const sectionBody = panelSource.slice(sectionStart, sectionEnd);
+    assert.ok(renderKeyBody.includes("this.futureChunksKey"));
+    assert.ok(renderKeyBody.includes("this.getFutureRenderCount()"));
+    assert.ok(!renderKeyBody.includes("this.getChunkDisplayText(chunk)"));
+    assert.ok(sectionBody.includes("index < futureRenderCount"));
+    assert.ok(sectionBody.includes("handleFutureListScroll"));
+    assert.ok(!sectionBody.includes("index < futureCount"));
+  });
+
+  await runCase("history rendering keeps mounted transcript rows bounded during interaction", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const renderStart = panelSource.indexOf("    renderWindow()");
+    const renderEnd = panelSource.indexOf("    getHistoryRenderRange(chunkCount)", renderStart);
+    const scrollStart = panelSource.indexOf("    handleHistoryWindowScroll()");
+    const scrollEnd = panelSource.indexOf("    trimMountedRowsForInteraction(patch)", scrollStart);
+    const settingsStart = panelSource.indexOf("    updateSettings(patch)");
+    const settingsEnd = panelSource.indexOf("    shouldPreservePanelPlacement(patch)", settingsStart);
+    assert.ok(panelSource.includes("HISTORY_RENDER_WINDOW = 220"));
+    assert.ok(panelSource.includes("HISTORY_RENDER_STEP = 110"));
+    assert.ok(renderStart >= 0);
+    assert.ok(renderEnd > renderStart);
+    assert.ok(scrollStart >= 0);
+    assert.ok(scrollEnd > scrollStart);
+    assert.ok(settingsStart >= 0);
+    assert.ok(settingsEnd > settingsStart);
+    const renderBody = panelSource.slice(renderStart, renderEnd);
+    const scrollBody = panelSource.slice(scrollStart, scrollEnd);
+    const settingsBody = panelSource.slice(settingsStart, settingsEnd);
+    assert.ok(renderBody.includes("const range = this.getHistoryRenderRange(chunkCount);"));
+    assert.ok(renderBody.includes("index <= end"));
+    assert.ok(!renderBody.includes("const start = 0;"));
+    assert.ok(!renderBody.includes("const end = chunkCount - 1;"));
+    assert.ok(scrollBody.includes("this.setHistoryRenderStart(this.currentWindowStart - HISTORY_RENDER_STEP)"));
+    assert.ok(scrollBody.includes("this.setHistoryRenderStart(this.currentWindowStart + HISTORY_RENDER_STEP)"));
+    assert.ok(settingsBody.includes("this.trimMountedRowsForInteraction(patch);"));
+  });
+
+  await runCase("panel scroll containers do not chain wheel scroll into the YouTube page", () => {
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    const viewportStart = css.indexOf(".dc-list-viewport {");
+    const viewportEnd = css.indexOf(".dc-list-viewport::-webkit-scrollbar", viewportStart);
+    const futureStart = css.indexOf(".dc-future-list {");
+    const futureEnd = css.indexOf(".dc-future-list::-webkit-scrollbar", futureStart);
+    assert.ok(viewportStart >= 0);
+    assert.ok(viewportEnd > viewportStart);
+    assert.ok(futureStart >= 0);
+    assert.ok(futureEnd > futureStart);
+    assert.ok(css.slice(viewportStart, viewportEnd).includes("overscroll-behavior: contain;"));
+    assert.ok(css.slice(futureStart, futureEnd).includes("overscroll-behavior: contain;"));
   });
 
   await runCase("panel reset preserves the selected theme", () => {
@@ -420,6 +505,50 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("this.lastGlowWordEnd = nextGlowWordEnd"));
   });
 
+  await runCase("history reading mode treats upward scroll as explicit reading intent", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    assert.ok(panelSource.includes("historyReadingMode"));
+    assert.ok(panelSource.includes("HISTORY_BOTTOM_EXIT_PX = 36"));
+    assert.ok(panelSource.includes("enterHistoryReadingMode(\"scroll-up\")"));
+    assert.ok(panelSource.includes("getScrollAnchorSnapshot"));
+    assert.ok(panelSource.includes("preserveScrollAnchorDuringModeChange"));
+    assert.ok(panelSource.includes("restoreScrollAnchorSnapshot"));
+    assert.ok(panelSource.includes("preserveScrollBottomDuringModeChange"));
+    assert.ok(panelSource.includes("restoreScrollBottomPosition"));
+    assert.ok(panelSource.includes("this.scrollAnchorRafId"));
+    assert.ok(panelSource.includes("exitHistoryReadingMode(\"current\")"));
+    assert.ok(panelSource.includes("exitHistoryReadingMode(\"latest\")"));
+    assert.ok(panelSource.includes("this.historyReadingMode && atAbsoluteLatest && nextBottomDistance <= HISTORY_BOTTOM_EXIT_PX"));
+    assert.ok(panelSource.includes("!this.historyReadingMode && this.isNearBottom(2.6)"));
+    assert.ok(panelSource.includes("!this.historyReadingMode && (this.stickToBottom || this.isNearBottom(2.6))"));
+    assert.ok(panelSource.includes("this.historyReadingMode && !options.exitHistoryMode"));
+  });
+
+  await runCase("caption hierarchy separates past current and history reading modes", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    assert.ok(css.includes(".dc-panel:not(.is-reading-history) .dc-chunk:not(.is-current):not(.dc-chunk-future)"));
+    assert.ok(css.includes(".dc-panel.is-reading-history .dc-chunk:not(.is-current):not(.dc-chunk-future)"));
+    assert.ok(css.includes(".dc-chunk:not(.is-current):not(.dc-chunk-future) .dc-chunk-text"));
+    assert.ok(css.includes(".dc-chunk.is-current .dc-chunk-text"));
+    assert.ok(css.includes("font-size: calc(12.2px * var(--dc-text-scale));"));
+    assert.ok(css.includes("line-height: 1.32;"));
+    assert.ok(css.includes("font-size: calc(13px * var(--dc-text-scale));"));
+    assert.ok(css.includes("line-height: 1.38;"));
+    assert.ok(css.includes("font-size: calc(14px * var(--dc-text-scale));"));
+    assert.ok(css.includes("line-height: 1.48;"));
+    assert.ok(css.includes("font-size 180ms ease"));
+    assert.ok(css.includes("line-height 180ms ease"));
+    assert.ok(css.includes("text-shadow: 0 0 9px rgba(var(--dc-accent-rgb), 0.13);"));
+    assert.ok(panelSource.includes("activeArrivalIndex"));
+    assert.ok(panelSource.includes("playActiveArrivalFeedback"));
+    assert.ok(panelSource.includes('item.classList.add("is-arriving")'));
+    assert.ok(css.includes(".dc-chunk.is-current.is-arriving"));
+    assert.ok(css.includes("@keyframes dc-active-arrival"));
+    assert.ok(css.includes("translateX(3px) scale(1.012)"));
+    assert.ok(css.includes(".dc-chunk.is-current.is-arriving .dc-chunk-text"));
+  });
+
   await runCase("panel exposes basic accessibility labels and reduced-motion CSS", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
     const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
@@ -432,11 +561,38 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('jumpLabel.textContent = "Jump to"'));
     assert.ok(panelSource.includes('this.jumpCurrentButton.textContent = "Current"'));
     assert.ok(panelSource.includes('this.jumpLatestButton.textContent = "Latest"'));
+    assert.ok(panelSource.includes('this.helpButton.textContent = "?"'));
+    assert.ok(panelSource.includes('aria-label", "Open quick guide"'));
+    assert.ok(panelSource.includes('aria-haspopup", "dialog"'));
+    assert.ok(panelSource.includes("HELP_POPOVER_ID"));
+    assert.ok(panelSource.includes("this.helpPopover.id = this.helpPopoverId"));
+    assert.ok(panelSource.includes("#\" + this.helpPopoverId"));
+    assert.ok(panelSource.includes('helpTitle.textContent = "Quick Guide"'));
+    assert.ok(panelSource.includes('"Click any bubble to seek."'));
+    assert.ok(panelSource.includes('"Current returns to the active caption."'));
+    assert.ok(panelSource.includes('"Latest jumps to the newest reached caption."'));
+    assert.ok(panelSource.includes('"Next previews upcoming captions."'));
+    assert.ok(panelSource.includes('"Case Fix softens all-caps captions."'));
+    assert.ok(panelSource.includes('"Use the color picker, opacity, and text controls to tune readability."'));
+    assert.ok(panelSource.includes('"Presets start as Default, Music, and Podcast loadouts; the lower Save area captures one."'));
+    assert.ok(panelSource.includes('"Lock keeps the workspace across videos."'));
+    assert.ok(panelSource.includes('"Reset restores the panel workspace shape."'));
+    assert.ok(panelSource.includes('"Drag the header to move; drag edges or corners to resize."'));
+    assert.ok(panelSource.includes("toggleHelpPopover"));
+    assert.ok(panelSource.includes("updateHelpPopoverPosition"));
+    assert.ok(panelSource.includes('this.addListener(document, "keydown", onColorPickerEscape);'));
+    assert.ok(panelSource.includes("this.closeHelpPopover();"));
     assert.ok(panelSource.includes("jumpToLatestCaption"));
     assert.ok(panelSource.includes("seekLeadSeconds: 0"));
     assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(panelSource.includes("dc-color-popover"));
+    assert.ok(panelSource.includes("dc-rainbow-toggle"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
+    assert.ok(panelSource.includes("toggleRainbowThemeMode"));
+    assert.ok(panelSource.includes("RAINBOW_THEME_CYCLE_MS = 15000"));
+    assert.ok(panelSource.includes("RAINBOW_THEME_FRAME_MS = 33"));
+    assert.ok(panelSource.includes("RAINBOW_THEME_SATURATION = 0.84"));
+    assert.ok(panelSource.includes("rainbowThemeRestoreSnapshot"));
     assert.ok(panelSource.includes("Math.atan2(dx, -dy)"));
     assert.ok(panelSource.includes("Math.sin(radians)"));
     assert.ok(panelSource.includes("50 - Math.cos(radians)"));
@@ -448,6 +604,15 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("position: fixed;"));
     assert.ok(css.includes("z-index: 2147483646"));
     assert.ok(css.includes(".dc-color-wheel"));
+    assert.ok(css.includes(".dc-rainbow-toggle"));
+    assert.ok(css.includes(".dc-help-popover"));
+    assert.ok(css.includes(".dc-btn-help"));
+    const controlsStart = css.indexOf("\n.dc-controls {");
+    const controlsEnd = css.indexOf(".dc-controls *", controlsStart);
+    assert.ok(controlsStart >= 0);
+    assert.ok(controlsEnd > controlsStart);
+    assert.ok(!css.slice(controlsStart, controlsEnd).includes("overflow: hidden;"));
+    assert.ok(css.includes("flex-wrap: wrap"));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 
@@ -490,6 +655,11 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes("caseFixEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
     assert.ok(source.includes("layoutLocked"));
+    assert.ok(!source.includes("rainbowThemeEnabled"));
+    assert.ok(source.includes("workspacePresets"));
+    assert.ok(source.includes("DEFAULT_WORKSPACE_PRESETS"));
+    assert.ok(source.includes("activeWorkspacePreset"));
+    assert.ok(source.includes("workspacePresetBaseline"));
     assert.ok(source.includes("toStoredSettings"));
     assert.ok(source.includes("timelineModeEnabled"));
     const privacy = fs.readFileSync(path.join(ROOT_DIR, "PRIVACY.md"), "utf8");
@@ -502,6 +672,33 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(privacy.includes("Case Fix"));
     assert.ok(privacy.includes("Layout Lock"));
     assert.ok(privacy.includes("Fade setting"));
+    assert.ok(privacy.includes("workspace preset snapshots"));
+  });
+
+  await runCase("workspace model is documented without pinned defaults implementation", () => {
+    const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
+    const architecture = fs.readFileSync(path.join(ROOT_DIR, "ARCHITECTURE.md"), "utf8");
+    const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
+    const qa = fs.readFileSync(path.join(ROOT_DIR, "QA_CHECKLIST.md"), "utf8");
+    assert.ok(panelSource.includes("dc-preset-rail"));
+    assert.ok(panelSource.includes("toggleWorkspacePreset"));
+    assert.ok(panelSource.includes("captureWorkspacePreset"));
+    assert.ok(panelSource.includes("workspacePresetBaseline"));
+    assert.ok(css.includes(".dc-preset-pill"));
+    assert.ok(css.includes("grid-template-rows: 2fr 1fr"));
+    assert.ok(architecture.includes("## Workspace / Preferences Model"));
+    assert.ok(architecture.includes("Layout Lock off: each video starts from the default panel workspace."));
+    assert.ok(architecture.includes("Layout Lock on: the same workspace follows the user across YouTube videos."));
+    assert.ok(architecture.includes("Workspace presets: three seeded local snapshot slots act as temporary loadouts"));
+    assert.ok(architecture.includes("It does not store video identity, transcript content, current timestamp, active bubble, Lock state"));
+    assert.ok(architecture.includes("Reset: returns the panel workspace shape to defaults"));
+    assert.ok(architecture.includes("Pinned defaults are deferred."));
+    assert.ok(readme.includes("Three seeded local workspace preset slots can save and apply temporary panel layout/readability snapshots"));
+    assert.ok(readme.includes("Reset restores the current workspace shape to defaults"));
+    assert.ok(readme.includes("The quick guide in the panel header summarizes"));
+    assert.ok(qa.includes("Capture a workspace preset after moving/resizing the panel"));
+    assert.ok(qa.includes("Confirm no pinned-default UI or second persistence layer is present."));
   });
 
   await runCase("generic video experiment is source-only and not in release manifests", () => {

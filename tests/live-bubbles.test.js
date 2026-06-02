@@ -130,6 +130,51 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(!closeBranch.includes("disableLiveCaptureMode()"));
   });
 
+  await runCase("transcript heartbeat recovers an open panel without becoming an unbounded poll loop", () => {
+    assert.ok(source.includes("MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3"));
+    assert.ok(source.includes("scheduleTranscriptHeartbeatCheck(reason, delayMs)"));
+    assert.ok(source.includes("checkTranscriptHeartbeat(reason)"));
+    assert.ok(source.includes("recoverTranscriptActivity(reason)"));
+    assert.ok(source.includes("this.transcriptRecoveryAttempts += 1;"));
+    assert.ok(source.includes("this.transcriptRecoveryAttempts >= MAX_TRANSCRIPT_RECOVERY_ATTEMPTS"));
+    assert.ok(source.includes("MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS = 20"));
+    assert.ok(source.includes("isTranscriptHeartbeatExhausted()"));
+    assert.ok(source.includes("TRANSCRIPT_HEARTBEAT_RECHECK_MS"));
+    assert.ok(source.includes("window.setTimeout(() =>"));
+    assert.ok(!source.includes("transcriptHeartbeatPollId"));
+  });
+
+  await runCase("heartbeat recovery nudges caption ingestion without clearing existing live bubbles", () => {
+    const recoverStart = source.indexOf("    recoverTranscriptActivity(reason)");
+    const recoverBody = source.slice(
+      recoverStart,
+      source.indexOf("    nudgeCaptionWork(reason)", recoverStart)
+    );
+    assert.ok(recoverBody.includes("this.ensurePageBridgeForWatchPage();"));
+    assert.ok(recoverBody.includes("this.ensureCaptionsEnabledOnce();"));
+    assert.ok(recoverBody.includes("this.probeCaptionsNow();"));
+    assert.ok(recoverBody.includes("if (!this.liveCaptureEnabled)"));
+    assert.ok(recoverBody.includes("this.startLiveCapturePolling();"));
+    assert.ok(recoverBody.includes("this.captureLiveCaptionLine();"));
+    assert.ok(recoverBody.includes("if (!this.transcriptLoadInFlight)"));
+    assert.ok(recoverBody.includes("this.loadTranscript();"));
+    assert.ok(!recoverBody.includes("this.liveBubbles = []"));
+    assert.ok(!recoverBody.includes("this.liveBucketToBubble = new Map()"));
+  });
+
+  await runCase("same-video route and tab restore events nudge heartbeat for old open panels", () => {
+    const routeStart = source.indexOf("    async reconcileRoute()");
+    const routeBody = source.slice(routeStart, source.indexOf("    teardownApp()", routeStart));
+    assert.ok(source.includes("nudgeCaptionWork(reason)"));
+    assert.ok(routeBody.includes("this.app.nudgeCaptionWork"));
+    assert.ok(routeBody.includes("\"route-still-active\""));
+    assert.ok(source.includes("this.scheduleTranscriptHeartbeatCheck(reason || \"nudge\""));
+    const nudgeStart = source.indexOf("    nudgeCaptionWork(reason)");
+    const nudgeBody = source.slice(nudgeStart, source.indexOf("    isChunkIndexAlignedWithTime", nudgeStart));
+    assert.ok(nudgeBody.includes("this.hasTranscriptActivity() || this.transcriptHeartbeatTimerId || this.isTranscriptHeartbeatExhausted()"));
+    assert.ok(nudgeBody.indexOf("return;") < nudgeBody.indexOf("this.ensureCaptionsEnabledOnce();"));
+  });
+
   await runCase("video sync listeners are rebound and cleaned when YouTube swaps video elements", () => {
     assert.ok(source.includes("this.videoCleanupFns = [];"));
     assert.ok(source.includes("this.boundVideo = null;"));
@@ -216,16 +261,32 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(activeBody.includes("this.getChunkActiveStart(source[index + 1])"));
   });
 
-  await runCase("future caption previews are limited, honest, and clickable", () => {
-    assert.ok(source.includes("getFuturePreviewChunks()"));
+  await runCase("future caption previews use the full transcript timeline when available", () => {
+    const futureMethod = source.slice(
+      source.indexOf("    getFuturePreviewChunks(activeTimelineIndex)"),
+      source.indexOf("    findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)")
+    );
+    const liveFallbackMethod = source.slice(
+      source.indexOf("    readFuturePreviewChunksFromTextTracks(currentBucketIndex)"),
+      source.indexOf("    shouldContinueOverlayUtterance(previousCanonical, nextCanonical)")
+    );
+    assert.ok(source.includes("getFuturePreviewChunks(activeTimelineIndex)"));
     assert.ok(source.includes("findTimelineChunkIndex(chunks, currentTime, toleranceSeconds)"));
     assert.ok(source.includes("readFuturePreviewChunksFromTextTracks(currentBucketIndex)"));
     assert.ok(source.includes("this.settings.futurePreviewEnabled === false"));
-    assert.ok(source.includes("offset <= 4"));
-    assert.ok(source.includes("futurePreviewOnly"));
-    assert.ok(source.includes("currentIndex + 1"));
-    assert.ok(source.includes("actualIndex: index"));
-    assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks())"));
+    assert.ok(liveFallbackMethod.includes("offset <= 4"));
+    assert.ok(source.includes("getFuturePreviewSignature(activeTimelineIndex)"));
+    assert.ok(source.includes("signature === this.futurePreviewSignature"));
+    assert.ok(source.includes("this.futurePreviewSignature = signature"));
+    assert.ok(source.includes("this.updateFuturePreviewChunks(nextIndex)"));
+    assert.ok(futureMethod.includes("transcriptSource.slice(previewStart).map"));
+    assert.ok(futureMethod.includes("for (let index = previewStart; index < this.allChunks.length; index += 1)"));
+    assert.ok(futureMethod.includes("futurePreviewOnly"));
+    assert.ok(futureMethod.includes("currentIndex + 1"));
+    assert.ok(futureMethod.includes("actualIndex: index"));
+    assert.ok(!futureMethod.includes("transcriptSource.slice(previewStart, previewStart + 4)"));
+    assert.ok(!futureMethod.includes("previewStart + 4"));
+    assert.ok(source.includes("setFutureChunks(this.getFuturePreviewChunks(activeTimelineIndex))"));
   });
 
   await runCase("full transcript timelines use conversational chunks instead of keyboard skip buckets", () => {

@@ -17,6 +17,11 @@
   }
 
   const GLOBAL_CONTROLLER_KEY = "__dialogueCaptionsController";
+  const TRANSCRIPT_HEARTBEAT_GRACE_MS = 6500;
+  const TRANSCRIPT_HEARTBEAT_RECHECK_MS = 8200;
+  const TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS = 2400;
+  const MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3;
+  const MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS = 20;
 
   function isTypingContext(target) {
     const element = target instanceof Element ? target : document.activeElement;
@@ -73,9 +78,15 @@
       this.captionsEnabledByExtension = false;
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
+      this.transcriptLoadInFlight = false;
+      this.transcriptLoadNonce = 0;
       this.transcriptUpgradeAttempts = 0;
       this.transcriptUpgradeInFlight = false;
       this.lastTranscriptUpgradeAt = 0;
+      this.transcriptLastActivityAt = 0;
+      this.transcriptHeartbeatTimerId = 0;
+      this.transcriptRecoveryAttempts = 0;
+      this.transcriptReadinessDeferrals = 0;
       this.pendingSeekFocus = null;
       this.liveCaptureSuppressedUntil = 0;
       this.liveBubbles = [];
@@ -84,6 +95,7 @@
       this.liveNextBubbleUid = 1;
       this.liveFuturePreviewChunks = [];
       this.transcriptPreviewChunks = [];
+      this.futurePreviewSignature = "";
     }
 
     async init() {
@@ -132,6 +144,7 @@
         platform.cancelFrame(this.syncRafId);
         this.syncRafId = 0;
       }
+      this.stopTranscriptHeartbeat();
 
       for (const cleanup of this.cleanupFns) {
         cleanup();
@@ -1163,6 +1176,7 @@
       });
       if (changed || backfilled) {
         this.rebuildChunks();
+        this.noteTranscriptActivity("live-capture");
         this.syncActiveChunk(true);
         if (this.panel && this.cues.length === 1) {
           this.panel.setStatus("Live subtitle capture started.", true);
@@ -1379,14 +1393,21 @@
           this.startLiveCapturePolling();
         }
         this.syncActiveChunk(true);
+        if (!this.hasTranscriptActivity()) {
+          this.scheduleTranscriptHeartbeatCheck("caption-work-resume", TRANSCRIPT_HEARTBEAT_GRACE_MS);
+        }
         return;
       }
 
       this.captionWorkStarted = true;
+      this.transcriptLastActivityAt = 0;
+      this.transcriptRecoveryAttempts = 0;
+      this.transcriptReadinessDeferrals = 0;
       this.ensurePageBridgeForWatchPage();
       if (this.panel) {
         this.panel.setStatus("Loading subtitles...");
       }
+      this.scheduleTranscriptHeartbeatCheck("caption-work-start", TRANSCRIPT_HEARTBEAT_GRACE_MS);
       this.startCaptionEnsureLoop();
       this.enableLiveCaptureMode();
       await this.loadTranscript();
@@ -1411,6 +1432,7 @@
       this.liveLastFutureBackfillAt = 0;
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveFuturePreviewChunks = [];
+      this.futurePreviewSignature = "";
       if (!Array.isArray(this.transcriptPreviewChunks)) {
         this.transcriptPreviewChunks = [];
       }
@@ -1439,6 +1461,7 @@
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveFuturePreviewChunks = [];
       this.transcriptPreviewChunks = [];
+      this.futurePreviewSignature = "";
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
       this.liveBubbles = [];
@@ -1524,7 +1547,45 @@
         .join("|");
     }
 
-    getFuturePreviewChunks() {
+    getFuturePreviewSignature(activeTimelineIndex) {
+      if (!this.canShowFuturePreviewChunks()) {
+        return "empty";
+      }
+      const transcriptSource = Array.isArray(this.transcriptPreviewChunks) && this.transcriptPreviewChunks.length
+        ? this.transcriptPreviewChunks
+        : [];
+      if (transcriptSource.length) {
+        const currentTime = this.video ? Number(this.video.currentTime || 0) : 0;
+        const currentIndex = Number.isInteger(activeTimelineIndex)
+          ? activeTimelineIndex
+          : this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
+        const previewStart = Math.max(0, currentIndex + 1);
+        const first = transcriptSource[previewStart];
+        const last = transcriptSource[transcriptSource.length - 1];
+        return [
+          "transcript",
+          transcriptSource.length,
+          previewStart,
+          first ? [first.start, first.end, first.seekStart, first.text].join(":") : "",
+          last ? [last.start, last.end, last.seekStart, last.text].join(":") : ""
+        ].join("|");
+      }
+      if (this.liveCaptureEnabled) {
+        return "live|" + this.getFuturePreviewKey();
+      }
+      const previewStart = Math.max(0, Number(this.revealedChunkCount || 0));
+      const first = this.allChunks[previewStart];
+      const last = this.allChunks[this.allChunks.length - 1];
+      return [
+        "chunks",
+        this.allChunks.length,
+        previewStart,
+        first ? [first.start, first.end, first.seekStart, first.text].join(":") : "",
+        last ? [last.start, last.end, last.seekStart, last.text].join(":") : ""
+      ].join("|");
+    }
+
+    getFuturePreviewChunks(activeTimelineIndex) {
       if (!this.canShowFuturePreviewChunks()) {
         return [];
       }
@@ -1533,9 +1594,11 @@
         : [];
       if (transcriptSource.length) {
         const currentTime = this.video ? Number(this.video.currentTime || 0) : 0;
-        const currentIndex = this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
+        const currentIndex = Number.isInteger(activeTimelineIndex)
+          ? activeTimelineIndex
+          : this.findTimelineChunkIndex(transcriptSource, currentTime, 0.45);
         const previewStart = Math.max(0, currentIndex + 1);
-        return transcriptSource.slice(previewStart, previewStart + 4).map((chunk, offset) => ({
+        return transcriptSource.slice(previewStart).map((chunk, offset) => ({
           ...chunk,
           actualIndex: previewStart + offset,
           futurePreviewOnly: true
@@ -1550,12 +1613,12 @@
         }));
       }
       const previewStart = Math.max(0, Number(this.revealedChunkCount || 0));
-      const previewEnd = Math.min(this.allChunks.length, previewStart + 4);
       const previews = [];
-      for (let index = previewStart; index < previewEnd; index += 1) {
+      for (let index = previewStart; index < this.allChunks.length; index += 1) {
         previews.push({
           ...this.allChunks[index],
-          actualIndex: index
+          actualIndex: index,
+          futurePreviewOnly: true
         });
       }
       return previews;
@@ -1625,9 +1688,15 @@
       return now >= start - startTolerance && now <= activeUntil + 0.25 ? index : -1;
     }
 
-    updateFuturePreviewChunks() {
+    updateFuturePreviewChunks(activeTimelineIndex, options) {
+      // Full transcript previews can span long videos; avoid rebuilding the same future list on every playback frame.
+      const signature = this.getFuturePreviewSignature(activeTimelineIndex);
+      if (!(options && options.force) && signature === this.futurePreviewSignature) {
+        return;
+      }
+      this.futurePreviewSignature = signature;
       if (this.panel && typeof this.panel.setFutureChunks === "function") {
-        this.panel.setFutureChunks(this.getFuturePreviewChunks());
+        this.panel.setFutureChunks(this.getFuturePreviewChunks(activeTimelineIndex));
       }
       if (
         this.panel &&
@@ -1663,11 +1732,11 @@
         if (typeof this.panel.setPlaybackTime === "function") {
           this.panel.setPlaybackTime(currentTime, { forceGlowReset: true });
         }
-        this.updateFuturePreviewChunks();
+        this.updateFuturePreviewChunks(nextIndex);
         return;
       }
       this.ensureChunkVisible(nextIndex);
-      this.updateFuturePreviewChunks();
+      this.updateFuturePreviewChunks(nextIndex);
       this.activeIndex = Math.max(0, Math.min(nextIndex, this.chunks.length - 1));
       this.panel.setActiveIndex(this.activeIndex, { ensureVisible: forceScroll });
       if (typeof this.panel.setPlaybackTime === "function") {
@@ -1748,6 +1817,7 @@
         this.revealedChunkCount = 0;
         this.rebuildChunks();
         this.transcriptPreviewChunks = this.allChunks.slice();
+        this.noteTranscriptActivity("transcript-upgrade");
         this.syncActiveChunk(true);
         if (this.panel) {
           this.panel.setStatus("Full caption timeline loaded. Next up previews are available.", true);
@@ -1765,6 +1835,9 @@
     async loadTranscript() {
       this.abortTranscriptLoad();
       this.loadAbortController = new AbortController();
+      const loadId = this.transcriptLoadNonce + 1;
+      this.transcriptLoadNonce = loadId;
+      this.transcriptLoadInFlight = true;
       this.transcriptMode = "loading";
       this.transcriptLoadAttempts += 1;
 
@@ -1772,23 +1845,40 @@
       const signal = this.loadAbortController.signal;
       const transcriptTimeoutMs = 10000;
       if (signal.aborted || this.destroyed) {
+        if (loadId === this.transcriptLoadNonce) {
+          this.transcriptLoadInFlight = false;
+        }
         return;
       }
       this.maybeProbeCaptions();
       await this.waitForCaptionContextReady(2400);
       if (signal.aborted || this.destroyed) {
+        if (loadId === this.transcriptLoadNonce) {
+          this.transcriptLoadInFlight = false;
+        }
         return;
       }
-      const response = await Promise.race([
-        captionTimeline.acquireFullTimeline(url, signal, {
-          videoElement: this.video
-        }),
-        new Promise((resolve) => {
-          window.setTimeout(() => {
-            resolve({ ok: false, reason: "Transcript loading timed out." });
-          }, transcriptTimeoutMs);
-        })
-      ]);
+      let response = null;
+      let timeoutId = 0;
+      try {
+        response = await Promise.race([
+          captionTimeline.acquireFullTimeline(url, signal, {
+            videoElement: this.video
+          }),
+          new Promise((resolve) => {
+            timeoutId = window.setTimeout(() => {
+              resolve({ ok: false, reason: "Transcript loading timed out." });
+            }, transcriptTimeoutMs);
+          })
+        ]);
+      } finally {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+        if (loadId === this.transcriptLoadNonce) {
+          this.transcriptLoadInFlight = false;
+        }
+      }
 
       if (!response || !response.ok) {
         const reason = String(response && response.reason ? response.reason : "");
@@ -1818,6 +1908,7 @@
           if (!this.cues.length) {
             this.panel.setChunks([]);
             if (typeof this.panel.setFutureChunks === "function") {
+              this.futurePreviewSignature = "";
               this.panel.setFutureChunks([]);
             }
             if (typeof this.panel.setTimelineData === "function") {
@@ -1847,6 +1938,7 @@
       this.revealedChunkCount = 0;
       this.rebuildChunks();
       this.transcriptPreviewChunks = this.allChunks.slice();
+      this.noteTranscriptActivity("full-transcript");
       diagnostics.record("captions:transcript-loaded", {
         cueCount: response.cues.length,
         mode: response.mode || response.sourceType || "direct transcript mode",
@@ -2416,6 +2508,7 @@
       if (changedPanelClosed && isClosed) {
         this.abortTranscriptLoad();
         this.stopLiveCapturePolling();
+        this.stopTranscriptHeartbeat();
         this.clearTimelineActionState("panel-closed");
         this.restoreSubtitlesIfExtensionEnabled();
         return;
@@ -2565,6 +2658,162 @@
         }
       }
       return this.video;
+    }
+
+    hasTranscriptActivity() {
+      if (Number.isFinite(this.transcriptLastActivityAt) && this.transcriptLastActivityAt > 0) {
+        return true;
+      }
+      // Activity means the panel has received any usable caption data. The
+      // heartbeat is only for the empty-panel stall where neither transcript
+      // loading nor live capture has produced a bubble.
+      return (
+        (Array.isArray(this.cues) && this.cues.length > 0) ||
+        (Array.isArray(this.allChunks) && this.allChunks.length > 0) ||
+        (Array.isArray(this.chunks) && this.chunks.length > 0)
+      );
+    }
+
+    noteTranscriptActivity(source) {
+      if (!this.hasTranscriptActivity()) {
+        return;
+      }
+      this.transcriptLastActivityAt = Date.now();
+      this.transcriptRecoveryAttempts = 0;
+      this.transcriptReadinessDeferrals = 0;
+      this.stopTranscriptHeartbeat();
+      diagnostics.record("captions:activity", { source: source || "unknown" });
+    }
+
+    stopTranscriptHeartbeat() {
+      if (this.transcriptHeartbeatTimerId) {
+        window.clearTimeout(this.transcriptHeartbeatTimerId);
+        this.transcriptHeartbeatTimerId = 0;
+      }
+    }
+
+    isTranscriptHeartbeatExhausted() {
+      return (
+        this.transcriptRecoveryAttempts >= MAX_TRANSCRIPT_RECOVERY_ATTEMPTS ||
+        this.transcriptReadinessDeferrals >= MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS
+      );
+    }
+
+    scheduleTranscriptHeartbeatCheck(reason, delayMs) {
+      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+        this.stopTranscriptHeartbeat();
+        return;
+      }
+      if (this.isTranscriptHeartbeatExhausted()) {
+        this.stopTranscriptHeartbeat();
+        return;
+      }
+      if (this.transcriptHeartbeatTimerId) {
+        return;
+      }
+      const delay = Math.max(250, Number.isFinite(Number(delayMs)) ? Number(delayMs) : TRANSCRIPT_HEARTBEAT_GRACE_MS);
+      // Use a one-shot timer instead of another poll loop. Follow-up checks are
+      // scheduled only while the open panel is still empty.
+      this.transcriptHeartbeatTimerId = window.setTimeout(() => {
+        this.transcriptHeartbeatTimerId = 0;
+        this.checkTranscriptHeartbeat(reason || "timer");
+      }, delay);
+    }
+
+    isVideoPlayableForTranscriptRecovery() {
+      const video = this.refreshVideoReference();
+      if (!(video instanceof HTMLVideoElement)) {
+        return false;
+      }
+      const readyState = Number(video.readyState || 0);
+      if (readyState < 1 || video.ended) {
+        return false;
+      }
+      const duration = Number(video.duration);
+      return Boolean(video.currentSrc || video.src || Number.isFinite(duration) || duration === Number.POSITIVE_INFINITY);
+    }
+
+    checkTranscriptHeartbeat(reason) {
+      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+        this.stopTranscriptHeartbeat();
+        return;
+      }
+      if (!this.isVideoPlayableForTranscriptRecovery()) {
+        this.transcriptReadinessDeferrals += 1;
+        if (this.isTranscriptHeartbeatExhausted()) {
+          diagnostics.record("captions:heartbeat-exhausted", {
+            attempts: this.transcriptRecoveryAttempts,
+            readinessDeferrals: this.transcriptReadinessDeferrals,
+            reason: "video-not-ready"
+          });
+          return;
+        }
+        this.scheduleTranscriptHeartbeatCheck("video-not-ready", TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS);
+        return;
+      }
+      this.transcriptReadinessDeferrals = 0;
+      this.recoverTranscriptActivity(reason || "heartbeat");
+    }
+
+    recoverTranscriptActivity(reason) {
+      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+        return;
+      }
+      if (this.isTranscriptHeartbeatExhausted()) {
+        diagnostics.record("captions:heartbeat-exhausted", {
+          attempts: this.transcriptRecoveryAttempts,
+          readinessDeferrals: this.transcriptReadinessDeferrals,
+          reason: reason || ""
+        });
+        return;
+      }
+
+      this.transcriptRecoveryAttempts += 1;
+      diagnostics.record("captions:heartbeat-recovery", {
+        attempts: this.transcriptRecoveryAttempts,
+        reason: reason || ""
+      });
+
+      this.ensurePageBridgeForWatchPage();
+      this.startCaptionEnsureLoop();
+      this.ensureCaptionsEnabledOnce();
+      this.probeCaptionsNow();
+
+      if (!this.liveCaptureEnabled) {
+        this.enableLiveCaptureMode();
+      } else {
+        // Do not reinitialize live mode here; existing bucket state is what
+        // prevents duplicate bubbles if recovery fires after partial capture.
+        this.startLiveCapturePolling();
+        this.captureLiveCaptionLine();
+      }
+
+      if (!this.transcriptLoadInFlight) {
+        this.loadTranscript();
+      }
+      this.scheduleTranscriptHeartbeatCheck("post-recovery", TRANSCRIPT_HEARTBEAT_RECHECK_MS);
+    }
+
+    nudgeCaptionWork(reason) {
+      if (this.destroyed || this.settings.panelClosed) {
+        return;
+      }
+      this.refreshVideoReference();
+      if (!this.captionWorkStarted) {
+        this.startCaptionWork();
+        return;
+      }
+      if (this.hasTranscriptActivity() || this.transcriptHeartbeatTimerId || this.isTranscriptHeartbeatExhausted()) {
+        return;
+      }
+      // Same-video route events fire periodically on YouTube. Only nudge the
+      // caption pipeline when the open panel is still empty and no heartbeat
+      // check is already pending.
+      this.ensureCaptionsEnabledOnce();
+      if (this.liveCaptureEnabled) {
+        this.startLiveCapturePolling();
+      }
+      this.scheduleTranscriptHeartbeatCheck(reason || "nudge", TRANSCRIPT_HEARTBEAT_GRACE_MS);
     }
 
     isChunkIndexAlignedWithTime(chunks, index, time) {
@@ -2908,6 +3157,9 @@
       }
 
       if (videoId === this.activeVideoId && this.app) {
+        if (typeof this.app.nudgeCaptionWork === "function") {
+          this.app.nudgeCaptionWork("route-still-active");
+        }
         return;
       }
 

@@ -4,10 +4,46 @@
 
   const STORAGE_KEY = "dialogueCaptions.settings.v1";
   const SCHEMA_VERSION = 1;
+  const WORKSPACE_PRESET_COUNT = 3;
+  const DEFAULT_WORKSPACE_PRESETS = Object.freeze([
+    Object.freeze({
+      panelOpacity: 48,
+      textScale: 120,
+      themeName: "stone",
+      customThemeColor: "#ded6c3",
+      panelPosition: null,
+      panelSize: null,
+      futurePreviewEnabled: true,
+      caseFixEnabled: true,
+      fadeTowardVideoCenter: false
+    }),
+    Object.freeze({
+      panelOpacity: 10,
+      textScale: 175,
+      themeName: "custom",
+      customThemeColor: "#d62fbe",
+      panelPosition: Object.freeze({ anchor: "player", left: 12, top: 12 }),
+      panelSize: Object.freeze({ width: 2400, height: 760 }),
+      futurePreviewEnabled: true,
+      caseFixEnabled: false,
+      fadeTowardVideoCenter: false
+    }),
+    Object.freeze({
+      panelOpacity: 58,
+      textScale: 140,
+      themeName: "ocean",
+      customThemeColor: "#a7cde3",
+      panelPosition: Object.freeze({ anchor: "player", left: 220, top: 64 }),
+      panelSize: Object.freeze({ width: 820, height: 460 }),
+      futurePreviewEnabled: true,
+      caseFixEnabled: true,
+      fadeTowardVideoCenter: false
+    })
+  ]);
   let saveQueue = Promise.resolve();
   const DEFAULTS = Object.freeze({
     schemaVersion: SCHEMA_VERSION,
-    panelOpacity: 55,
+    panelOpacity: 48,
     textScale: 120,
     themeName: "stone",
     customThemeColor: "#ded6c3",
@@ -16,13 +52,16 @@
     futurePreviewHeight: 96,
     futurePreviewEnabled: true,
     caseFixEnabled: true,
-    fadeTowardVideoCenter: true,
+    fadeTowardVideoCenter: false,
     videoCenterFadeStrength: 84,
     videoCenterFadeMidpoint: 50,
     videoCenterFadeMinOpacity: 12,
     layoutLocked: false,
     timelineModeEnabled: false,
     launcherPosition: null,
+    workspacePresets: DEFAULT_WORKSPACE_PRESETS,
+    activeWorkspacePreset: null,
+    workspacePresetBaseline: null,
     panelClosed: true
   });
 
@@ -134,8 +173,44 @@
     };
   }
 
+  function normalizeWorkspacePresetId(value) {
+    const number = Number(value);
+    if (!Number.isInteger(number) || number < 1 || number > WORKSPACE_PRESET_COUNT) {
+      return null;
+    }
+    return number;
+  }
+
+  function normalizeWorkspaceSnapshot(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    return {
+      panelOpacity: normalizePanelOpacity(value.panelOpacity),
+      textScale: normalizeTextScale(value.textScale),
+      themeName: normalizeThemeName(value.themeName),
+      customThemeColor: normalizeCustomThemeColor(value.customThemeColor),
+      panelPosition: normalizePanelPosition(value.panelPosition),
+      panelSize: normalizePanelSize(value.panelSize),
+      futurePreviewEnabled: typeof value.futurePreviewEnabled === "boolean" ? value.futurePreviewEnabled : DEFAULTS.futurePreviewEnabled,
+      caseFixEnabled: typeof value.caseFixEnabled === "boolean" ? value.caseFixEnabled : DEFAULTS.caseFixEnabled,
+      fadeTowardVideoCenter: typeof value.fadeTowardVideoCenter === "boolean" ? value.fadeTowardVideoCenter : DEFAULTS.fadeTowardVideoCenter
+    };
+  }
+
+  function normalizeWorkspacePresets(value) {
+    const source = Array.isArray(value) ? value : [];
+    const presets = [];
+    for (let index = 0; index < WORKSPACE_PRESET_COUNT; index += 1) {
+      presets.push(normalizeWorkspaceSnapshot(source[index]) || normalizeWorkspaceSnapshot(DEFAULT_WORKSPACE_PRESETS[index]));
+    }
+    return presets;
+  }
+
   function normalizeSettings(input) {
     const source = input && typeof input === "object" ? input : {};
+    const workspacePresets = normalizeWorkspacePresets(source.workspacePresets);
+    const activeWorkspacePreset = normalizeWorkspacePresetId(source.activeWorkspacePreset);
     return {
       schemaVersion: SCHEMA_VERSION,
       panelOpacity: normalizePanelOpacity(source.panelOpacity),
@@ -154,6 +229,12 @@
       layoutLocked: typeof source.layoutLocked === "boolean" ? source.layoutLocked : DEFAULTS.layoutLocked,
       timelineModeEnabled: typeof source.timelineModeEnabled === "boolean" ? source.timelineModeEnabled : DEFAULTS.timelineModeEnabled,
       launcherPosition: normalizeLauncherPosition(source.launcherPosition),
+      workspacePresets: workspacePresets,
+      activeWorkspacePreset: activeWorkspacePreset && workspacePresets[activeWorkspacePreset - 1] ? activeWorkspacePreset : null,
+      workspacePresetBaseline:
+        activeWorkspacePreset && workspacePresets[activeWorkspacePreset - 1]
+          ? normalizeWorkspaceSnapshot(source.workspacePresetBaseline)
+          : null,
       panelClosed: typeof source.panelClosed === "boolean" ? source.panelClosed : DEFAULTS.panelClosed
     };
   }
@@ -167,6 +248,10 @@
       customThemeColor: normalized.customThemeColor,
       fadeTowardVideoCenter: normalized.fadeTowardVideoCenter,
       layoutLocked: normalized.layoutLocked,
+      // Presets are explicit local loadouts, so their saved slots survive even when Layout Lock is off.
+      workspacePresets: normalized.workspacePresets,
+      activeWorkspacePreset: normalized.activeWorkspacePreset,
+      workspacePresetBaseline: normalized.workspacePresetBaseline,
       panelClosed: normalized.panelClosed
     };
     if (normalized.layoutLocked) {
@@ -187,7 +272,7 @@
     if (normalized.layoutLocked) {
       return normalized;
     }
-    return normalizeSettings({
+    const baseline = normalizeSettings({
       ...normalized,
       textScale: DEFAULTS.textScale,
       panelPosition: null,
@@ -201,6 +286,20 @@
       timelineModeEnabled: DEFAULTS.timelineModeEnabled,
       launcherPosition: null
     });
+    // Active presets reapply over the normal unlocked baseline; disabling the preset restores that baseline.
+    if (baseline.activeWorkspacePreset) {
+      const preset = baseline.workspacePresets[baseline.activeWorkspacePreset - 1];
+      if (preset) {
+        return normalizeSettings({
+          ...baseline,
+          ...preset,
+          workspacePresets: baseline.workspacePresets,
+          activeWorkspacePreset: baseline.activeWorkspacePreset,
+          workspacePresetBaseline: baseline.workspacePresetBaseline
+        });
+      }
+    }
+    return baseline;
   }
 
   async function load() {

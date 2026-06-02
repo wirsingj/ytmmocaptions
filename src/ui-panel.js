@@ -10,14 +10,18 @@
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
   const COLOR_PICKER_ID = "dc-color-picker";
+  const HELP_POPOVER_ID = "dc-help-popover";
   const ACTIVE_PAGE_CLASS = "dc-panel-open";
   const BOTTOM_PROXIMITY_PX = 140;
+  const HISTORY_BOTTOM_EXIT_PX = 36;
   const MIN_PANEL_WIDTH = 280;
   const MIN_PANEL_HEIGHT = 220;
   const MIN_RESTORED_PANEL_WIDTH = 340;
   const MIN_RESTORED_PANEL_HEIGHT = 250;
+  const MIN_DEFAULT_PANEL_WIDTH = 650;
   const DEFAULT_PANEL_MAX_WIDTH = 680;
   const DEFAULT_PANEL_MAX_HEIGHT = 500;
+  const DEFAULT_PANEL_WIDTH_RATIO = 0.52;
   const DEFAULT_PANEL_MARGIN = 12;
   const PANEL_CONTROL_BAR_GAP = 64;
   const LAUNCHER_MARGIN = 14;
@@ -27,6 +31,15 @@
   const DEFAULT_FUTURE_PREVIEW_HEIGHT = 96;
   const MIN_FUTURE_PREVIEW_HEIGHT = 52;
   const MAX_FUTURE_PREVIEW_HEIGHT = 360;
+  const FUTURE_RENDER_BATCH = 80;
+  const FUTURE_RENDER_BUFFER_PX = 90;
+  const HISTORY_RENDER_WINDOW = 220;
+  const HISTORY_RENDER_STEP = 110;
+  const HISTORY_RENDER_EDGE_PX = 72;
+  const RAINBOW_THEME_CYCLE_MS = 15000;
+  const RAINBOW_THEME_FRAME_MS = 33;
+  const RAINBOW_THEME_SATURATION = 0.84;
+  const RAINBOW_THEME_VALUE = 0.88;
   // Timeline mode is intentionally shipped dormant until it gets a focused UX pass.
   const TIMELINE_MODE_EXPERIMENT_ENABLED = false;
   const THEME_PRESETS = Object.freeze({
@@ -90,6 +103,7 @@
       this.panelId = this.instanceId ? PANEL_ID + "-" + this.instanceId : PANEL_ID;
       this.launcherId = this.instanceId ? LAUNCHER_ID + "-" + this.instanceId : LAUNCHER_ID;
       this.colorPickerId = this.instanceId ? COLOR_PICKER_ID + "-" + this.instanceId : COLOR_PICKER_ID;
+      this.helpPopoverId = this.instanceId ? HELP_POPOVER_ID + "-" + this.instanceId : HELP_POPOVER_ID;
       this.timelineId = this.instanceId ? "dc-timeline-" + this.instanceId : "dc-timeline";
       this.anchorElement = this.options.anchorElement instanceof Element ? this.options.anchorElement : null;
       this.persistLayout = this.options.persistLayout !== false;
@@ -113,12 +127,15 @@
       this.colorPickerPopover = null;
       this.colorWheel = null;
       this.colorPickerIndicator = null;
+      this.rainbowThemeButton = null;
       this.centerFadeInput = null;
       this.futurePreviewInput = null;
       this.caseFixInput = null;
       this.timelineModeButton = null;
       this.timelineFeatureEnabled = TIMELINE_MODE_EXPERIMENT_ENABLED;
       this.layoutLockButton = null;
+      this.helpButton = null;
+      this.helpPopover = null;
       this.timelineLayer = null;
       this.timelineTrack = null;
       this.timelineTooltip = null;
@@ -129,9 +146,12 @@
       this.jumpControls = null;
       this.jumpCurrentButton = null;
       this.jumpLatestButton = null;
+      this.workspacePresetControls = [];
 
       this.chunks = [];
       this.futureChunks = [];
+      this.futureChunksKey = "";
+      this.futureRenderLimit = FUTURE_RENDER_BATCH;
       this.timelineChunks = [];
       this.timelineDuration = Number.NaN;
       this.timelineDataKey = "";
@@ -146,6 +166,7 @@
       this.currentWindowStart = -1;
       this.currentWindowEnd = -1;
       this.currentFutureCount = -1;
+      this.currentFutureRenderedCount = -1;
       this.currentFutureCollapsed = false;
       this.currentFutureKey = "";
       this.currentCaseFixEnabled = null;
@@ -158,13 +179,26 @@
       this.resizeHandles = [];
       this.pointerInside = false;
       this.stickToBottom = true;
+      this.historyReadingMode = false;
+      this.lastObservedScrollTop = 0;
       this.programmaticScrollUntil = 0;
+      this.activeArrivalIndex = -1;
+      this.activeArrivalElement = null;
+      this.activeArrivalTimer = 0;
+      this.rainbowThemeRafId = 0;
+      this.rainbowThemeStartTime = 0;
+      this.rainbowThemeStartHue = 0;
+      this.rainbowThemeLastFrameTime = 0;
+      this.rainbowThemeEnabled = false;
+      this.rainbowThemePreviewColor = null;
+      this.rainbowThemeRestoreSnapshot = null;
 
       this.cleanupFns = [];
       this.activePointerCleanupFns = [];
       this.layoutRefreshTimers = [];
       this.rafRenderId = 0;
       this.resizeMoveRafId = 0;
+      this.scrollAnchorRafId = 0;
       this.statusTimer = 0;
       this.timelineLayerVisible = false;
     }
@@ -234,6 +268,44 @@
       this.layoutLockButton.title = "Save panel layout across videos";
       this.layoutLockButton.setAttribute("aria-pressed", this.settings.layoutLocked ? "true" : "false");
 
+      this.helpButton = document.createElement("button");
+      this.helpButton.type = "button";
+      this.helpButton.className = "dc-btn dc-btn-help";
+      this.helpButton.textContent = "?";
+      this.helpButton.title = "Quick guide";
+      this.helpButton.setAttribute("aria-label", "Open quick guide");
+      this.helpButton.setAttribute("aria-expanded", "false");
+      this.helpButton.setAttribute("aria-haspopup", "dialog");
+
+      this.helpPopover = document.createElement("div");
+      this.helpPopover.id = this.helpPopoverId;
+      this.helpPopover.className = "dc-help-popover";
+      this.helpPopover.dataset.dcInstanceId = this.instanceId || "youtube";
+      this.helpPopover.hidden = true;
+      this.helpPopover.setAttribute("role", "dialog");
+      this.helpPopover.setAttribute("aria-label", "Quick guide");
+      const helpTitle = document.createElement("h3");
+      helpTitle.textContent = "Quick Guide";
+      const helpList = document.createElement("ul");
+      const helpItems = [
+        "Click any bubble to seek.",
+        "Current returns to the active caption.",
+        "Latest jumps to the newest reached caption.",
+        "Next previews upcoming captions.",
+        "Case Fix softens all-caps captions.",
+        "Use the color picker, opacity, and text controls to tune readability.",
+        "Presets start as Default, Music, and Podcast loadouts; the lower Save area captures one.",
+        "Lock keeps the workspace across videos.",
+        "Reset restores the panel workspace shape.",
+        "Drag the header to move; drag edges or corners to resize."
+      ];
+      for (let index = 0; index < helpItems.length; index += 1) {
+        const item = document.createElement("li");
+        item.textContent = helpItems[index];
+        helpList.append(item);
+      }
+      this.helpPopover.append(helpTitle, helpList);
+
       this.themeSelect = document.createElement("select");
       this.themeSelect.className = "dc-theme-select";
       this.themeSelect.title = "Panel theme";
@@ -277,7 +349,14 @@
       this.colorPickerIndicator = document.createElement("span");
       this.colorPickerIndicator.className = "dc-color-indicator";
       this.colorWheel.append(this.colorPickerIndicator);
-      this.colorPickerPopover.append(this.colorWheel);
+      this.rainbowThemeButton = document.createElement("button");
+      this.rainbowThemeButton.type = "button";
+      this.rainbowThemeButton.className = "dc-rainbow-toggle";
+      this.rainbowThemeButton.textContent = ">";
+      this.rainbowThemeButton.title = "Cycle theme color";
+      this.rainbowThemeButton.setAttribute("aria-label", "Cycle theme color");
+      this.rainbowThemeButton.setAttribute("aria-pressed", "false");
+      this.colorPickerPopover.append(this.colorWheel, this.rainbowThemeButton);
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
@@ -290,7 +369,7 @@
       this.opacityInput.min = "10";
       this.opacityInput.max = "100";
       this.opacityInput.step = "1";
-      this.opacityInput.value = String(this.settings.panelOpacity || 55);
+      this.opacityInput.value = String(this.settings.panelOpacity || 48);
       this.opacityInput.title = "Panel opacity";
       opacityWrap.append(this.opacityInput);
 
@@ -359,7 +438,7 @@
       }
       const actionControls = document.createElement("div");
       actionControls.className = "dc-control-actions";
-      actionControls.append(this.layoutLockButton, this.resetButton, this.closeButton);
+      actionControls.append(this.helpButton, this.layoutLockButton, this.resetButton, this.closeButton);
       controls.append(actionControls);
       header.append(titleWrap, controls);
 
@@ -413,7 +492,32 @@
       footerDivider.setAttribute("aria-hidden", "true");
       footerDivider.textContent = "|";
       footerToggles.append(futurePreviewWrap, footerDivider, caseFixWrap);
-      footer.append(footerToggles, this.jumpControls);
+
+      const presetRail = document.createElement("div");
+      presetRail.className = "dc-preset-rail";
+      presetRail.setAttribute("aria-label", "Workspace presets");
+      for (let index = 1; index <= 3; index += 1) {
+        const shell = document.createElement("div");
+        shell.className = "dc-preset-pill";
+        shell.setAttribute("data-preset-id", String(index));
+        const applyButton = document.createElement("button");
+        applyButton.type = "button";
+        applyButton.className = "dc-preset-apply";
+        applyButton.textContent = String(index);
+        applyButton.title = "Apply workspace preset " + index;
+        applyButton.setAttribute("aria-label", "Apply workspace preset " + index);
+        const captureButton = document.createElement("button");
+        captureButton.type = "button";
+        captureButton.className = "dc-preset-capture";
+        captureButton.textContent = "Save";
+        captureButton.title = "Save current workspace to preset " + index;
+        captureButton.setAttribute("aria-label", "Save current workspace to preset " + index);
+        shell.append(applyButton, captureButton);
+        presetRail.append(shell);
+        this.workspacePresetControls.push({ id: index, shell, applyButton, captureButton });
+      }
+
+      footer.append(footerToggles, presetRail, this.jumpControls);
 
       this.body.append(this.statusEl, this.listViewport, footer);
       this.root.append(header, this.body);
@@ -421,6 +525,7 @@
         this.root.append(this.resizeHandles[index]);
       }
       (this.mountElement || document.body).append(this.root);
+      document.body.append(this.helpPopover);
       document.body.append(this.colorPickerPopover);
 
       this.timelineLayer = document.createElement("div");
@@ -458,6 +563,9 @@
         window.clearTimeout(this.statusTimer);
         this.statusTimer = 0;
       }
+      this.cancelScrollAnchorFrames();
+      this.clearActiveArrivalFeedback();
+      this.cancelRainbowThemePreview(false);
       for (let index = 0; index < this.layoutRefreshTimers.length; index += 1) {
         window.clearTimeout(this.layoutRefreshTimers[index]);
       }
@@ -471,6 +579,10 @@
       if (this.root) {
         this.root.remove();
         this.root = null;
+      }
+      if (this.helpPopover) {
+        this.helpPopover.remove();
+        this.helpPopover = null;
       }
       if (this.launcherButton) {
         this.launcherButton.remove();
@@ -487,6 +599,7 @@
         this.colorPickerPopover = null;
         this.colorWheel = null;
         this.colorPickerIndicator = null;
+        this.rainbowThemeButton = null;
       }
       this.removeExistingUiNodes();
       if (this.mountElement) {
@@ -498,7 +611,7 @@
 
     removeExistingUiNodes() {
       const knownNodes = document.querySelectorAll(
-        "#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId + ", #" + this.colorPickerId
+        "#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId + ", #" + this.colorPickerId + ", #" + this.helpPopoverId
       );
       knownNodes.forEach((node) => {
         if (node instanceof Element) {
@@ -615,6 +728,35 @@
       this.addListener(this.closeButton, "click", onClose);
       this.addListener(this.resetButton, "click", onReset);
 
+      const onHelpClick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleHelpPopover();
+      };
+      this.addListener(this.helpButton, "click", onHelpClick);
+
+      const onHelpPopoverPointerDown = (event) => {
+        event.stopPropagation();
+      };
+      this.addListener(this.helpPopover, "pointerdown", onHelpPopoverPointerDown);
+      this.addListener(this.helpPopover, "click", onHelpPopoverPointerDown);
+
+      const onHelpOutside = (event) => {
+        if (!this.helpPopover || this.helpPopover.hidden) {
+          return;
+        }
+        const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+        if (path.includes(this.helpPopover) || path.includes(this.helpButton)) {
+          return;
+        }
+        const target = event.target;
+        if (target instanceof Element && (target.closest(".dc-help-popover") || target.closest(".dc-btn-help"))) {
+          return;
+        }
+        this.closeHelpPopover();
+      };
+      this.addListener(document, "pointerdown", onHelpOutside);
+
       const onLayoutLockToggle = () => {
         this.updateSettings({ layoutLocked: !this.settings.layoutLocked });
       };
@@ -627,6 +769,7 @@
       this.addListener(this.opacityInput, "change", onOpacityInput);
 
       const onThemeChange = () => {
+        this.cancelRainbowThemePreview(false);
         this.updateSettings({ themeName: this.themeSelect.value || "stone" });
         if (this.themeSelect.value !== "custom") {
           this.closeColorPicker();
@@ -656,13 +799,19 @@
           this.pickColorFromWheel(event);
         }
       });
+      this.addListener(this.rainbowThemeButton, "click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleRainbowThemeMode();
+      });
 
       const onColorPickerEscape = (event) => {
         if (event.key === "Escape") {
           this.closeColorPicker();
+          this.closeHelpPopover();
         }
       };
-      this.addListener(this.root, "keydown", onColorPickerEscape);
+      this.addListener(document, "keydown", onColorPickerEscape);
 
       const onColorPickerOutside = (event) => {
         if (!this.colorPickerPopover || this.colorPickerPopover.hidden) {
@@ -767,43 +916,70 @@
       this.addListener(this.timelineTrack, "pointerleave", onTimelineLeave);
 
       const onJumpBottom = () => {
+        this.exitHistoryReadingMode("current");
         this.scrollToCurrentCaption();
-        this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
       const onJumpLatest = () => {
+        this.exitHistoryReadingMode("latest");
         this.jumpToLatestCaption();
-        this.scheduleWindowRender();
         this.updateJumpBottomVisibility();
       };
       this.addListener(this.jumpCurrentButton, "click", onJumpBottom);
       this.addListener(this.jumpLatestButton, "click", onJumpLatest);
 
+      for (let index = 0; index < this.workspacePresetControls.length; index += 1) {
+        const control = this.workspacePresetControls[index];
+        this.addListener(control.applyButton, "click", () => this.toggleWorkspacePreset(control.id));
+        this.addListener(control.captureButton, "click", (event) => {
+          event.stopPropagation();
+          this.captureWorkspacePreset(control.id);
+        });
+      }
+
       const onScroll = () => {
+        const scrollTop = this.listViewport ? this.listViewport.scrollTop : 0;
         if (Date.now() < this.programmaticScrollUntil) {
+          this.lastObservedScrollTop = scrollTop;
           this.updateJumpBottomVisibility();
-          this.scheduleWindowRender();
           return;
         }
-        if (this.isNearBottom(2.6)) {
+        const delta = scrollTop - this.lastObservedScrollTop;
+        this.lastObservedScrollTop = scrollTop;
+        const bottomDistance = this.getBottomDistance();
+        const enteredHistoryMode = delta < -4 && bottomDistance > BOTTOM_PROXIMITY_PX;
+        if (enteredHistoryMode) {
+          this.enterHistoryReadingMode("scroll-up");
+        }
+        const shiftedHistoryWindow = this.handleHistoryWindowScroll();
+        const nextBottomDistance = shiftedHistoryWindow ? this.getBottomDistance() : bottomDistance;
+        const atAbsoluteLatest = !Array.isArray(this.chunks) || this.currentWindowEnd >= this.chunks.length - 1;
+        if (this.historyReadingMode && atAbsoluteLatest && nextBottomDistance <= HISTORY_BOTTOM_EXIT_PX) {
+          this.exitHistoryReadingMode("near-bottom");
           this.stickToBottom = true;
-        } else if (this.getBottomDistance() > BOTTOM_PROXIMITY_PX * 2) {
+        } else if (!this.historyReadingMode && this.isNearBottom(2.6)) {
+          this.stickToBottom = true;
+        } else if (this.historyReadingMode || nextBottomDistance > BOTTOM_PROXIMITY_PX * 2) {
           this.stickToBottom = false;
         }
         this.updateJumpBottomVisibility();
-        this.scheduleWindowRender();
+        if (shiftedHistoryWindow) {
+          this.updateActiveReadingGlow();
+        }
       };
       this.addListener(this.listViewport, "scroll", onScroll, { passive: true });
 
       const onResize = () => {
         this.applySettings();
         this.updateColorPickerPosition();
+        this.updateHelpPopoverPosition();
       };
       this.addListener(window, "resize", onResize);
 
       const onWindowScroll = () => {
         this.refreshAnchorLayout();
         this.updateColorPickerPosition();
+        this.updateHelpPopoverPosition();
       };
       this.addListener(window, "scroll", onWindowScroll, { passive: true });
 
@@ -812,6 +988,7 @@
     }
 
     updateSettings(patch) {
+      this.trimMountedRowsForInteraction(patch);
       this.settings = { ...this.settings, ...patch };
       this.applySettings({ preservePanelPlacement: this.shouldPreservePanelPlacement(patch) });
       if (typeof this.options.onSettingsChange === "function") {
@@ -823,6 +1000,294 @@
       const source = patch && typeof patch === "object" ? patch : {};
       const layoutKeys = ["panelClosed", "panelPosition", "panelSize", "launcherPosition", "timelineModeEnabled"];
       return !layoutKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key));
+    }
+
+    normalizeWorkspacePresetId(value) {
+      const number = Number(value);
+      return Number.isInteger(number) && number >= 1 && number <= 3 ? number : null;
+    }
+
+    normalizeWorkspaceSnapshot(value) {
+      const source = value && typeof value === "object" ? value : {};
+      const normalized = settingsStore && typeof settingsStore.normalizeSettings === "function"
+        ? settingsStore.normalizeSettings({
+            ...settingsStore.DEFAULTS,
+            ...source
+          })
+        : source;
+      return {
+        panelPosition: normalized.panelPosition || null,
+        panelSize: normalized.panelSize || null,
+        textScale: normalized.textScale,
+        panelOpacity: normalized.panelOpacity,
+        fadeTowardVideoCenter: normalized.fadeTowardVideoCenter !== false,
+        themeName: normalized.themeName || "stone",
+        customThemeColor: normalized.customThemeColor || "#ded6c3",
+        futurePreviewEnabled: normalized.futurePreviewEnabled !== false,
+        caseFixEnabled: normalized.caseFixEnabled !== false
+      };
+    }
+
+    getWorkspacePresets() {
+      const source = Array.isArray(this.settings.workspacePresets) ? this.settings.workspacePresets : [];
+      const defaults = settingsStore && settingsStore.DEFAULTS && Array.isArray(settingsStore.DEFAULTS.workspacePresets)
+        ? settingsStore.DEFAULTS.workspacePresets
+        : [];
+      const presets = [];
+      for (let index = 0; index < 3; index += 1) {
+        presets.push(
+          source[index]
+            ? this.normalizeWorkspaceSnapshot(source[index])
+            : defaults[index]
+              ? this.normalizeWorkspaceSnapshot(defaults[index])
+              : null
+        );
+      }
+      return presets;
+    }
+
+    getCurrentWorkspaceSnapshot() {
+      const snapshot = this.normalizeWorkspaceSnapshot(this.settings);
+      if (this.root && this.root.style.display !== "none") {
+        const rect = this.getElementLocalRect(this.root);
+        if (this.isRestorablePanelLayout(rect, rect)) {
+          snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
+          snapshot.panelSize = {
+            width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
+            height: Math.max(MIN_PANEL_HEIGHT, Math.round(rect.height))
+          };
+        }
+      }
+      return snapshot;
+    }
+
+    captureWorkspacePreset(id) {
+      const presetId = this.normalizeWorkspacePresetId(id);
+      if (!presetId) {
+        return;
+      }
+      const presets = this.getWorkspacePresets();
+      presets[presetId - 1] = this.getCurrentWorkspaceSnapshot();
+      this.updateSettings({ workspacePresets: presets });
+    }
+
+    toggleWorkspacePreset(id) {
+      const presetId = this.normalizeWorkspacePresetId(id);
+      if (!presetId) {
+        return;
+      }
+      if (this.settings.activeWorkspacePreset === presetId) {
+        this.disableWorkspacePreset();
+        return;
+      }
+      this.applyWorkspacePreset(presetId);
+    }
+
+    applyWorkspacePreset(id) {
+      const presetId = this.normalizeWorkspacePresetId(id);
+      const presets = this.getWorkspacePresets();
+      const preset = presetId ? presets[presetId - 1] : null;
+      if (!preset) {
+        return;
+      }
+      const shouldStartRainbow = this.isBuiltInMusicWorkspacePreset(presetId, preset);
+      this.cancelRainbowThemePreview(false);
+      // Keep the first baseline while switching presets so toggle-off returns to the pre-preset workspace.
+      const baseline = this.settings.workspacePresetBaseline
+        ? this.normalizeWorkspaceSnapshot(this.settings.workspacePresetBaseline)
+        : this.getCurrentWorkspaceSnapshot();
+      this.updateSettings({
+        ...preset,
+        workspacePresets: presets,
+        activeWorkspacePreset: presetId,
+        workspacePresetBaseline: baseline
+      });
+      if (shouldStartRainbow) {
+        this.startRainbowThemePreview();
+      }
+    }
+
+    disableWorkspacePreset() {
+      const baseline = this.settings.workspacePresetBaseline
+        ? this.normalizeWorkspaceSnapshot(this.settings.workspacePresetBaseline)
+        : this.normalizeWorkspaceSnapshot(settingsStore && settingsStore.DEFAULTS ? settingsStore.DEFAULTS : {});
+      this.cancelRainbowThemePreview(false);
+      this.updateSettings({
+        ...baseline,
+        activeWorkspacePreset: null,
+        workspacePresetBaseline: null
+      });
+    }
+
+    updateWorkspacePresetControls() {
+      if (!Array.isArray(this.workspacePresetControls) || !this.workspacePresetControls.length) {
+        return;
+      }
+      const presets = this.getWorkspacePresets();
+      const activeId = this.normalizeWorkspacePresetId(this.settings.activeWorkspacePreset);
+      for (let index = 0; index < this.workspacePresetControls.length; index += 1) {
+        const control = this.workspacePresetControls[index];
+        const hasSnapshot = Boolean(presets[control.id - 1]);
+        const isActive = activeId === control.id;
+        control.shell.classList.toggle("is-saved", hasSnapshot);
+        control.shell.classList.toggle("is-active", isActive);
+        control.applyButton.disabled = !hasSnapshot;
+        control.applyButton.title = hasSnapshot
+          ? isActive
+            ? "Return to workspace before preset " + control.id
+            : "Apply workspace preset " + control.id
+          : "Preset " + control.id + " is empty";
+        control.applyButton.setAttribute(
+          "aria-label",
+          hasSnapshot
+            ? isActive
+              ? "Disable workspace preset " + control.id
+              : "Apply workspace preset " + control.id
+            : "Workspace preset " + control.id + " is empty"
+        );
+        control.captureButton.title = hasSnapshot
+          ? "Overwrite workspace preset " + control.id
+          : "Save current workspace to preset " + control.id;
+        control.captureButton.setAttribute("aria-label", control.captureButton.title);
+      }
+    }
+
+    isBuiltInMusicWorkspacePreset(presetId, preset) {
+      if (presetId !== 2 || !settingsStore || !settingsStore.DEFAULTS || !Array.isArray(settingsStore.DEFAULTS.workspacePresets)) {
+        return false;
+      }
+      const musicPreset = settingsStore.DEFAULTS.workspacePresets[1];
+      if (!musicPreset) {
+        return false;
+      }
+      return this.areWorkspaceSnapshotsEquivalent(preset, this.normalizeWorkspaceSnapshot(musicPreset));
+    }
+
+    areWorkspaceSnapshotsEquivalent(left, right) {
+      const a = this.normalizeWorkspaceSnapshot(left);
+      const b = this.normalizeWorkspaceSnapshot(right);
+      const fields = ["textScale", "panelOpacity", "fadeTowardVideoCenter", "themeName", "customThemeColor", "futurePreviewEnabled", "caseFixEnabled"];
+      for (let index = 0; index < fields.length; index += 1) {
+        const field = fields[index];
+        if (a[field] !== b[field]) {
+          return false;
+        }
+      }
+      const positionsMatch = JSON.stringify(a.panelPosition || null) === JSON.stringify(b.panelPosition || null);
+      const sizesMatch = JSON.stringify(a.panelSize || null) === JSON.stringify(b.panelSize || null);
+      return positionsMatch && sizesMatch;
+    }
+
+    enterHistoryReadingMode(reason) {
+      if (this.historyReadingMode) {
+        return;
+      }
+      const anchor = this.getScrollAnchorSnapshot();
+      this.historyReadingMode = true;
+      this.stickToBottom = false;
+      if (this.root) {
+        this.root.classList.add("is-reading-history");
+      }
+      this.preserveScrollAnchorDuringModeChange(anchor);
+    }
+
+    exitHistoryReadingMode(reason) {
+      if (!this.historyReadingMode) {
+        return;
+      }
+      const shouldPreserveBottom = reason === "near-bottom" || reason === "scroll-bottom" || reason === "latest";
+      this.historyReadingMode = false;
+      if (this.root) {
+        this.root.classList.remove("is-reading-history");
+      }
+      if (shouldPreserveBottom) {
+        this.preserveScrollBottomDuringModeChange();
+      }
+    }
+
+    getScrollAnchorSnapshot() {
+      if (!this.listViewport || !this.windowContainer) {
+        return null;
+      }
+      const viewTop = this.listViewport.scrollTop;
+      const items = this.windowContainer.querySelectorAll(".dc-chunk:not(.dc-chunk-future)");
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        const top = Number(item.offsetTop || 0);
+        const bottom = top + Number(item.offsetHeight || 0);
+        if (bottom >= viewTop) {
+          const chunkIndex = Number(item.getAttribute("data-index"));
+          if (Number.isInteger(chunkIndex)) {
+            return {
+              index: chunkIndex,
+              offsetTop: top - viewTop
+            };
+          }
+        }
+      }
+      return null;
+    }
+
+    restoreScrollAnchorSnapshot(anchor) {
+      if (!anchor || !this.listViewport || !this.windowContainer) {
+        return;
+      }
+      const item = this.windowContainer.querySelector("[data-index='" + anchor.index + "']");
+      if (!item) {
+        return;
+      }
+      const nextScrollTop = Math.max(0, Number(item.offsetTop || 0) - Number(anchor.offsetTop || 0));
+      this.programmaticScrollUntil = Date.now() + 160;
+      this.listViewport.scrollTop = nextScrollTop;
+      this.lastObservedScrollTop = nextScrollTop;
+    }
+
+    preserveScrollAnchorDuringModeChange(anchor) {
+      this.cancelScrollAnchorFrames();
+      if (!anchor) {
+        return;
+      }
+      const startedAt = Date.now();
+      const durationMs = 220;
+      const tick = () => {
+        this.scrollAnchorRafId = 0;
+        this.restoreScrollAnchorSnapshot(anchor);
+        if (Date.now() - startedAt < durationMs) {
+          this.scrollAnchorRafId = platform.requestFrame(tick);
+        }
+      };
+      tick();
+    }
+
+    preserveScrollBottomDuringModeChange() {
+      this.cancelScrollAnchorFrames();
+      const startedAt = Date.now();
+      const durationMs = 220;
+      const tick = () => {
+        this.scrollAnchorRafId = 0;
+        this.restoreScrollBottomPosition();
+        if (Date.now() - startedAt < durationMs) {
+          this.scrollAnchorRafId = platform.requestFrame(tick);
+        }
+      };
+      tick();
+    }
+
+    restoreScrollBottomPosition() {
+      if (!this.listViewport) {
+        return;
+      }
+      const target = Math.max(0, this.listViewport.scrollHeight - this.listViewport.clientHeight);
+      this.programmaticScrollUntil = Date.now() + 160;
+      this.listViewport.scrollTop = target;
+      this.lastObservedScrollTop = target;
+    }
+
+    cancelScrollAnchorFrames() {
+      if (this.scrollAnchorRafId) {
+        platform.cancelFrame(this.scrollAnchorRafId);
+        this.scrollAnchorRafId = 0;
+      }
     }
 
     getPersistenceSnapshot() {
@@ -872,6 +1337,7 @@
       }
       if (panelClosed) {
         this.pointerInside = false;
+        this.closeHelpPopover();
       }
       const timelineActive = this.timelineFeatureEnabled && Boolean(this.settings.timelineModeEnabled);
       this.body.style.display = timelineActive ? "none" : "flex";
@@ -913,7 +1379,7 @@
         }
       }
 
-      const panelOpacity = Number(this.settings.panelOpacity || 55);
+      const panelOpacity = Number(this.settings.panelOpacity || 48);
       const normalizedOpacity = Math.max(10, Math.min(100, panelOpacity));
       this.applyTheme();
       this.applyPanelBlend(normalizedOpacity);
@@ -938,6 +1404,7 @@
       if (this.caseFixInput) {
         this.caseFixInput.checked = this.settings.caseFixEnabled !== false;
       }
+      this.updateWorkspacePresetControls();
       if (this.layoutLockButton) {
         const locked = Boolean(this.settings.layoutLocked);
         this.layoutLockButton.classList.toggle("is-active", locked);
@@ -972,6 +1439,8 @@
         this.themeColorButton.classList.toggle("is-active", this.getThemeName() === "custom");
       }
       this.updateColorPickerIndicator();
+      this.updateRainbowThemeButton();
+      this.syncRainbowThemeCycle();
       this.updateColorPickerPosition();
       this.applyFuturePreviewHeight();
       if (this.stickToBottom) {
@@ -1037,11 +1506,17 @@
     }
 
     getThemeName() {
+      if (this.rainbowThemeEnabled) {
+        return "custom";
+      }
       const name = String(this.settings.themeName || "stone").toLowerCase();
       return name === "custom" || Object.prototype.hasOwnProperty.call(THEME_PRESETS, name) ? name : "stone";
     }
 
     getCustomThemeColor() {
+      if (this.rainbowThemeEnabled && /^#[0-9a-f]{6}$/i.test(String(this.rainbowThemePreviewColor || ""))) {
+        return String(this.rainbowThemePreviewColor).toLowerCase();
+      }
       const color = String(this.settings.customThemeColor || "#ded6c3").trim();
       return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#ded6c3";
     }
@@ -1070,6 +1545,7 @@
       this.colorPickerPopover.hidden = !nextOpen;
       this.themeColorButton.setAttribute("aria-expanded", nextOpen ? "true" : "false");
       if (nextOpen) {
+        this.closeHelpPopover();
         this.updateColorPickerPosition();
         this.updateColorPickerIndicator();
       }
@@ -1082,6 +1558,40 @@
       this.colorPickerPopover.hidden = true;
       if (this.themeColorButton) {
         this.themeColorButton.setAttribute("aria-expanded", "false");
+      }
+    }
+
+    toggleHelpPopover() {
+      if (!this.helpPopover) {
+        return;
+      }
+      const nextOpen = Boolean(this.helpPopover.hidden);
+      if (nextOpen) {
+        this.closeColorPicker();
+        this.openHelpPopover();
+      } else {
+        this.closeHelpPopover();
+      }
+    }
+
+    openHelpPopover() {
+      if (!this.helpPopover) {
+        return;
+      }
+      this.helpPopover.hidden = false;
+      if (this.helpButton) {
+        this.helpButton.setAttribute("aria-expanded", "true");
+      }
+      this.updateHelpPopoverPosition();
+    }
+
+    closeHelpPopover() {
+      if (!this.helpPopover) {
+        return;
+      }
+      this.helpPopover.hidden = true;
+      if (this.helpButton) {
+        this.helpButton.setAttribute("aria-expanded", "false");
       }
     }
 
@@ -1099,6 +1609,7 @@
       const saturation = Math.max(0, Math.min(1, distance / radius));
       const hue = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
       const color = this.hsvToHex(hue, saturation, 0.92);
+      this.cancelRainbowThemePreview(false);
       this.updateSettings({ themeName: "custom", customThemeColor: color });
       if (this.colorPickerPopover) {
         this.colorPickerPopover.hidden = false;
@@ -1107,6 +1618,120 @@
       if (this.themeColorButton) {
         this.themeColorButton.setAttribute("aria-expanded", "true");
       }
+    }
+
+    toggleRainbowThemeMode() {
+      const nextEnabled = !this.isRainbowThemeEnabled();
+      if (nextEnabled) {
+        this.startRainbowThemePreview();
+        return;
+      }
+      this.cancelRainbowThemePreview(true);
+    }
+
+    startRainbowThemePreview() {
+      if (this.isRainbowThemeEnabled()) {
+        return;
+      }
+      this.rainbowThemeRestoreSnapshot = {
+        themeName: this.settings.themeName || "stone",
+        customThemeColor: this.settings.customThemeColor || "#ded6c3"
+      };
+      const hsv = this.hexToHsv(this.getCustomThemeColor());
+      this.rainbowThemePreviewColor = this.hsvToHex(hsv.h, RAINBOW_THEME_SATURATION, RAINBOW_THEME_VALUE);
+      this.rainbowThemeEnabled = true;
+      this.updateRainbowThemeButton();
+      this.applyRainbowThemeColor(this.rainbowThemePreviewColor);
+      this.startRainbowThemeCycle();
+    }
+
+    isRainbowThemeEnabled() {
+      return Boolean(this.rainbowThemeEnabled);
+    }
+
+    updateRainbowThemeButton() {
+      if (!this.rainbowThemeButton) {
+        return;
+      }
+      const enabled = this.isRainbowThemeEnabled();
+      this.rainbowThemeButton.classList.toggle("is-active", enabled);
+      this.rainbowThemeButton.textContent = enabled ? "||" : ">";
+      this.rainbowThemeButton.title = enabled ? "Stop cycling theme color" : "Cycle theme color";
+      this.rainbowThemeButton.setAttribute("aria-label", this.rainbowThemeButton.title);
+      this.rainbowThemeButton.setAttribute("aria-pressed", enabled ? "true" : "false");
+    }
+
+    syncRainbowThemeCycle() {
+      if (this.isRainbowThemeEnabled()) {
+        this.startRainbowThemeCycle();
+      } else {
+        this.stopRainbowThemeCycle();
+      }
+    }
+
+    startRainbowThemeCycle() {
+      if (this.rainbowThemeRafId) {
+        return;
+      }
+      const hsv = this.hexToHsv(this.getCustomThemeColor());
+      this.rainbowThemeStartHue = Number.isFinite(hsv.h) ? hsv.h : 0;
+      this.rainbowThemeStartTime = Date.now();
+      this.rainbowThemeLastFrameTime = 0;
+      const tick = () => {
+        if (!this.isRainbowThemeEnabled()) {
+          this.stopRainbowThemeCycle();
+          return;
+        }
+        const now = Date.now();
+        if (!this.rainbowThemeLastFrameTime || now - this.rainbowThemeLastFrameTime >= RAINBOW_THEME_FRAME_MS) {
+          this.rainbowThemeLastFrameTime = now;
+          const elapsed = now - this.rainbowThemeStartTime;
+          const hue = (this.rainbowThemeStartHue + (elapsed / RAINBOW_THEME_CYCLE_MS) * 360) % 360;
+          this.applyRainbowThemeColor(this.hsvToHex(hue, RAINBOW_THEME_SATURATION, RAINBOW_THEME_VALUE));
+        }
+        this.rainbowThemeRafId = platform.requestFrame(tick);
+      };
+      this.rainbowThemeRafId = platform.requestFrame(tick);
+    }
+
+    stopRainbowThemeCycle() {
+      if (this.rainbowThemeRafId) {
+        platform.cancelFrame(this.rainbowThemeRafId);
+        this.rainbowThemeRafId = 0;
+      }
+      this.rainbowThemeLastFrameTime = 0;
+    }
+
+    cancelRainbowThemePreview(restorePrevious) {
+      const restore = Boolean(restorePrevious && this.rainbowThemeRestoreSnapshot);
+      const snapshot = this.rainbowThemeRestoreSnapshot;
+      this.stopRainbowThemeCycle();
+      this.rainbowThemeEnabled = false;
+      this.rainbowThemePreviewColor = null;
+      this.rainbowThemeRestoreSnapshot = null;
+      this.updateRainbowThemeButton();
+      if (restore && snapshot) {
+        this.updateSettings({
+          themeName: snapshot.themeName,
+          customThemeColor: snapshot.customThemeColor
+        });
+      }
+    }
+
+    applyRainbowThemeColor(color) {
+      const nextColor = /^#[0-9a-f]{6}$/i.test(String(color || "")) ? String(color).toLowerCase() : this.getCustomThemeColor();
+      this.rainbowThemePreviewColor = nextColor;
+      this.applyTheme();
+      if (this.themeSelect && this.themeSelect.value !== "custom") {
+        this.themeSelect.value = "custom";
+      }
+      if (this.themeColorSwatch) {
+        this.themeColorSwatch.style.background = nextColor;
+      }
+      if (this.themeColorButton) {
+        this.themeColorButton.classList.add("is-active");
+      }
+      this.updateColorPickerIndicator();
     }
 
     updateColorPickerIndicator() {
@@ -1141,6 +1766,26 @@
       );
       this.colorPickerPopover.style.left = Math.round(left) + "px";
       this.colorPickerPopover.style.top = Math.round(top) + "px";
+    }
+
+    updateHelpPopoverPosition() {
+      if (!this.helpPopover || !this.helpButton || this.helpPopover.hidden) {
+        return;
+      }
+      const rect = this.helpButton.getBoundingClientRect();
+      const popoverWidth = this.helpPopover.offsetWidth || 280;
+      const popoverHeight = this.helpPopover.offsetHeight || 220;
+      const margin = 8;
+      const left = Math.max(
+        margin,
+        Math.min(window.innerWidth - popoverWidth - margin, rect.right - popoverWidth)
+      );
+      const top = Math.max(
+        margin,
+        Math.min(window.innerHeight - popoverHeight - margin, rect.bottom + 6)
+      );
+      this.helpPopover.style.left = Math.round(left) + "px";
+      this.helpPopover.style.top = Math.round(top) + "px";
     }
 
     hexToRgb(hex) {
@@ -1329,7 +1974,7 @@
       this.root.style.setProperty("--dc-fade-y", fadeY.toFixed(1) + "%");
       const enabled = this.settings.fadeTowardVideoCenter !== false;
       const strength = Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100;
-      const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 55)));
+      const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 48)));
       const opacityBlend = (opacityPercent - 10) / 90;
       const centerAlpha = enabled ? Math.min(0.86, 0.36 + opacityBlend * 0.38 + (1 - strength) * 0.08) : 1;
       const midAlpha = enabled ? centerAlpha + (1 - centerAlpha) * 0.46 : 1;
@@ -1341,22 +1986,34 @@
 
     getDefaultPanelRect() {
       const frame = this.getYouTubeFrameRect();
-      const frameWidth = Math.max(0, frame.right - frame.left);
-      const frameHeight = Math.max(0, frame.bottom - frame.top);
+      const mountRect = this.getMountViewportRect();
+      // The panel is mounted inside the player host, so default coordinates must
+      // be local to that host. Viewport coordinates would double-count theater
+      // mode/player offsets and push the reset/default panel too far right.
+      const localFrame = {
+        left: frame.left - mountRect.left,
+        top: frame.top - mountRect.top,
+        right: frame.right - mountRect.left,
+        bottom: frame.bottom - mountRect.top
+      };
+      const frameWidth = Math.max(0, localFrame.right - localFrame.left);
+      const frameHeight = Math.max(0, localFrame.bottom - localFrame.top);
       if (frameWidth < 160 || frameHeight < 90) {
         return null;
       }
-      const width = Math.max(
-        MIN_PANEL_WIDTH,
-        Math.min(DEFAULT_PANEL_MAX_WIDTH, Math.round(frameWidth * 0.42))
+      const maxFrameWidth = Math.max(MIN_PANEL_WIDTH, frameWidth - DEFAULT_PANEL_MARGIN * 2);
+      const preferredWidth = Math.min(
+        DEFAULT_PANEL_MAX_WIDTH,
+        Math.max(MIN_DEFAULT_PANEL_WIDTH, Math.round(frameWidth * DEFAULT_PANEL_WIDTH_RATIO))
       );
+      const width = Math.max(MIN_PANEL_WIDTH, Math.min(maxFrameWidth, preferredWidth));
       const height = Math.max(
         MIN_PANEL_HEIGHT,
         Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.round(frameHeight * 0.56))
       );
       const clamped = this.clampPositionToRect(
-        frame.left + DEFAULT_PANEL_MARGIN,
-        frame.bottom - height - DEFAULT_PANEL_MARGIN,
+        localFrame.left + DEFAULT_PANEL_MARGIN,
+        localFrame.bottom - height - DEFAULT_PANEL_MARGIN,
         width,
         height,
         this.getDefaultPanelFrameRect(),
@@ -1382,6 +2039,8 @@
         videoCenterFadeMinOpacity: Number.isFinite(defaults.videoCenterFadeMinOpacity) ? defaults.videoCenterFadeMinOpacity : 12,
         timelineModeEnabled: Boolean(defaults.timelineModeEnabled),
         launcherPosition: null,
+        activeWorkspacePreset: null,
+        workspacePresetBaseline: null,
         panelClosed: false
       });
     }
@@ -2341,13 +3000,16 @@
     }
 
     setChunks(chunks) {
-      const shouldStick = this.stickToBottom || this.isNearBottom(2.6);
+      const shouldStick = !this.historyReadingMode && (this.stickToBottom || this.isNearBottom(2.6));
+      const previousLength = Array.isArray(this.chunks) ? this.chunks.length : 0;
       this.chunks = Array.isArray(chunks) ? chunks : [];
       if (this.activeIndex >= this.chunks.length) {
         this.activeIndex = this.chunks.length - 1;
       }
-      this.currentWindowStart = -1;
-      this.currentWindowEnd = -1;
+      if (!this.historyReadingMode || this.chunks.length < previousLength || this.currentWindowStart < 0) {
+        this.currentWindowStart = -1;
+        this.currentWindowEnd = -1;
+      }
       this.scheduleWindowRender(true);
       if (shouldStick) {
         this.scrollToBottom();
@@ -2357,14 +3019,16 @@
 
     setFutureChunks(chunks) {
       const normalized = Array.isArray(chunks) ? chunks : [];
-      const key = normalized
-        .map((chunk) => [chunk.actualIndex, chunk.start, chunk.end, chunk.text].join(":"))
-        .join("|");
+      const key = this.buildFutureChunksKey(normalized);
       if (key === this.futureChunksKey && this.futureChunks.length === normalized.length) {
         return;
       }
       this.futureChunks = normalized;
       this.futureChunksKey = key;
+      this.futureRenderLimit = Math.min(
+        normalized.length,
+        Math.max(FUTURE_RENDER_BATCH, Number(this.futureRenderLimit) || FUTURE_RENDER_BATCH)
+      );
       this.scheduleWindowRender(true);
       this.updateJumpBottomVisibility();
     }
@@ -2405,11 +3069,13 @@
     setActiveIndex(index, options) {
       if (!Array.isArray(this.chunks) || !this.chunks.length) {
         this.activeIndex = -1;
+        this.clearActiveArrivalFeedback();
         return;
       }
       if (!Number.isInteger(index) || index < 0) {
         const hadActive = this.activeIndex !== -1;
         this.activeIndex = -1;
+        this.clearActiveArrivalFeedback();
         this.clearReadingGlowExcept(-1);
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
@@ -2423,12 +3089,21 @@
       this.activeIndex = bounded;
 
       if (hasChanged) {
+        this.activeArrivalIndex = bounded;
         this.clearReadingGlowExcept(bounded);
         this.lastGlowIndex = -1;
         this.lastGlowWordStart = -1;
         this.lastGlowWordEnd = -1;
       }
-      if (hasChanged && options && options.ensureVisible) {
+      if (options && options.ensureVisible) {
+        if (this.historyReadingMode && !options.exitHistoryMode) {
+          this.updateJumpBottomVisibility();
+          this.scheduleWindowRender(!hasChanged);
+          return;
+        }
+        if (options.exitHistoryMode) {
+          this.exitHistoryReadingMode("active-index");
+        }
         if (bounded >= Math.max(0, this.chunks.length - 2)) {
           this.stickToBottom = true;
         }
@@ -2482,9 +3157,18 @@
         return;
       }
       const viewportHeight = this.listViewport.clientHeight || 1;
-      const item = this.windowContainer
+      let item = this.windowContainer
         ? this.windowContainer.querySelector("[data-index='" + index + "']")
         : null;
+      if (!item && this.chunks.length > HISTORY_RENDER_WINDOW) {
+        const windowSize = Math.min(this.chunks.length, HISTORY_RENDER_WINDOW);
+        const start = Math.max(0, Math.min(this.chunks.length - windowSize, index - Math.floor(windowSize * 0.35)));
+        this.setHistoryRenderStart(start);
+        this.renderWindow();
+        item = this.windowContainer
+          ? this.windowContainer.querySelector("[data-index='" + index + "']")
+          : null;
+      }
       if (!item) {
         return;
       }
@@ -2584,7 +3268,25 @@
       if (!this.listViewport) {
         return;
       }
+      this.exitHistoryReadingMode("scroll-bottom");
       this.stickToBottom = true;
+      const count = Array.isArray(this.chunks) ? this.chunks.length : 0;
+      let shouldRender = false;
+      if (count > HISTORY_RENDER_WINDOW) {
+        const maxStart = Math.max(0, count - HISTORY_RENDER_WINDOW);
+        if (this.currentWindowStart !== maxStart || this.currentWindowEnd !== count - 1) {
+          this.setHistoryRenderStart(maxStart);
+          shouldRender = true;
+        }
+      }
+      if (this.futureRenderLimit > FUTURE_RENDER_BATCH) {
+        this.futureRenderLimit = Math.min(FUTURE_RENDER_BATCH, this.futureChunks.length);
+        this.currentFutureRenderedCount = -1;
+        shouldRender = true;
+      }
+      if (shouldRender) {
+        this.renderWindow();
+      }
       this.programmaticScrollUntil = Date.now() + 220;
       const target = Math.max(0, this.listViewport.scrollHeight - this.listViewport.clientHeight);
       this.listViewport.scrollTop = target;
@@ -2657,6 +3359,7 @@
 
       const chunkCount = this.chunks.length;
       const futureCount = this.futureChunks.length;
+      const futureRenderCount = this.getFutureRenderCount();
       if (!chunkCount && !futureCount) {
         this.topSpacer.style.height = "0px";
         this.bottomSpacer.style.height = "0px";
@@ -2665,8 +3368,9 @@
         return;
       }
 
-      const start = 0;
-      const end = chunkCount - 1;
+      const range = this.getHistoryRenderRange(chunkCount);
+      const start = range.start;
+      const end = range.end;
       const futureKey = this.getFutureRenderKey();
       const caseFixEnabled = this.settings.caseFixEnabled !== false;
       const canAppendSingleChunk =
@@ -2680,17 +3384,18 @@
         start !== this.currentWindowStart ||
         end !== this.currentWindowEnd ||
         futureCount !== this.currentFutureCount ||
+        futureRenderCount !== this.currentFutureRenderedCount ||
         this.futureCollapsed !== this.currentFutureCollapsed ||
         this.currentCaseFixEnabled !== caseFixEnabled;
       this.topSpacer.style.height = "0px";
       this.bottomSpacer.style.height = "0px";
 
-      if (canAppendSingleChunk) {
+      if (canAppendSingleChunk && start === this.currentWindowStart) {
         const chunk = this.chunks[end];
         const nextButton = this.createChunkButton(chunk, end, false);
         this.windowContainer.append(nextButton);
         this.currentWindowEnd = end;
-        this.replaceFutureSection(futureCount, chunkCount);
+        this.replaceFutureSection(futureRenderCount, chunkCount);
         this.updateActiveClass();
         this.updateActiveReadingGlow();
         return;
@@ -2698,7 +3403,7 @@
 
       if (!shouldRebuild) {
         if (futureKey !== this.currentFutureKey) {
-          this.replaceFutureSection(futureCount, chunkCount);
+          this.replaceFutureSection(futureRenderCount, chunkCount);
         }
         this.updateActiveClass();
         this.updateActiveReadingGlow();
@@ -2708,6 +3413,7 @@
       this.currentWindowStart = start;
       this.currentWindowEnd = end;
       this.currentFutureCount = futureCount;
+      this.currentFutureRenderedCount = futureRenderCount;
       this.currentFutureCollapsed = this.futureCollapsed;
       this.currentFutureKey = futureKey;
       this.currentCaseFixEnabled = caseFixEnabled;
@@ -2719,18 +3425,151 @@
       }
 
       this.windowContainer.replaceChildren(fragment);
-      this.replaceFutureSection(futureCount, chunkCount);
+      this.replaceFutureSection(futureRenderCount, chunkCount);
+    }
+
+    getHistoryRenderRange(chunkCount) {
+      const count = Math.max(0, Number(chunkCount) || 0);
+      if (!count) {
+        return { start: 0, end: -1 };
+      }
+      const windowSize = Math.min(count, HISTORY_RENDER_WINDOW);
+      if (count <= windowSize) {
+        return { start: 0, end: count - 1 };
+      }
+      const maxStart = Math.max(0, count - windowSize);
+      if (this.historyReadingMode && this.currentWindowStart >= 0) {
+        const start = Math.max(0, Math.min(maxStart, this.currentWindowStart));
+        return { start: start, end: Math.min(count - 1, start + windowSize - 1) };
+      }
+      const anchor = Number.isInteger(this.activeIndex) && this.activeIndex >= 0
+        ? Math.min(count - 1, this.activeIndex)
+        : count - 1;
+      const start = this.stickToBottom || anchor >= count - 2
+        ? maxStart
+        : Math.max(0, Math.min(maxStart, anchor - Math.floor(windowSize * 0.68)));
+      return { start: start, end: Math.min(count - 1, start + windowSize - 1) };
+    }
+
+    setHistoryRenderStart(start) {
+      const count = Array.isArray(this.chunks) ? this.chunks.length : 0;
+      if (!count) {
+        this.currentWindowStart = -1;
+        this.currentWindowEnd = -1;
+        return;
+      }
+      const windowSize = Math.min(count, HISTORY_RENDER_WINDOW);
+      const maxStart = Math.max(0, count - windowSize);
+      const nextStart = Math.max(0, Math.min(maxStart, Number(start) || 0));
+      this.currentWindowStart = nextStart;
+      this.currentWindowEnd = Math.min(count - 1, nextStart + windowSize - 1);
+    }
+
+    handleHistoryWindowScroll() {
+      if (!this.historyReadingMode || !this.listViewport || !this.windowContainer) {
+        return false;
+      }
+      const count = Array.isArray(this.chunks) ? this.chunks.length : 0;
+      if (count <= HISTORY_RENDER_WINDOW || this.currentWindowStart < 0 || this.currentWindowEnd < 0) {
+        return false;
+      }
+      const nearTop = this.listViewport.scrollTop <= HISTORY_RENDER_EDGE_PX;
+      const nearBottom = this.getBottomDistance() <= HISTORY_RENDER_EDGE_PX;
+      if (nearTop && this.currentWindowStart > 0) {
+        const anchor = this.getScrollAnchorSnapshot();
+        this.setHistoryRenderStart(this.currentWindowStart - HISTORY_RENDER_STEP);
+        this.renderWindow();
+        this.restoreScrollAnchorSnapshot(anchor);
+        return true;
+      }
+      if (nearBottom && this.currentWindowEnd < count - 1) {
+        this.setHistoryRenderStart(this.currentWindowStart + HISTORY_RENDER_STEP);
+        this.renderWindow();
+        if (this.listViewport) {
+          this.programmaticScrollUntil = Date.now() + 120;
+          this.listViewport.scrollTop = Math.max(1, HISTORY_RENDER_EDGE_PX);
+          this.lastObservedScrollTop = this.listViewport.scrollTop;
+        }
+        return true;
+      }
+      return false;
+    }
+
+    trimMountedRowsForInteraction(patch) {
+      const source = patch && typeof patch === "object" ? patch : {};
+      const styleKeys = [
+        "activeWorkspacePreset",
+        "workspacePresetBaseline",
+        "panelOpacity",
+        "textScale",
+        "themeName",
+        "customThemeColor",
+        "fadeTowardVideoCenter",
+        "caseFixEnabled",
+        "futurePreviewEnabled"
+      ];
+      if (!styleKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key))) {
+        return;
+      }
+      let shouldRender = false;
+      if (this.futureRenderLimit > FUTURE_RENDER_BATCH) {
+        this.futureRenderLimit = Math.min(FUTURE_RENDER_BATCH, this.futureChunks.length);
+        this.currentFutureRenderedCount = -1;
+        shouldRender = true;
+      }
+      const count = Array.isArray(this.chunks) ? this.chunks.length : 0;
+      if (count > HISTORY_RENDER_WINDOW) {
+        const range = this.getHistoryRenderRange(count);
+        if (this.currentWindowStart !== range.start || this.currentWindowEnd !== range.end) {
+          this.currentWindowStart = range.start;
+          this.currentWindowEnd = range.end;
+          shouldRender = true;
+        }
+      }
+      if (shouldRender && this.windowContainer) {
+        this.renderWindow();
+      }
+    }
+
+    buildFutureChunksKey(chunks) {
+      const source = Array.isArray(chunks) ? chunks : [];
+      const length = source.length;
+      if (!length) {
+        return "0";
+      }
+      // Sample the edges instead of hashing every row; long future timelines should not tax normal playback renders.
+      const sample = [];
+      const sampleEdgeCount = Math.min(4, length);
+      for (let index = 0; index < sampleEdgeCount; index += 1) {
+        sample.push(source[index]);
+      }
+      for (let index = Math.max(sampleEdgeCount, length - sampleEdgeCount); index < length; index += 1) {
+        sample.push(source[index]);
+      }
+      return [length].concat(sample.map((chunk) => [
+        chunk && chunk.actualIndex,
+        chunk && chunk.start,
+        chunk && chunk.end,
+        chunk && chunk.seekStart,
+        chunk && chunk.text
+      ].join(":"))).join("|");
+    }
+
+    getFutureRenderCount() {
+      const total = Array.isArray(this.futureChunks) ? this.futureChunks.length : 0;
+      if (!total) {
+        return 0;
+      }
+      const limit = Math.max(FUTURE_RENDER_BATCH, Number(this.futureRenderLimit) || FUTURE_RENDER_BATCH);
+      return Math.min(total, limit);
     }
 
     getFutureRenderKey() {
-      const source = Array.isArray(this.futureChunks) ? this.futureChunks : [];
       const caseFixFlag = this.settings.caseFixEnabled !== false ? "case-on" : "case-off";
-      return source
-        .map((chunk) => [caseFixFlag, chunk && chunk.actualIndex, chunk && chunk.start, chunk && chunk.end, this.getChunkDisplayText(chunk)].join(":"))
-        .join("|");
+      return [caseFixFlag, this.futureChunksKey, this.getFutureRenderCount()].join("|");
     }
 
-    createFutureSection(futureCount, chunkCount) {
+    createFutureSection(futureRenderCount, chunkCount) {
       const section = document.createElement("div");
       section.className = "dc-future-section";
 
@@ -2743,8 +3582,9 @@
 
       const futureList = document.createElement("div");
       futureList.className = "dc-future-list";
+      futureList.addEventListener("scroll", () => this.handleFutureListScroll(futureList), { passive: true });
 
-      for (let index = 0; index < futureCount; index += 1) {
+      for (let index = 0; index < futureRenderCount; index += 1) {
         const preview = this.futureChunks[index];
         const actualIndex = Number.isInteger(preview && preview.actualIndex) ? preview.actualIndex : chunkCount + index;
         futureList.append(this.createChunkButton(preview, actualIndex, true));
@@ -2754,26 +3594,45 @@
       return section;
     }
 
-    replaceFutureSection(futureCount, chunkCount) {
+    replaceFutureSection(futureRenderCount, chunkCount) {
       if (!this.windowContainer) {
         return;
       }
       const parent = this.windowContainer.parentElement || this.windowContainer;
       const existing = parent.querySelector(".dc-future-section");
+      const existingList = existing ? existing.querySelector(".dc-future-list") : null;
+      const previousScrollTop = existingList ? existingList.scrollTop : 0;
       if (existing) {
         existing.remove();
       }
-      if (futureCount) {
-        const nextSection = this.createFutureSection(futureCount, chunkCount);
+      if (futureRenderCount) {
+        const nextSection = this.createFutureSection(futureRenderCount, chunkCount);
         if (this.bottomSpacer && this.bottomSpacer.parentElement === parent) {
           parent.insertBefore(nextSection, this.bottomSpacer);
         } else {
           parent.append(nextSection);
         }
+        const nextList = nextSection.querySelector(".dc-future-list");
+        if (nextList && previousScrollTop > 0) {
+          nextList.scrollTop = Math.min(previousScrollTop, Math.max(0, nextList.scrollHeight - nextList.clientHeight));
+        }
       }
-      this.currentFutureCount = futureCount;
+      this.currentFutureCount = this.futureChunks.length;
+      this.currentFutureRenderedCount = futureRenderCount;
       this.currentFutureCollapsed = this.futureCollapsed;
       this.currentFutureKey = this.getFutureRenderKey();
+    }
+
+    handleFutureListScroll(futureList) {
+      if (!futureList || !this.futureChunks || this.futureRenderLimit >= this.futureChunks.length) {
+        return;
+      }
+      const bottomDistance = futureList.scrollHeight - (futureList.scrollTop + futureList.clientHeight);
+      if (bottomDistance > FUTURE_RENDER_BUFFER_PX) {
+        return;
+      }
+      this.futureRenderLimit = Math.min(this.futureChunks.length, this.futureRenderLimit + FUTURE_RENDER_BATCH);
+      this.replaceFutureSection(this.getFutureRenderCount(), this.chunks.length);
     }
 
     createChunkButton(chunk, index, isFuture) {
@@ -2801,6 +3660,7 @@
       item.append(content);
       if (!isFuture && index === this.activeIndex) {
         item.classList.add("is-current");
+        this.playActiveArrivalFeedback(item, index);
       }
       this.renderChunkText(text, chunk, !isFuture && index === this.activeIndex);
       return item;
@@ -2864,7 +3724,45 @@
       const next = this.windowContainer.querySelector("[data-index='" + this.activeIndex + "']");
       if (next) {
         next.classList.add("is-current");
+        this.playActiveArrivalFeedback(next, this.activeIndex);
       }
+    }
+
+    playActiveArrivalFeedback(item, index) {
+      if (!item || index !== this.activeArrivalIndex) {
+        return;
+      }
+      this.activeArrivalIndex = -1;
+      if (this.activeArrivalElement && this.activeArrivalElement !== item) {
+        this.activeArrivalElement.classList.remove("is-arriving");
+      }
+      if (this.activeArrivalTimer) {
+        window.clearTimeout(this.activeArrivalTimer);
+        this.activeArrivalTimer = 0;
+      }
+      this.activeArrivalElement = item;
+      item.classList.add("is-arriving");
+      this.activeArrivalTimer = window.setTimeout(() => {
+        if (item.isConnected) {
+          item.classList.remove("is-arriving");
+        }
+        if (this.activeArrivalElement === item) {
+          this.activeArrivalElement = null;
+        }
+        this.activeArrivalTimer = 0;
+      }, 560);
+    }
+
+    clearActiveArrivalFeedback() {
+      if (this.activeArrivalTimer) {
+        window.clearTimeout(this.activeArrivalTimer);
+        this.activeArrivalTimer = 0;
+      }
+      if (this.activeArrivalElement) {
+        this.activeArrivalElement.classList.remove("is-arriving");
+        this.activeArrivalElement = null;
+      }
+      this.activeArrivalIndex = -1;
     }
 
     clearReadingGlowExcept(activeIndex) {
