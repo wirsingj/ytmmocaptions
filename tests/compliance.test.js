@@ -564,6 +564,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('this.helpButton.textContent = "?"'));
     assert.ok(panelSource.includes('aria-label", "Open quick guide"'));
     assert.ok(panelSource.includes('aria-haspopup", "dialog"'));
+    assert.ok(panelSource.includes("HELP_POPOVER_ID"));
+    assert.ok(panelSource.includes("this.helpPopover.id = this.helpPopoverId"));
+    assert.ok(panelSource.includes("#\" + this.helpPopoverId"));
     assert.ok(panelSource.includes('helpTitle.textContent = "Quick Guide"'));
     assert.ok(panelSource.includes('"Click any bubble to seek."'));
     assert.ok(panelSource.includes('"Current returns to the active caption."'));
@@ -604,6 +607,11 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-rainbow-toggle"));
     assert.ok(css.includes(".dc-help-popover"));
     assert.ok(css.includes(".dc-btn-help"));
+    const controlsStart = css.indexOf("\n.dc-controls {");
+    const controlsEnd = css.indexOf(".dc-controls *", controlsStart);
+    assert.ok(controlsStart >= 0);
+    assert.ok(controlsEnd > controlsStart);
+    assert.ok(!css.slice(controlsStart, controlsEnd).includes("overflow: hidden;"));
     assert.ok(css.includes("flex-wrap: wrap"));
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });

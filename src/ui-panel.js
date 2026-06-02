@@ -10,6 +10,7 @@
   const PANEL_ID = "dc-panel";
   const LAUNCHER_ID = "dc-launcher";
   const COLOR_PICKER_ID = "dc-color-picker";
+  const HELP_POPOVER_ID = "dc-help-popover";
   const ACTIVE_PAGE_CLASS = "dc-panel-open";
   const BOTTOM_PROXIMITY_PX = 140;
   const HISTORY_BOTTOM_EXIT_PX = 36;
@@ -102,6 +103,7 @@
       this.panelId = this.instanceId ? PANEL_ID + "-" + this.instanceId : PANEL_ID;
       this.launcherId = this.instanceId ? LAUNCHER_ID + "-" + this.instanceId : LAUNCHER_ID;
       this.colorPickerId = this.instanceId ? COLOR_PICKER_ID + "-" + this.instanceId : COLOR_PICKER_ID;
+      this.helpPopoverId = this.instanceId ? HELP_POPOVER_ID + "-" + this.instanceId : HELP_POPOVER_ID;
       this.timelineId = this.instanceId ? "dc-timeline-" + this.instanceId : "dc-timeline";
       this.anchorElement = this.options.anchorElement instanceof Element ? this.options.anchorElement : null;
       this.persistLayout = this.options.persistLayout !== false;
@@ -276,6 +278,7 @@
       this.helpButton.setAttribute("aria-haspopup", "dialog");
 
       this.helpPopover = document.createElement("div");
+      this.helpPopover.id = this.helpPopoverId;
       this.helpPopover.className = "dc-help-popover";
       this.helpPopover.dataset.dcInstanceId = this.instanceId || "youtube";
       this.helpPopover.hidden = true;
@@ -608,7 +611,7 @@
 
     removeExistingUiNodes() {
       const knownNodes = document.querySelectorAll(
-        "#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId + ", #" + this.colorPickerId
+        "#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId + ", #" + this.colorPickerId + ", #" + this.helpPopoverId
       );
       knownNodes.forEach((node) => {
         if (node instanceof Element) {
