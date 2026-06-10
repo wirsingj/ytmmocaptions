@@ -304,6 +304,42 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(restored.top, 1080 - 64 - 260 - 12);
   });
 
+  await runCase("panel clamp shrinks oversized layouts inside fullscreen safe zone", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+
+    const clamped = panel.clampPanelPosition(-40, 900, 2400, 1200);
+
+    assert.equal(clamped.left, 12);
+    assert.equal(clamped.top, 12);
+    assert.equal(clamped.width, 1920 - 24);
+    assert.equal(clamped.height, 1080 - 64 - 24);
+    assert.ok(clamped.resized);
+    assert.ok(clamped.top + clamped.height <= 1080 - 64 - 12);
+  });
+
+  await runCase("oversized saved panel restores without overlapping fullscreen controls", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({
+      settings: module.settingsStore.normalizeSettings({
+        panelPosition: { anchor: "player", left: 0, top: 0, xRatio: 0, yRatio: 1 }
+      })
+    });
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getVisibleYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+
+    const restored = panel.panelPositionToLocal(2400, 1200);
+
+    assert.equal(restored.left, 12);
+    assert.equal(restored.top, 12);
+    assert.equal(restored.width, 1920 - 24);
+    assert.equal(restored.height, 1080 - 64 - 24);
+    assert.ok(restored.top + restored.height <= 1080 - 64 - 12);
+  });
+
   await runCase("near-full saved panel size expands across fullscreen resize", () => {
     const module = loadPanelModule();
     const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });

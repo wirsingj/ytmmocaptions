@@ -2012,8 +2012,8 @@
       return {
         left: clamped.left,
         top: clamped.top,
-        width: width,
-        height: height
+        width: clamped.width,
+        height: clamped.height
       };
     }
 
@@ -2154,16 +2154,24 @@
     }
 
     clampPositionToRect(left, top, width, height, bounds, margin) {
-      const safeWidth = Math.max(1, Number(width) || 1);
-      const safeHeight = Math.max(1, Number(height) || 1);
       const safeMargin = Math.max(0, Number(margin) || 0);
+      const boundsWidth = Math.max(1, Number(bounds.right) - Number(bounds.left) - safeMargin * 2);
+      const boundsHeight = Math.max(1, Number(bounds.bottom) - Number(bounds.top) - safeMargin * 2);
+      const requestedWidth = Math.max(1, Number(width) || 1);
+      const requestedHeight = Math.max(1, Number(height) || 1);
+      const safeWidth = Math.max(1, Math.min(boundsWidth, requestedWidth));
+      const safeHeight = Math.max(1, Math.min(boundsHeight, requestedHeight));
+      const resized = safeWidth !== requestedWidth || safeHeight !== requestedHeight;
       const minLeft = Math.round(bounds.left + safeMargin);
       const minTop = Math.round(bounds.top + safeMargin);
       const maxLeft = Math.round(Math.max(minLeft, bounds.right - safeWidth - safeMargin));
       const maxTop = Math.round(Math.max(minTop, bounds.bottom - safeHeight - safeMargin));
       return {
         left: Math.max(minLeft, Math.min(maxLeft, Math.round(Number(left) || minLeft))),
-        top: Math.max(minTop, Math.min(maxTop, Math.round(Number(top) || minTop)))
+        top: Math.max(minTop, Math.min(maxTop, Math.round(Number(top) || minTop))),
+        width: Math.round(safeWidth),
+        height: Math.round(safeHeight),
+        resized
       };
     }
 
@@ -2335,6 +2343,8 @@
       }
       this.root.style.left = positioned.left + "px";
       this.root.style.top = positioned.top + "px";
+      this.root.style.width = positioned.width + "px";
+      this.root.style.height = positioned.height + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
     }
@@ -2592,9 +2602,11 @@
       }
       this.root.style.left = clamped.left + "px";
       this.root.style.top = clamped.top + "px";
+      this.root.style.width = clamped.width + "px";
+      this.root.style.height = clamped.height + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
-      const nextPosition = this.localToPlayerPanelPosition(clamped.left, clamped.top, rect.width, rect.height);
+      const nextPosition = this.localToPlayerPanelPosition(clamped.left, clamped.top, clamped.width, clamped.height);
       const savedXRatio = Number(this.settings.panelPosition.xRatio);
       const savedYRatio = Number(this.settings.panelPosition.yRatio);
 
@@ -2710,6 +2722,10 @@
       const nextTop = next.top;
       this.root.style.left = Math.round(nextLeft) + "px";
       this.root.style.top = Math.round(nextTop) + "px";
+      if (next.resized) {
+        this.root.style.width = next.width + "px";
+        this.root.style.height = next.height + "px";
+      }
       this.updatePanelFade();
     }
 
@@ -2948,8 +2964,8 @@
 
       this.root.style.left = Math.round(nextLeft) + "px";
       this.root.style.top = Math.round(nextTop) + "px";
-      this.root.style.width = Math.round(nextWidth) + "px";
-      this.root.style.height = Math.round(nextHeight) + "px";
+      this.root.style.width = clamped.width + "px";
+      this.root.style.height = clamped.height + "px";
       this.applyFuturePreviewHeight();
       this.updatePanelFade();
     }
