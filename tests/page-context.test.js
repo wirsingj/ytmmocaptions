@@ -148,4 +148,28 @@ exports.run = async function runPageContextTests(ctx) {
     assert.equal(appendedScripts.length, 5);
     assert.equal(pageContext.getCurrentWatchVideoId(), "video-b");
   });
+
+  await runCase("page context requests a read-only selected caption snapshot", async () => {
+    const { pageContext, listeners, posted } = loadContext();
+    const pending = pageContext.requestSnapshot(1000);
+    const request = posted.find((message) => message.type === "DIALOGUE_CAPTIONS_PAGE_SNAPSHOT_REQUEST");
+    assert.ok(request);
+    assert.equal(request.bridgeToken, pageContext.bridgeToken);
+
+    listeners.message({
+      source: null,
+      origin: "https://www.youtube.com",
+      data: {
+        type: "DIALOGUE_CAPTIONS_PAGE_CONTEXT",
+        bridgeToken: pageContext.bridgeToken,
+        payload: {
+          videoId: "video-a",
+          selectedCaptionTrack: { languageCode: "fr" }
+        }
+      }
+    });
+
+    const snapshot = await pending;
+    assert.equal(snapshot.selectedCaptionTrack.languageCode, "fr");
+  });
 };

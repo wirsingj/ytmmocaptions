@@ -9,6 +9,7 @@
   const BRIDGE_FETCH_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_REQUEST";
   const BRIDGE_FETCH_RESPONSE_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_RESPONSE";
   const BRIDGE_CAPTION_PROBE_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_CAPTION_PROBE_REQUEST";
+  const BRIDGE_SNAPSHOT_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_SNAPSHOT_REQUEST";
   const BRIDGE_TIMEDTEXT_CAPTURE_TYPE = "DIALOGUE_CAPTIONS_PAGE_TIMEDTEXT_CAPTURE";
   const BRIDGE_SCRIPT_ID = "dc-page-context-bridge";
   const BRIDGE_BOOT_MAX_ATTEMPTS = 4;
@@ -18,6 +19,7 @@
   let currentCaptureVideoId = "";
   let requestCounter = 0;
   const pendingRequests = new Map();
+  const pendingSnapshotRequests = [];
   const timedtextCaptures = [];
   const bridgeToken = createBridgeToken();
   let bridgeEnsureAttempts = 0;
@@ -50,6 +52,10 @@
       return;
     }
     snapshot = nextSnapshot;
+    while (pendingSnapshotRequests.length) {
+      const resolve = pendingSnapshotRequests.shift();
+      resolve(snapshot);
+    }
   }
 
   function getSnapshot() {
@@ -272,6 +278,34 @@
     return true;
   }
 
+  function requestSnapshot(timeoutMs) {
+    if (!isCurrentWatchPageWithVideo()) {
+      return Promise.resolve(snapshot);
+    }
+    const timeout = Number.isFinite(timeoutMs) ? Math.max(0, Number(timeoutMs)) : 500;
+    return new Promise((resolve) => {
+      const wrappedResolve = (nextSnapshot) => {
+        scope.clearTimeout(timer);
+        resolve(nextSnapshot);
+      };
+      const timer = scope.setTimeout(() => {
+        const index = pendingSnapshotRequests.indexOf(wrappedResolve);
+        if (index >= 0) {
+          pendingSnapshotRequests.splice(index, 1);
+        }
+        resolve(snapshot);
+      }, timeout);
+      pendingSnapshotRequests.push(wrappedResolve);
+      scope.postMessage(
+        {
+          type: BRIDGE_SNAPSHOT_REQUEST_TYPE,
+          bridgeToken: bridgeToken
+        },
+        scope.location.origin
+      );
+    });
+  }
+
   scope.addEventListener("message", onWindowMessage);
 
   app.pageContext = {
@@ -280,6 +314,7 @@
     BRIDGE_FETCH_REQUEST_TYPE,
     BRIDGE_FETCH_RESPONSE_TYPE,
     BRIDGE_CAPTION_PROBE_REQUEST_TYPE,
+    BRIDGE_SNAPSHOT_REQUEST_TYPE,
     BRIDGE_TIMEDTEXT_CAPTURE_TYPE,
     bridgeToken,
     ensureBridgeInjected,
@@ -288,6 +323,7 @@
     getTimedtextCaptures,
     isCurrentWatchPageWithVideo,
     pageFetch,
+    requestSnapshot,
     triggerCaptionProbe
   };
 })(window);

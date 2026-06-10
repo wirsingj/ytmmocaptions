@@ -70,12 +70,15 @@
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
+      this.liveCaptureStartedAt = 0;
       this.lastCaptionProbeAt = 0;
       this.captionsEnsured = false;
       this.captionEnsureStarted = false;
       this.captionWorkStarted = false;
       this.captionsWereOnBeforeExtension = null;
       this.captionsEnabledByExtension = false;
+      this.lastCaptionPreferenceKey = "";
+      this.openCaptionPreferenceKey = "";
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
       this.transcriptLoadInFlight = false;
@@ -189,6 +192,15 @@
     getInlineCaptionTrackCount() {
       try {
         const response = window.ytInitialPlayerResponse;
+        const responseVideoId =
+          response &&
+          response.videoDetails &&
+          typeof response.videoDetails.videoId === "string"
+            ? response.videoDetails.videoId
+            : "";
+        if (responseVideoId && responseVideoId !== this.videoId) {
+          return 0;
+        }
         const tracks =
           response &&
           response.captions &&
@@ -517,6 +529,164 @@
       return this.collapseOverlaySpamIfNeeded(this.normalizeLiveCaptionText(selected.join(" ")));
     }
 
+    isSubtitleButtonAvailable() {
+      const subtitleButton = document.querySelector(".ytp-subtitles-button");
+      if (!(subtitleButton instanceof HTMLElement)) {
+        return false;
+      }
+      const disabled = String(subtitleButton.getAttribute("aria-disabled") || "").toLowerCase() === "true";
+      return !disabled && !subtitleButton.disabled && this.isNodeVisible(subtitleButton);
+    }
+
+    hasLiveCaptionContext() {
+      if (this.getInlineCaptionTrackCount() > 0 || this.getPlayerCaptionTrackCount() > 0) {
+        return true;
+      }
+      if (this.isSubtitleButtonAvailable()) {
+        return true;
+      }
+      return Boolean(this.video && this.video.textTracks && this.video.textTracks.length);
+    }
+
+    getPreferredLanguageCodes() {
+      const rawLanguages = [];
+      const selectedCaptionTrack = this.getSelectedCaptionTrack();
+      const selectedLanguage = this.getTrackLanguageCode(selectedCaptionTrack);
+      if (selectedLanguage) {
+        rawLanguages.push(selectedLanguage);
+      }
+      if (Array.isArray(navigator.languages)) {
+        rawLanguages.push(...navigator.languages);
+      }
+      rawLanguages.push(navigator.language, navigator.userLanguage, "en");
+
+      const languages = [];
+      const used = new Set();
+      for (const rawLanguage of rawLanguages) {
+        const language = String(rawLanguage || "").trim().toLowerCase();
+        if (!language || used.has(language)) {
+          continue;
+        }
+        used.add(language);
+        languages.push(language);
+        const baseLanguage = language.split("-")[0];
+        if (baseLanguage && !used.has(baseLanguage)) {
+          used.add(baseLanguage);
+          languages.push(baseLanguage);
+        }
+      }
+      return languages;
+    }
+
+    getSelectedCaptionTrack() {
+      try {
+        const player = document.getElementById("movie_player");
+        if (!player || typeof player.getOption !== "function") {
+          return null;
+        }
+        const track = player.getOption("captions", "track");
+        return track && typeof track === "object" ? track : null;
+      } catch {
+        return null;
+      }
+    }
+
+    getTrackLanguageCode(track) {
+      if (track && typeof track.baseUrl === "string" && track.baseUrl) {
+        try {
+          const translatedLanguage = new URL(track.baseUrl).searchParams.get("tlang");
+          if (translatedLanguage) {
+            return translatedLanguage.toLowerCase();
+          }
+        } catch {
+          // Ignore malformed track URLs and fall back to metadata.
+        }
+      }
+      const vssId = track && typeof track.vssId === "string" ? track.vssId.toLowerCase() : "";
+      if (vssId) {
+        const normalizedVssId = vssId.replace(/^a?\./, "");
+        if (normalizedVssId) {
+          return normalizedVssId;
+        }
+      }
+      const languageCode =
+        track && typeof track.languageCode === "string"
+          ? track.languageCode
+          : track && typeof track.langCode === "string"
+            ? track.langCode
+            : track && typeof track.language === "string"
+              ? track.language
+              : "";
+      if (languageCode) {
+        return languageCode.toLowerCase();
+      }
+      if (track && typeof track.baseUrl === "string" && track.baseUrl) {
+        try {
+          return (new URL(track.baseUrl).searchParams.get("lang") || "").toLowerCase();
+        } catch {
+          return "";
+        }
+      }
+      return "";
+    }
+
+    languageMatchesPreference(languageCode, preference) {
+      const language = String(languageCode || "").toLowerCase();
+      const preferred = String(preference || "").toLowerCase();
+      if (!language || !preferred) {
+        return false;
+      }
+      return language === preferred || language.startsWith(preferred + "-") || preferred.startsWith(language + "-");
+    }
+
+    isPreferredLanguageTrack(track, preference) {
+      return this.languageMatchesPreference(this.getTrackLanguageCode(track), preference);
+    }
+
+    isManualCaptionTrack(track) {
+      return String(track && track.kind ? track.kind : "").toLowerCase() !== "asr";
+    }
+
+    isTranslatedCaptionTrack(track) {
+      if (!track || typeof track.baseUrl !== "string" || !track.baseUrl) {
+        return false;
+      }
+      try {
+        return new URL(track.baseUrl).searchParams.has("tlang");
+      } catch {
+        return false;
+      }
+    }
+
+    getPreferredCaptionTracks(tracklist) {
+      const tracks = Array.isArray(tracklist) ? tracklist : [];
+      const ordered = [];
+      const used = new Set();
+
+      const pushWhere = (predicate) => {
+        for (const track of tracks) {
+          if (!track || used.has(track)) {
+            continue;
+          }
+          if (!predicate(track)) {
+            continue;
+          }
+          used.add(track);
+          ordered.push(track);
+        }
+      };
+
+      for (const preference of this.getPreferredLanguageCodes()) {
+        pushWhere((track) => this.isPreferredLanguageTrack(track, preference) && this.isManualCaptionTrack(track));
+        pushWhere((track) => this.isPreferredLanguageTrack(track, preference));
+      }
+      pushWhere((track) => this.isManualCaptionTrack(track) && !this.isTranslatedCaptionTrack(track));
+      pushWhere((track) => !this.isTranslatedCaptionTrack(track));
+      pushWhere(() => true);
+
+      return ordered;
+    }
+
     readTextTrackSnapshotAtCurrentTime() {
       if (!this.video || !this.video.textTracks || !this.video.textTracks.length) {
         return null;
@@ -525,13 +695,14 @@
       if (!Number.isFinite(now)) {
         return null;
       }
-      const fragments = [];
-      let earliestStart = Number.POSITIVE_INFINITY;
-      let latestEnd = 0;
-      let tokens = [];
+      const tracks = this.getPreferredCaptionTracks(Array.from(this.video.textTracks));
 
-      for (let index = 0; index < this.video.textTracks.length; index += 1) {
-        const track = this.video.textTracks[index];
+      for (let index = 0; index < tracks.length; index += 1) {
+        const track = tracks[index];
+        const fragments = [];
+        let earliestStart = Number.POSITIVE_INFINITY;
+        let latestEnd = 0;
+        let tokens = [];
         try {
           if (track && track.mode === "disabled") {
             track.mode = "hidden";
@@ -562,17 +733,18 @@
             tokens = tokens.concat(this.createCueTokensFromText(text, start, end));
           }
         }
+        const merged = this.normalizeLiveCaptionText(fragments.join(" "));
+        if (!merged) {
+          continue;
+        }
+        return {
+          text: merged,
+          startTime: Number.isFinite(earliestStart) ? earliestStart : Number.NaN,
+          endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : Number.NaN,
+          tokens: tokens
+        };
       }
-      const merged = this.normalizeLiveCaptionText(fragments.join(" "));
-      if (!merged) {
-        return null;
-      }
-      return {
-        text: merged,
-        startTime: Number.isFinite(earliestStart) ? earliestStart : Number.NaN,
-        endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : Number.NaN,
-        tokens: tokens
-      };
+      return null;
     }
 
     createCueTokensFromText(text, start, end) {
@@ -605,10 +777,11 @@
       const step = this.getLiveWindowSeconds();
       const bucketStart = bucketIndex * step;
       const bucketEnd = bucketStart + step;
-      const collected = [];
+      const tracks = this.getPreferredCaptionTracks(Array.from(this.video.textTracks));
 
-      for (let trackIndex = 0; trackIndex < this.video.textTracks.length; trackIndex += 1) {
-        const track = this.video.textTracks[trackIndex];
+      for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
+        const track = tracks[trackIndex];
+        const collected = [];
         try {
           if (track && track.mode === "disabled") {
             track.mode = "hidden";
@@ -642,32 +815,34 @@
             tokens: this.createCueTokensFromText(text, start, end)
           });
         }
+
+        if (!collected.length) {
+          continue;
+        }
+
+        collected.sort((left, right) => left.start - right.start);
+        let merged = "";
+        let latestEnd = 0;
+        let tokens = [];
+        for (let index = 0; index < collected.length; index += 1) {
+          merged = this.mergeLiveCaptionText(merged, collected[index].text);
+          latestEnd = Math.max(latestEnd, Number(collected[index].end || 0));
+          tokens = tokens.concat(collected[index].tokens || []);
+        }
+        const normalized = this.normalizeLiveCaptionText(merged);
+        if (!normalized) {
+          continue;
+        }
+
+        return {
+          text: normalized,
+          startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart,
+          endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : bucketEnd,
+          tokens: tokens
+        };
       }
 
-      if (!collected.length) {
-        return null;
-      }
-
-      collected.sort((left, right) => left.start - right.start);
-      let merged = "";
-      let latestEnd = 0;
-      let tokens = [];
-      for (let index = 0; index < collected.length; index += 1) {
-        merged = this.mergeLiveCaptionText(merged, collected[index].text);
-        latestEnd = Math.max(latestEnd, Number(collected[index].end || 0));
-        tokens = tokens.concat(collected[index].tokens || []);
-      }
-      const normalized = this.normalizeLiveCaptionText(merged);
-      if (!normalized) {
-        return null;
-      }
-
-      return {
-        text: normalized,
-        startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart,
-        endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : bucketEnd,
-        tokens: tokens
-      };
+      return null;
     }
 
     getLiveWindowSeconds() {
@@ -1121,6 +1296,10 @@
         if (!overlaySuppressed) {
           usedOverlayOnlyPath = true;
           text = this.readVisibleCaptionText();
+          if (text && !this.hasLiveCaptionContext()) {
+            diagnostics.record("captions:overlay-only-ignored", { reason: "missing_caption_context" });
+            text = "";
+          }
           const canonical = this.toCaptionCanonical(text);
           const previousUtterance = this.liveOverlayUtterance;
           let targetBucketIndex = currentBucketIndex;
@@ -1187,28 +1366,13 @@
     }
 
     pickPreferredTrack(tracklist) {
-      const tracks = Array.isArray(tracklist) ? tracklist : [];
-      if (!tracks.length) {
-        return null;
-      }
-      const englishManual = tracks.find((track) => {
-        const languageCode = String(track && track.languageCode ? track.languageCode : "").toLowerCase();
-        const kind = String(track && track.kind ? track.kind : "").toLowerCase();
-        return languageCode.startsWith("en") && kind !== "asr";
-      });
-      if (englishManual) {
-        return englishManual;
-      }
-      const manual = tracks.find((track) => {
-        const kind = String(track && track.kind ? track.kind : "").toLowerCase();
-        return kind !== "asr";
-      });
-      return manual || tracks[0];
+      return this.getPreferredCaptionTracks(tracklist)[0] || null;
     }
 
     probeCaptionsNow() {
       const now = Date.now();
       this.lastCaptionProbeAt = now;
+      this.captureInitialSubtitleState();
 
       if (pageContext && typeof pageContext.triggerCaptionProbe === "function") {
         pageContext.triggerCaptionProbe();
@@ -1228,22 +1392,12 @@
       }
 
       try {
-        if (typeof player.getOption === "function" && typeof player.setOption === "function") {
-          const tracklist = player.getOption("captions", "tracklist");
-          const preferred = this.pickPreferredTrack(tracklist);
-          if (preferred) {
-            player.setOption("captions", "track", preferred);
-          }
-          player.setOption("captions", "reload", true);
-        }
-      } catch {
-        // Ignore caption option failures.
-      }
-
-      try {
         if (typeof player.isSubtitlesOn === "function" && typeof player.toggleSubtitles === "function") {
           if (!player.isSubtitlesOn()) {
             player.toggleSubtitles();
+            if (this.captionsWereOnBeforeExtension === false) {
+              this.captionsEnabledByExtension = true;
+            }
           }
         }
       } catch {
@@ -1315,24 +1469,29 @@
       return false;
     }
 
-    restoreSubtitlesIfExtensionEnabled() {
-      if (!this.captionsEnabledByExtension || this.captionsWereOnBeforeExtension !== false) {
+    captureInitialSubtitleState() {
+      if (this.captionsWereOnBeforeExtension !== null) {
         return;
       }
-      if (this.isSubtitlesEnabled()) {
+      this.captionsWereOnBeforeExtension = this.isSubtitlesEnabled();
+    }
+
+    restoreSubtitlesIfExtensionEnabled() {
+      const subtitlesWereOff = this.captionsWereOnBeforeExtension === false;
+      if (subtitlesWereOff && this.isSubtitlesEnabled()) {
         this.setSubtitlesEnabled(false);
       }
       this.captionsEnabledByExtension = false;
+      this.captionsWereOnBeforeExtension = null;
       this.captionsEnsured = false;
+      this.captionEnsureStarted = false;
     }
 
     ensureCaptionsEnabledOnce() {
       if (this.destroyed || this.settings.panelClosed) {
         return;
       }
-      if (this.captionsWereOnBeforeExtension === null) {
-        this.captionsWereOnBeforeExtension = this.isSubtitlesEnabled();
-      }
+      this.captureInitialSubtitleState();
       if (this.isSubtitlesEnabled()) {
         this.captionsEnsured = true;
         return;
@@ -1344,7 +1503,9 @@
       this.probeCaptionsNow();
 
       if (!this.isSubtitlesEnabled()) {
-        this.clickSubtitlesButtonFallback();
+        if (this.clickSubtitlesButtonFallback() && this.captionsWereOnBeforeExtension === false) {
+          this.captionsEnabledByExtension = true;
+        }
       }
 
       if (this.isSubtitlesEnabled()) {
@@ -1381,17 +1542,72 @@
       this.probeCaptionsNow();
     }
 
+    async refreshCaptionSnapshot() {
+      this.ensurePageBridgeForWatchPage();
+      if (!pageContext || typeof pageContext.requestSnapshot !== "function") {
+        return null;
+      }
+      try {
+        return await pageContext.requestSnapshot(650);
+      } catch {
+        return null;
+      }
+    }
+
+    getCaptionPreferenceKeyFromSnapshot(snapshot) {
+      const selectedTrack = snapshot && snapshot.selectedCaptionTrack ? snapshot.selectedCaptionTrack : null;
+      const selectedLanguage = this.getTrackLanguageCode(selectedTrack);
+      if (selectedLanguage) {
+        return "selected:" + selectedLanguage;
+      }
+      const preferredLanguages = this.getPreferredLanguageCodes();
+      return preferredLanguages[0] ? "preferred:" + preferredLanguages[0] : "";
+    }
+
+    getCurrentCaptionPreferenceKey() {
+      return this.getCaptionPreferenceKeyFromSnapshot(
+        pageContext && typeof pageContext.getSnapshot === "function" ? pageContext.getSnapshot() : null
+      );
+    }
+
     async startCaptionWork() {
       if (this.destroyed || this.settings.panelClosed) {
         return;
       }
       if (this.captionWorkStarted) {
+        const snapshot = await this.refreshCaptionSnapshot();
+        const nextPreferenceKey = this.getCaptionPreferenceKeyFromSnapshot(snapshot);
+        const shouldReloadForPreference =
+          !this.hasTranscriptActivity() ||
+          !this.lastCaptionPreferenceKey ||
+          (nextPreferenceKey && nextPreferenceKey !== this.lastCaptionPreferenceKey);
+        if (shouldReloadForPreference) {
+          this.clearCaptionStateForUnavailableVideo();
+          this.transcriptLastActivityAt = 0;
+          this.openCaptionPreferenceKey = nextPreferenceKey;
+        }
+        if (!shouldReloadForPreference) {
+          this.openCaptionPreferenceKey = nextPreferenceKey || this.lastCaptionPreferenceKey;
+          if (this.liveCaptureEnabled) {
+            this.ensureCaptionsEnabledOnce();
+            this.startCaptionEnsureLoop();
+            this.startLiveCapturePolling();
+          }
+          this.syncActiveChunk(true);
+          return;
+        }
         this.ensureCaptionsEnabledOnce();
+        this.startCaptionEnsureLoop();
         if (!this.liveCaptureEnabled) {
           this.enableLiveCaptureMode();
         } else {
           this.startLiveCapturePolling();
         }
+        this.syncActiveChunk(true);
+        if (this.panel) {
+          this.panel.setStatus("Loading subtitles...");
+        }
+        await this.loadTranscript();
         this.syncActiveChunk(true);
         if (!this.hasTranscriptActivity()) {
           this.scheduleTranscriptHeartbeatCheck("caption-work-resume", TRANSCRIPT_HEARTBEAT_GRACE_MS);
@@ -1403,7 +1619,8 @@
       this.transcriptLastActivityAt = 0;
       this.transcriptRecoveryAttempts = 0;
       this.transcriptReadinessDeferrals = 0;
-      this.ensurePageBridgeForWatchPage();
+      const snapshot = await this.refreshCaptionSnapshot();
+      this.openCaptionPreferenceKey = this.getCaptionPreferenceKeyFromSnapshot(snapshot);
       if (this.panel) {
         this.panel.setStatus("Loading subtitles...");
       }
@@ -1421,6 +1638,7 @@
       }
       this.transcriptMode = "live overlay fallback mode";
       this.liveCaptureEnabled = true;
+      this.liveCaptureStartedAt = Date.now();
       this.cues = [];
       this.revealedChunkCount = 0;
       this.liveCaptureSuppressedUntil = 0;
@@ -1464,6 +1682,7 @@
       this.futurePreviewSignature = "";
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
+      this.liveCaptureStartedAt = 0;
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
@@ -1485,6 +1704,35 @@
       if (this.liveCapturePollId) {
         window.clearInterval(this.liveCapturePollId);
         this.liveCapturePollId = 0;
+      }
+    }
+
+    clearCaptionStateForUnavailableVideo() {
+      this.cues = [];
+      this.allChunks = [];
+      this.chunks = [];
+      this.revealedChunkCount = 0;
+      this.activeIndex = -1;
+      this.liveFuturePreviewChunks = [];
+      this.transcriptPreviewChunks = [];
+      this.futurePreviewSignature = "";
+      this.liveOverlayUtterance = null;
+      this.liveBubbles = [];
+      this.liveBucketToBubble = new Map();
+      this.liveDisplayBubbleCache = new Map();
+      if (!this.panel) {
+        return;
+      }
+      this.panel.setChunks([]);
+      if (typeof this.panel.setFutureChunks === "function") {
+        this.panel.setFutureChunks([]);
+      }
+      if (typeof this.panel.setTimelineData === "function") {
+        this.panel.setTimelineData([], Number.NaN);
+      }
+      this.panel.setActiveIndex(-1);
+      if (typeof this.panel.setPlaybackTime === "function") {
+        this.panel.setPlaybackTime(0, { forceGlowReset: true });
       }
     }
 
@@ -1810,9 +2058,18 @@
         ) {
           return;
         }
+        const currentPreferenceKey = this.getCurrentCaptionPreferenceKey();
+        if (
+          this.openCaptionPreferenceKey &&
+          currentPreferenceKey &&
+          currentPreferenceKey !== this.openCaptionPreferenceKey
+        ) {
+          return;
+        }
 
         this.disableLiveCaptureMode();
         this.transcriptMode = response.mode || "direct transcript mode";
+        this.lastCaptionPreferenceKey = currentPreferenceKey || this.openCaptionPreferenceKey || this.getCurrentCaptionPreferenceKey();
         this.cues = response.cues;
         this.revealedChunkCount = 0;
         this.rebuildChunks();
@@ -1905,19 +2162,8 @@
           });
         }
         if (this.panel) {
-          if (!this.cues.length) {
-            this.panel.setChunks([]);
-            if (typeof this.panel.setFutureChunks === "function") {
-              this.futurePreviewSignature = "";
-              this.panel.setFutureChunks([]);
-            }
-            if (typeof this.panel.setTimelineData === "function") {
-              this.panel.setTimelineData([], Number.NaN);
-            }
-            this.panel.setActiveIndex(-1);
-            if (typeof this.panel.setPlaybackTime === "function") {
-              this.panel.setPlaybackTime(0, { forceGlowReset: true });
-            }
+          if (!this.cues.length || !this.hasLiveCaptionContext()) {
+            this.clearCaptionStateForUnavailableVideo();
           }
           this.panel.setStatus(
             shouldEnableLiveCapture
@@ -1934,6 +2180,7 @@
 
       this.disableLiveCaptureMode();
       this.transcriptMode = response.mode || "direct transcript mode";
+      this.lastCaptionPreferenceKey = this.getCurrentCaptionPreferenceKey();
       this.cues = response.cues;
       this.revealedChunkCount = 0;
       this.rebuildChunks();

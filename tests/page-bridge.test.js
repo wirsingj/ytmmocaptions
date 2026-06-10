@@ -185,6 +185,26 @@ function loadPageBridge(url) {
 exports.run = async function runPageBridgeTests(ctx) {
   const { assert, runCase } = ctx;
 
+  await runCase("page bridge caption probe does not change selected caption language", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "page-bridge.js"), "utf8");
+    const probeStart = source.indexOf("  function handleCaptionProbeRequest()");
+    const probeBody = source.slice(probeStart);
+
+    assert.ok(!probeBody.includes("setOption(\"captions\", \"track\""));
+    assert.ok(!probeBody.includes("setOption(\"captions\", \"reload\""));
+    assert.ok(probeBody.includes("toggleSubtitles()"));
+  });
+
+  await runCase("page bridge snapshots the selected caption track without mutation", () => {
+    const source = fs.readFileSync(path.join(ROOT_DIR, "src", "page-bridge.js"), "utf8");
+    const payloadStart = source.indexOf("  function buildPayload()");
+    const payloadBody = source.slice(payloadStart, source.indexOf("  function postPayload()", payloadStart));
+
+    assert.ok(payloadBody.includes("player.getOption(\"captions\", \"track\")"));
+    assert.ok(payloadBody.includes("selectedCaptionTrack"));
+    assert.ok(!payloadBody.includes("setOption(\"captions\""));
+  });
+
   await runCase("page bridge rejects blocked protocols, hosts, paths, and methods", async () => {
     const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
     const blocked = [

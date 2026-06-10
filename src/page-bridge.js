@@ -3,6 +3,7 @@
   const FETCH_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_REQUEST";
   const FETCH_RESPONSE_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_RESPONSE";
   const CAPTION_PROBE_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_CAPTION_PROBE_REQUEST";
+  const SNAPSHOT_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_SNAPSHOT_REQUEST";
   const TIMEDTEXT_CAPTURE_TYPE = "DIALOGUE_CAPTIONS_PAGE_TIMEDTEXT_CAPTURE";
   const BRIDGE_STATE_KEY = "__dialogueCaptionsPageBridgeState";
   const BRIDGE_TOKEN =
@@ -375,6 +376,27 @@
       Array.isArray(playerResponse.captions.playerCaptionsTracklistRenderer.captionTracks)
         ? playerResponse.captions.playerCaptionsTracklistRenderer.captionTracks
         : [];
+    let selectedCaptionTrack = null;
+    try {
+      const player = scope.document && scope.document.getElementById
+        ? scope.document.getElementById("movie_player")
+        : null;
+      if (player && typeof player.getOption === "function") {
+        const track = player.getOption("captions", "track");
+        if (track && typeof track === "object") {
+          selectedCaptionTrack = {
+            baseUrl: typeof track.baseUrl === "string" ? track.baseUrl : "",
+            languageCode: typeof track.languageCode === "string" ? track.languageCode : "",
+            langCode: typeof track.langCode === "string" ? track.langCode : "",
+            language: typeof track.language === "string" ? track.language : "",
+            kind: typeof track.kind === "string" ? track.kind : "",
+            vssId: typeof track.vssId === "string" ? track.vssId : ""
+          };
+        }
+      }
+    } catch {
+      selectedCaptionTrack = null;
+    }
 
     const ytcfgValues = readYtcfg([
       "INNERTUBE_API_KEY",
@@ -397,10 +419,13 @@
         return {
           baseUrl: track && typeof track.baseUrl === "string" ? track.baseUrl : "",
           languageCode: track && typeof track.languageCode === "string" ? track.languageCode : "",
+          langCode: track && typeof track.langCode === "string" ? track.langCode : "",
+          language: track && typeof track.language === "string" ? track.language : "",
           kind: track && typeof track.kind === "string" ? track.kind : "",
           vssId: track && typeof track.vssId === "string" ? track.vssId : ""
         };
       }),
+      selectedCaptionTrack: selectedCaptionTrack,
       transcriptParams: findTranscriptParams(initialData),
       transcriptPanelParams: findTranscriptPanelParams(initialData),
       timedtextProbe: {
@@ -496,22 +521,120 @@
 
   function pickPreferredTrack(tracklist) {
     const tracks = Array.isArray(tracklist) ? tracklist : [];
-    if (!tracks.length) {
-      return null;
+    const ordered = [];
+    const used = new Set();
+    const rawLanguages = [];
+    if (Array.isArray(scope.navigator && scope.navigator.languages)) {
+      rawLanguages.push.apply(rawLanguages, scope.navigator.languages);
     }
-    const englishManual = tracks.find(function (track) {
-      const languageCode = String(track && track.languageCode ? track.languageCode : "").toLowerCase();
-      const kind = String(track && track.kind ? track.kind : "").toLowerCase();
-      return languageCode.startsWith("en") && kind !== "asr";
+    rawLanguages.push(scope.navigator && scope.navigator.language, scope.navigator && scope.navigator.userLanguage, "en");
+    const preferences = [];
+    const usedPreferences = new Set();
+
+    rawLanguages.forEach(function (rawLanguage) {
+      const language = String(rawLanguage || "").trim().toLowerCase();
+      if (!language || usedPreferences.has(language)) {
+        return;
+      }
+      usedPreferences.add(language);
+      preferences.push(language);
+      const baseLanguage = language.split("-")[0];
+      if (baseLanguage && !usedPreferences.has(baseLanguage)) {
+        usedPreferences.add(baseLanguage);
+        preferences.push(baseLanguage);
+      }
     });
-    if (englishManual) {
-      return englishManual;
+
+    function getTrackLanguageCode(track) {
+      if (track && typeof track.baseUrl === "string" && track.baseUrl) {
+        try {
+          const translatedLanguage = new URL(track.baseUrl).searchParams.get("tlang");
+          if (translatedLanguage) {
+            return translatedLanguage.toLowerCase();
+          }
+        } catch {
+          // Ignore malformed track URLs and fall back to metadata.
+        }
+      }
+      const vssId = track && typeof track.vssId === "string" ? track.vssId.toLowerCase() : "";
+      if (vssId) {
+        const normalizedVssId = vssId.replace(/^a?\./, "");
+        if (normalizedVssId) {
+          return normalizedVssId;
+        }
+      }
+      const languageCode = String(
+        track && track.languageCode
+          ? track.languageCode
+          : track && track.langCode
+            ? track.langCode
+            : ""
+      ).toLowerCase();
+      if (languageCode) {
+        return languageCode;
+      }
+      if (track && typeof track.baseUrl === "string" && track.baseUrl) {
+        try {
+          return (new URL(track.baseUrl).searchParams.get("lang") || "").toLowerCase();
+        } catch {
+          return "";
+        }
+      }
+      return "";
     }
-    const manual = tracks.find(function (track) {
-      const kind = String(track && track.kind ? track.kind : "").toLowerCase();
-      return kind !== "asr";
+
+    function matchesPreference(track, preference) {
+      const language = getTrackLanguageCode(track);
+      return Boolean(
+        language &&
+          preference &&
+          (language === preference || language.indexOf(preference + "-") === 0 || preference.indexOf(language + "-") === 0)
+      );
+    }
+
+    function isManual(track) {
+      return String(track && track.kind ? track.kind : "").toLowerCase() !== "asr";
+    }
+
+    function isTranslated(track) {
+      if (!track || typeof track.baseUrl !== "string" || !track.baseUrl) {
+        return false;
+      }
+      try {
+        return new URL(track.baseUrl).searchParams.has("tlang");
+      } catch {
+        return false;
+      }
+    }
+
+    function pushWhere(predicate) {
+      tracks.forEach(function (track) {
+        if (!track || used.has(track) || !predicate(track)) {
+          return;
+        }
+        used.add(track);
+        ordered.push(track);
+      });
+    }
+
+    preferences.forEach(function (preference) {
+      pushWhere(function (track) {
+        return matchesPreference(track, preference) && isManual(track);
+      });
+      pushWhere(function (track) {
+        return matchesPreference(track, preference);
+      });
     });
-    return manual || tracks[0];
+    pushWhere(function (track) {
+      return isManual(track) && !isTranslated(track);
+    });
+    pushWhere(function (track) {
+      return !isTranslated(track);
+    });
+    pushWhere(function () {
+      return true;
+    });
+    return ordered[0] || null;
   }
 
   function handleCaptionProbeRequest() {
@@ -528,19 +651,6 @@
       }
     } catch {
       // Ignore unsupported module load calls.
-    }
-
-    try {
-      if (typeof player.getOption === "function" && typeof player.setOption === "function") {
-        const tracklist = player.getOption("captions", "tracklist");
-        const preferred = pickPreferredTrack(tracklist);
-        if (preferred) {
-          player.setOption("captions", "track", preferred);
-        }
-        player.setOption("captions", "reload", true);
-      }
-    } catch {
-      // Ignore player option failures.
     }
 
     try {
@@ -656,6 +766,13 @@
         return;
       }
       handleCaptionProbeRequest();
+      return;
+    }
+    if (data.type === SNAPSHOT_REQUEST_TYPE) {
+      if (!hasValidBridgeToken(data)) {
+        return;
+      }
+      postPayload();
       return;
     }
     if (data.type !== FETCH_REQUEST_TYPE) {

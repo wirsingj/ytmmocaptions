@@ -259,6 +259,121 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.ok(rect.top + rect.height <= 824 - 64 - 12);
   });
 
+  await runCase("default launcher tucks to player bottom-left above controls", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.getMountViewportRect = () => ({ left: 100, top: 50, right: 1500, bottom: 950 });
+    panel.getYouTubeFrameRect = () => ({ left: 140, top: 70, right: 1340, bottom: 745 });
+
+    const frame = panel.getLauncherFrameRect();
+    const position = panel.clampLauncherPosition(
+      frame.left + 14,
+      frame.bottom - 32 - 14,
+      96,
+      32
+    );
+
+    assert.equal(frame.left, 40);
+    assert.equal(frame.bottom, 745 - 50 - 54);
+    assert.equal(position.left, 54);
+    assert.equal(position.top, 745 - 50 - 54 - 32 - 14);
+  });
+
+  await runCase("saved panel position preserves bottom-left intent across fullscreen resize", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+    panel.getVisibleYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+
+    const saved = panel.localToPlayerPanelPosition(12, 720 - 260 - 12, 420, 260);
+
+    assert.equal(saved.anchor, "player");
+    assert.equal(saved.xRatio, 0);
+    assert.equal(saved.yRatio, 1);
+
+    panel.settings = module.settingsStore.normalizeSettings({ panelPosition: saved });
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getVisibleYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+
+    const restored = panel.panelPositionToLocal(420, 260);
+
+    assert.equal(restored.left, 12);
+    assert.equal(restored.top, 1080 - 260 - 12);
+  });
+
+  await runCase("legacy saved player pixels upgrade to proportional panel position", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({
+      settings: module.settingsStore.normalizeSettings({
+        panelPosition: { anchor: "player", left: 12, top: 448 }
+      })
+    });
+    panel.persistLayout = true;
+    panel.root = {
+      style: { display: "flex", left: "", top: "", right: "", bottom: "" },
+      getBoundingClientRect() {
+        return { left: 12, top: 448, right: 432, bottom: 708, width: 420, height: 260 };
+      },
+      classList: { toggle() {} }
+    };
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+    panel.getVisibleYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+    let patch = null;
+    panel.options.onSettingsChange = (settings, nextPatch) => {
+      patch = nextPatch;
+    };
+
+    panel.normalizeSavedPanelPosition({ persist: true });
+
+    assert.ok(patch);
+    assert.equal(patch.panelPosition.xRatio, 0);
+    assert.equal(patch.panelPosition.yRatio, 1);
+  });
+
+  await runCase("passive layout refresh does not rewrite saved panel ratios", () => {
+    const module = loadPanelModule();
+    const savedPosition = {
+      anchor: "player",
+      left: 12,
+      top: 448,
+      xRatio: 0,
+      yRatio: 1
+    };
+    const panel = new module.DialoguePanel({
+      settings: module.settingsStore.normalizeSettings({
+        panelPosition: savedPosition
+      })
+    });
+    panel.persistLayout = true;
+    panel.root = {
+      style: { display: "flex", left: "", top: "", right: "", bottom: "" },
+      getBoundingClientRect() {
+        return { left: 12, top: 808, right: 432, bottom: 1068, width: 420, height: 260 };
+      },
+      classList: { toggle() {} }
+    };
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getVisibleYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    let calls = 0;
+    panel.options.onSettingsChange = () => {
+      calls += 1;
+    };
+
+    panel.normalizeSavedPanelPosition({ persist: false });
+
+    assert.equal(calls, 0);
+    assert.equal(panel.settings.panelPosition.left, savedPosition.left);
+    assert.equal(panel.settings.panelPosition.top, savedPosition.top);
+    assert.equal(panel.settings.panelPosition.xRatio, savedPosition.xRatio);
+    assert.equal(panel.settings.panelPosition.yRatio, savedPosition.yRatio);
+    assert.equal(panel.root.style.left, "12px");
+    assert.equal(panel.root.style.top, String(1080 - 260 - 12) + "px");
+  });
+
   await runCase("bounded history render range includes active and latest rows", () => {
     const module = loadPanelModule();
     const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });

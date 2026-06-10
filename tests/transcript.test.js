@@ -98,6 +98,315 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.cues[0].text, "Line one from witness.");
   });
 
+  await runCase("transcript prefers browser language before translated manual tracks", async () => {
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        navigator: { languages: ["en-US"], language: "en-US" },
+        ytInitialPlayerResponse: {
+          videoDetails: { videoId: "abc123" },
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=en&tlang=zh-Hans",
+                  languageCode: "zh-Hans",
+                  kind: ""
+                },
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=en",
+                  languageCode: "en",
+                  kind: "asr"
+                }
+              ]
+            }
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=abc123" }
+      },
+      DOMParser: SimpleXmlParser,
+      fetch: async (url) => {
+        requested.push(String(url));
+        if (String(url).includes("/api/timedtext") && String(url).includes("fmt=json3")) {
+          return makeJsonResponse({
+            events: [
+              {
+                tStartMs: 1000,
+                dDurationMs: 1000,
+                segs: [{ utf8: String(url).includes("tlang=zh-Hans") ? "Wrong translated track." : "Browser language wins." }]
+              }
+            ]
+          });
+        }
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.track.languageCode, "en");
+    assert.equal(result.cues[0].text, "Browser language wins.");
+    assert.ok(requested.find((url) => url.includes("lang=en") && url.includes("fmt=json3")));
+    assert.ok(!requested.find((url) => url.includes("tlang=zh-Hans") && url.includes("fmt=json3")));
+  });
+
+  await runCase("transcript honors non-English browser language when available", async () => {
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        navigator: { languages: ["zh-Hans", "en-US"], language: "zh-Hans" },
+        ytInitialPlayerResponse: {
+          videoDetails: { videoId: "abc123" },
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=en",
+                  languageCode: "en",
+                  kind: ""
+                },
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=zh-Hans",
+                  languageCode: "zh-Hans",
+                  kind: ""
+                }
+              ]
+            }
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=abc123" }
+      },
+      DOMParser: SimpleXmlParser,
+      fetch: async (url) => {
+        if (String(url).includes("/api/timedtext") && String(url).includes("fmt=json3")) {
+          return makeJsonResponse({
+            events: [
+              {
+                tStartMs: 1000,
+                dDurationMs: 1000,
+                segs: [{ utf8: String(url).includes("lang=zh-Hans") ? "Browser preference wins." : "Wrong language." }]
+              }
+            ]
+          });
+        }
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.track.languageCode, "zh-Hans");
+    assert.equal(result.cues[0].text, "Browser preference wins.");
+  });
+
+  await runCase("transcript honors the selected YouTube caption language before browser default", async () => {
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        navigator: { languages: ["en-US"], language: "en-US" },
+        ytInitialPlayerResponse: {
+          videoDetails: { videoId: "abc123" },
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=zh-Hans",
+                  languageCode: "zh-Hans",
+                  kind: ""
+                },
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=fr",
+                  languageCode: "fr",
+                  kind: ""
+                },
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=en",
+                  languageCode: "en",
+                  kind: "asr"
+                }
+              ]
+            }
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=abc123" },
+        DialogueCaptions: {
+          pageContext: {
+            getSnapshot() {
+              return {
+                videoId: "abc123",
+                selectedCaptionTrack: { languageCode: "fr", vssId: ".fr" }
+              };
+            },
+            getTimedtextCaptures() {
+              return [];
+            }
+          }
+        }
+      },
+      DOMParser: SimpleXmlParser,
+      fetch: async (url) => {
+        requested.push(String(url));
+        if (String(url).includes("/api/timedtext") && String(url).includes("fmt=json3")) {
+          return makeJsonResponse({
+            events: [
+              {
+                tStartMs: 1000,
+                dDurationMs: 1000,
+                segs: [{ utf8: String(url).includes("lang=fr") ? "selected language wins" : "wrong language" }]
+              }
+            ]
+          });
+        }
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.track.languageCode, "fr");
+    assert.equal(result.cues[0].text, "selected language wins");
+    assert.ok(requested.some((url) => url.includes("lang=fr") && url.includes("fmt=json3")));
+    assert.ok(!requested.some((url) => url.includes("lang=zh-Hans") && url.includes("fmt=json3")));
+  });
+
+  await runCase("transcript prefers browser-language timedtext before selected-language panel", async () => {
+    const requested = [];
+    const panelPayload = {
+      actions: [
+        {
+          updateEngagementPanelAction: {
+            content: {
+              transcriptRenderer: {
+                body: {
+                  transcriptBodyRenderer: {
+                    cueGroups: [
+                      {
+                        transcriptCueGroupRenderer: {
+                          formattedStartOffset: { simpleText: "0:06" },
+                          cues: [
+                            {
+                              transcriptCueRenderer: {
+                                cue: { simpleText: "selected Chinese panel text" }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    };
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        navigator: { languages: ["en-US"], language: "en-US" },
+        ytInitialPlayerResponse: {
+          videoDetails: { videoId: "abc123" },
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=en",
+                  languageCode: "en",
+                  kind: "asr",
+                  vssId: "a.en"
+                }
+              ]
+            }
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=abc123" },
+        DialogueCaptions: {
+          pageContext: {
+            getSnapshot() {
+              return {
+                hasPlayerResponse: true,
+                captionTracks: [],
+                transcriptPanelParams: "panel-params",
+                ytcfg: {
+                  INNERTUBE_API_KEY: "fake-key",
+                  INNERTUBE_CONTEXT: { client: { clientName: "WEB", clientVersion: "2.test" } },
+                  INNERTUBE_CONTEXT_CLIENT_NAME: "1",
+                  INNERTUBE_CONTEXT_CLIENT_VERSION: "2.test"
+                }
+              };
+            },
+            getTimedtextCaptures() {
+              return [];
+            },
+            async pageFetch(url, init) {
+              requested.push({ url: String(url), init });
+              if (String(url).includes("/api/timedtext") && String(url).includes("fmt=json3")) {
+                return {
+                  ok: true,
+                  status: 200,
+                  url: String(url),
+                  contentType: "application/json",
+                  body: JSON.stringify({
+                    events: [
+                      {
+                        tStartMs: 6500,
+                        dDurationMs: 1000,
+                        segs: [{ utf8: "browser language timedtext" }]
+                      }
+                    ]
+                  })
+                };
+              }
+              if (String(url).includes("/youtubei/v1/get_panel")) {
+                return {
+                  ok: true,
+                  status: 200,
+                  url: String(url),
+                  contentType: "application/json",
+                  body: JSON.stringify(panelPayload)
+                };
+              }
+              return {
+                ok: true,
+                status: 200,
+                url: String(url),
+                contentType: "text/plain",
+                body: ""
+              };
+            }
+          }
+        }
+      },
+      DOMParser: SimpleXmlParser,
+      fetch: async (url) => {
+        requested.push({ url: String(url), init: {} });
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.track.languageCode, "en");
+    assert.equal(result.cues[0].text, "browser language timedtext");
+    assert.ok(requested.some((entry) => entry.url.includes("/api/timedtext") && entry.url.includes("fmt=json3")));
+    assert.ok(!requested.some((entry) => entry.url.includes("/youtubei/v1/get_panel")));
+  });
+
   await runCase("transcript handles missing metadata safely", async () => {
     const transcript = loadModule("transcript.js", {
       fetch: async () => makeTextResponse("<html><body>no player response</body></html>")
@@ -633,5 +942,80 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.cues[0].tokens[0].text, "alpha");
     assert.equal(result.cues[0].tokens[0].start, 1);
     assert.equal(result.cues[0].tokens[2].end, 3);
+  });
+
+  await runCase("transcript ignores stale window player response from previous video", async () => {
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        ytInitialPlayerResponse: {
+          videoDetails: { videoId: "previous123" },
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=previous123&lang=fr",
+                  languageCode: "fr",
+                  kind: ""
+                }
+              ]
+            }
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=current123" }
+      },
+      fetch: async (url) => {
+        requested.push(String(url));
+        return makeTextResponse("<html><body>no current metadata</body></html>");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=current123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, false);
+    assert.ok(!requested.some((url) => url.includes("previous123") && url.includes("/api/timedtext")));
+  });
+
+  await runCase("transcript filters page snapshot caption tracks to current video", async () => {
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        DialogueCaptions: {
+          pageContext: {
+            getSnapshot() {
+              return {
+                videoId: "current123",
+                captionTracks: [
+                  {
+                    baseUrl: "https://www.youtube.com/api/timedtext?v=previous123&lang=fr",
+                    languageCode: "fr",
+                    kind: ""
+                  }
+                ]
+              };
+            },
+            getTimedtextCaptures() {
+              return [];
+            }
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=current123" }
+      },
+      fetch: async (url) => {
+        requested.push(String(url));
+        return makeTextResponse("<html><body>no current metadata</body></html>");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=current123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, false);
+    assert.ok(!requested.some((url) => url.includes("previous123") && url.includes("/api/timedtext")));
   });
 };

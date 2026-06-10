@@ -970,7 +970,7 @@
       this.addListener(this.listViewport, "scroll", onScroll, { passive: true });
 
       const onResize = () => {
-        this.applySettings();
+        this.applySettings({ persistNormalizedPanelPosition: false });
         this.updateColorPickerPosition();
         this.updateHelpPopoverPosition();
       };
@@ -983,7 +983,10 @@
       };
       this.addListener(window, "scroll", onWindowScroll, { passive: true });
 
-      const onFullscreenChange = () => this.refreshAnchorLayout();
+      const onFullscreenChange = () => {
+        this.refreshAnchorLayout({ persistNormalizedPanelPosition: false });
+        this.scheduleSettledLayoutRefresh();
+      };
       this.addListener(document, "fullscreenchange", onFullscreenChange);
     }
 
@@ -1314,7 +1317,7 @@
       for (let index = 0; index < delays.length; index += 1) {
         const timerId = window.setTimeout(() => {
           if (this.root) {
-            this.applySettings();
+            this.applySettings({ persistNormalizedPanelPosition: false });
           }
         }, delays[index]);
         this.layoutRefreshTimers.push(timerId);
@@ -1326,6 +1329,7 @@
         return;
       }
       const preservePanelPlacement = Boolean(options && options.preservePanelPlacement);
+      const persistNormalizedPanelPosition = Boolean(options && options.persistNormalizedPanelPosition);
 
       const panelClosed = Boolean(this.settings.panelClosed);
       this.root.style.display = panelClosed ? "none" : "flex";
@@ -1472,7 +1476,7 @@
       this.updatePanelFade();
       this.applyLauncherPosition();
       if (!preservePanelPlacement) {
-        this.normalizeSavedPanelPosition();
+        this.normalizeSavedPanelPosition({ persist: persistNormalizedPanelPosition });
       }
       this.updatePanelFade();
       this.updateTimelineLayer();
@@ -2144,6 +2148,17 @@
       };
     }
 
+    getLocalYouTubeFrameRect() {
+      const frame = this.getYouTubeFrameRect();
+      const mountRect = this.getMountViewportRect();
+      return {
+        left: frame.left - mountRect.left,
+        top: frame.top - mountRect.top,
+        right: frame.right - mountRect.left,
+        bottom: frame.bottom - mountRect.top
+      };
+    }
+
     clampPositionToRect(left, top, width, height, bounds, margin) {
       const safeWidth = Math.max(1, Number(width) || 1);
       const safeHeight = Math.max(1, Number(height) || 1);
@@ -2159,7 +2174,13 @@
     }
 
     getLauncherFrameRect() {
-      const frame = this.getPanelFrameRect();
+      const playerFrame = this.getLocalYouTubeFrameRect();
+      const panelFrame = this.getPanelFrameRect();
+      const frameWidth = Math.max(0, playerFrame.right - playerFrame.left);
+      const frameHeight = Math.max(0, playerFrame.bottom - playerFrame.top);
+      const frame = frameWidth >= LAUNCHER_WIDTH && frameHeight >= LAUNCHER_HEIGHT
+        ? playerFrame
+        : panelFrame;
       return {
         ...frame,
         bottom: Math.max(frame.top + LAUNCHER_HEIGHT + LAUNCHER_MARGIN * 2, frame.bottom - LAUNCHER_CONTROL_BAR_GAP)
@@ -2178,7 +2199,8 @@
       };
     }
 
-    refreshAnchorLayout() {
+    refreshAnchorLayout(options) {
+      const persistNormalizedPanelPosition = Boolean(options && options.persistNormalizedPanelPosition);
       let anchorVisible = this.isAnchorUsablyVisible();
       if (this.root) {
         this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
@@ -2202,7 +2224,7 @@
           }
         }
       } else {
-        this.normalizeSavedPanelPosition();
+        this.normalizeSavedPanelPosition({ persist: persistNormalizedPanelPosition });
       }
       this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
       this.applyLauncherPosition();
@@ -2228,17 +2250,41 @@
       }
       const position = this.settings.panelPosition;
       const mountRect = this.getMountViewportRect();
-      const sourceLeft = position.anchor === "player" ? Number(position.left) : Number(position.left) - mountRect.left;
-      const sourceTop = position.anchor === "player" ? Number(position.top) : Number(position.top) - mountRect.top;
+      const frame = this.getLocalYouTubeFrameRect();
+      const frameWidth = Math.max(0, frame.right - frame.left);
+      const frameHeight = Math.max(0, frame.bottom - frame.top);
+      const availableX = Math.max(0, frameWidth - Number(width) - DEFAULT_PANEL_MARGIN * 2);
+      const availableY = Math.max(0, frameHeight - Number(height) - DEFAULT_PANEL_MARGIN * 2);
+      const xRatio = Number(position.xRatio);
+      const yRatio = Number(position.yRatio);
+      const sourceLeft = position.anchor === "player" && Number.isFinite(xRatio)
+        ? frame.left + DEFAULT_PANEL_MARGIN + availableX * Math.max(0, Math.min(1, xRatio))
+        : position.anchor === "player"
+          ? Number(position.left)
+          : Number(position.left) - mountRect.left;
+      const sourceTop = position.anchor === "player" && Number.isFinite(yRatio)
+        ? frame.top + DEFAULT_PANEL_MARGIN + availableY * Math.max(0, Math.min(1, yRatio))
+        : position.anchor === "player"
+          ? Number(position.top)
+          : Number(position.top) - mountRect.top;
       return this.clampPanelPosition(sourceLeft, sourceTop, width, height);
     }
 
     localToPlayerPanelPosition(left, top, width, height) {
       const clamped = this.clampPanelPosition(left, top, width, height);
+      const frame = this.getLocalYouTubeFrameRect();
+      const frameWidth = Math.max(0, frame.right - frame.left);
+      const frameHeight = Math.max(0, frame.bottom - frame.top);
+      const availableX = Math.max(0, frameWidth - Number(width) - DEFAULT_PANEL_MARGIN * 2);
+      const availableY = Math.max(0, frameHeight - Number(height) - DEFAULT_PANEL_MARGIN * 2);
+      const relativeLeft = clamped.left - frame.left - DEFAULT_PANEL_MARGIN;
+      const relativeTop = clamped.top - frame.top - DEFAULT_PANEL_MARGIN;
       return {
         anchor: "player",
         left: Math.max(0, Math.round(clamped.left)),
-        top: Math.max(0, Math.round(clamped.top))
+        top: Math.max(0, Math.round(clamped.top)),
+        xRatio: availableX > 0 ? Math.max(0, Math.min(1, relativeLeft / availableX)) : 0,
+        yRatio: availableY > 0 ? Math.max(0, Math.min(1, relativeTop / availableY)) : 0
       };
     }
 
@@ -2495,13 +2541,14 @@
       });
     }
 
-    normalizeSavedPanelPosition() {
+    normalizeSavedPanelPosition(options) {
       if (!this.root || this.root.style.display === "none") {
         return;
       }
       if (!this.persistLayout || !this.settings.panelPosition) {
         return;
       }
+      const shouldPersist = Boolean(options && options.persist);
       const rect = this.getElementLocalRect(this.root);
       const clamped = this.panelPositionToLocal(rect.width, rect.height);
       if (!clamped) {
@@ -2512,12 +2559,18 @@
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
       const nextPosition = this.localToPlayerPanelPosition(clamped.left, clamped.top, rect.width, rect.height);
+      const savedXRatio = Number(this.settings.panelPosition.xRatio);
+      const savedYRatio = Number(this.settings.panelPosition.yRatio);
 
       const changed =
         this.settings.panelPosition.anchor !== "player" ||
         nextPosition.left !== Number(this.settings.panelPosition.left) ||
-        nextPosition.top !== Number(this.settings.panelPosition.top);
-      if (changed) {
+        nextPosition.top !== Number(this.settings.panelPosition.top) ||
+        !Number.isFinite(savedXRatio) ||
+        !Number.isFinite(savedYRatio) ||
+        Math.abs(nextPosition.xRatio - savedXRatio) > 0.001 ||
+        Math.abs(nextPosition.yRatio - savedYRatio) > 0.001;
+      if (changed && shouldPersist) {
         this.settings = {
           ...this.settings,
           panelPosition: nextPosition

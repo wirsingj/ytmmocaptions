@@ -108,6 +108,14 @@
     if (value.anchor === "player") {
       normalized.anchor = "player";
     }
+    const xRatio = Number(value.xRatio);
+    const yRatio = Number(value.yRatio);
+    if (Number.isFinite(xRatio)) {
+      normalized.xRatio = Math.max(0, Math.min(1, xRatio));
+    }
+    if (Number.isFinite(yRatio)) {
+      normalized.yRatio = Math.max(0, Math.min(1, yRatio));
+    }
     return normalized;
   }
 
