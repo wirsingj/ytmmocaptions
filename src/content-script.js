@@ -5,13 +5,24 @@
   const settingsStore = app.settingsStore;
   const bubbleState = app.bubbleState;
   const captionText = app.captionText;
+  const CaptionSessionManager = app.CaptionSessionManager;
   const platform = app.platform;
   const pageContext = app.pageContext;
   const diagnostics = app.diagnostics || { record() {} };
   const captionTimeline = app.captionTimeline;
   const DialoguePanel = app.DialoguePanel;
 
-  if (!transcript || !captionTimeline || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
+  if (
+    !transcript ||
+    !captionTimeline ||
+    !chunker ||
+    !settingsStore ||
+    !bubbleState ||
+    !captionText ||
+    !CaptionSessionManager ||
+    !platform ||
+    !DialoguePanel
+  ) {
     console.warn("[Dialogue Captions] Missing required modules.");
     return;
   }
@@ -54,7 +65,10 @@
       this.boundVideo = null;
       this.syncRafId = 0;
       this.loadAbortController = null;
+      this.loadAbortSessionId = 0;
       this.destroyed = false;
+      this.captionSessions = new CaptionSessionManager();
+      this.captionSessionId = 0;
       this.suppressSpaceKeyUp = false;
       this.timelineActionId = 0;
       this.timelineAction = null;
@@ -140,6 +154,7 @@
     destroy() {
       this.destroyed = true;
       diagnostics.record("app:destroy", { liveCaptureEnabled: Boolean(this.liveCaptureEnabled) });
+      this.invalidateCaptionSession("destroy");
       this.persistPanelSnapshot();
       this.abortTranscriptLoad();
 
@@ -173,6 +188,29 @@
       }
       pageContext.ensureBridgeInjected();
       return true;
+    }
+
+    beginCaptionSession(reason) {
+      this.captionSessionId = this.captionSessions.begin(reason || "caption-work");
+      return this.captionSessionId;
+    }
+
+    getActiveCaptionSessionId() {
+      return this.captionSessions.getCurrentId();
+    }
+
+    isActiveCaptionSession(sessionId) {
+      return (
+        this.captionSessions.isActive(sessionId) &&
+        !this.destroyed &&
+        !this.settings.panelClosed &&
+        this.isCurrentVideoPage()
+      );
+    }
+
+    invalidateCaptionSession(reason) {
+      this.captionSessions.invalidate(reason || "invalidate");
+      this.captionSessionId = this.captionSessions.getCurrentId();
     }
 
     isCurrentVideoPage() {
@@ -1540,7 +1578,8 @@
       }
     }
 
-    startCaptionEnsureLoop() {
+    startCaptionEnsureLoop(sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
       if (this.captionEnsureStarted) {
         return;
       }
@@ -1548,7 +1587,7 @@
       const delaysMs = [0, 350, 800, 1500, 2600, 4200, 6200];
       for (let index = 0; index < delaysMs.length; index += 1) {
         const timerId = window.setTimeout(() => {
-          if (this.destroyed || this.captionsEnsured) {
+          if (!this.isActiveCaptionSession(captionSessionId) || this.captionsEnsured) {
             return;
           }
           this.ensureCaptionsEnabledOnce();
@@ -1617,39 +1656,41 @@
           !this.lastCaptionPreferenceKey ||
           (nextPreferenceKey && nextPreferenceKey !== this.lastCaptionPreferenceKey);
         if (shouldReloadForPreference) {
+          const captionSessionId = this.beginCaptionSession("caption-work-reload");
           this.clearCaptionStateForUnavailableVideo();
           this.transcriptLastActivityAt = 0;
           this.openCaptionPreferenceKey = nextPreferenceKey;
-        }
-        if (!shouldReloadForPreference) {
+          this.ensureCaptionsEnabledOnce();
+          this.startCaptionEnsureLoop(captionSessionId);
+          if (!this.liveCaptureEnabled) {
+            this.enableLiveCaptureMode();
+          } else {
+            this.startLiveCapturePolling();
+          }
+          this.syncActiveChunk(true);
+          if (this.panel) {
+            this.panel.setStatus("Loading subtitles...");
+          }
+          await this.loadTranscript(captionSessionId);
+          this.syncActiveChunk(true);
+          if (!this.hasTranscriptActivity()) {
+            this.scheduleTranscriptHeartbeatCheck("caption-work-resume", TRANSCRIPT_HEARTBEAT_GRACE_MS, captionSessionId);
+          }
+          return;
+        } else {
+          const captionSessionId = this.beginCaptionSession("caption-work-reuse");
           this.openCaptionPreferenceKey = nextPreferenceKey || this.lastCaptionPreferenceKey;
           if (this.liveCaptureEnabled) {
             this.ensureCaptionsEnabledOnce();
-            this.startCaptionEnsureLoop();
+            this.startCaptionEnsureLoop(captionSessionId);
             this.startLiveCapturePolling();
           }
           this.syncActiveChunk(true);
           return;
         }
-        this.ensureCaptionsEnabledOnce();
-        this.startCaptionEnsureLoop();
-        if (!this.liveCaptureEnabled) {
-          this.enableLiveCaptureMode();
-        } else {
-          this.startLiveCapturePolling();
-        }
-        this.syncActiveChunk(true);
-        if (this.panel) {
-          this.panel.setStatus("Loading subtitles...");
-        }
-        await this.loadTranscript();
-        this.syncActiveChunk(true);
-        if (!this.hasTranscriptActivity()) {
-          this.scheduleTranscriptHeartbeatCheck("caption-work-resume", TRANSCRIPT_HEARTBEAT_GRACE_MS);
-        }
-        return;
       }
 
+      const captionSessionId = this.beginCaptionSession("caption-work-start");
       this.captionWorkStarted = true;
       this.transcriptLastActivityAt = 0;
       this.transcriptRecoveryAttempts = 0;
@@ -1659,10 +1700,10 @@
       if (this.panel) {
         this.panel.setStatus("Loading subtitles...");
       }
-      this.scheduleTranscriptHeartbeatCheck("caption-work-start", TRANSCRIPT_HEARTBEAT_GRACE_MS);
-      this.startCaptionEnsureLoop();
+      this.scheduleTranscriptHeartbeatCheck("caption-work-start", TRANSCRIPT_HEARTBEAT_GRACE_MS, captionSessionId);
+      this.startCaptionEnsureLoop(captionSessionId);
       this.enableLiveCaptureMode();
-      await this.loadTranscript();
+      await this.loadTranscript(captionSessionId);
       this.syncActiveChunk(true);
     }
 
@@ -2040,7 +2081,11 @@
     abortTranscriptLoad() {
       if (this.loadAbortController) {
         this.loadAbortController.abort();
+        if (this.loadAbortSessionId) {
+          this.captionSessions.releaseAbortController(this.loadAbortSessionId, this.loadAbortController);
+        }
         this.loadAbortController = null;
+        this.loadAbortSessionId = 0;
       }
     }
 
@@ -2060,14 +2105,14 @@
       }
       this.lastTranscriptUpgradeAt = now;
       this.transcriptUpgradeAttempts += 1;
-      this.tryUpgradeLiveCaptureToTranscript();
+      this.tryUpgradeLiveCaptureToTranscript(this.getActiveCaptionSessionId());
     }
 
-    async tryUpgradeLiveCaptureToTranscript() {
+    async tryUpgradeLiveCaptureToTranscript(sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
       if (
         this.transcriptUpgradeInFlight ||
-        this.destroyed ||
-        this.settings.panelClosed ||
+        !this.isActiveCaptionSession(captionSessionId) ||
         !this.liveCaptureEnabled ||
         !this.isCurrentVideoPage()
       ) {
@@ -2076,7 +2121,11 @@
       this.transcriptUpgradeInFlight = true;
       this.ensurePageBridgeForWatchPage();
       this.probeCaptionsNow();
-      const controller = new AbortController();
+      const controller = this.captionSessions.createAbortController(captionSessionId);
+      if (!controller) {
+        this.transcriptUpgradeInFlight = false;
+        return;
+      }
       const signal = controller.signal;
       const timeoutId = window.setTimeout(() => controller.abort(), 11000);
 
@@ -2084,8 +2133,7 @@
         await this.waitForCaptionContextReady(1600);
         if (
           signal.aborted ||
-          this.destroyed ||
-          this.settings.panelClosed ||
+          !this.isActiveCaptionSession(captionSessionId) ||
           !this.liveCaptureEnabled ||
           !this.isCurrentVideoPage()
         ) {
@@ -2100,8 +2148,7 @@
           response.videoId !== this.videoId ||
           !Array.isArray(response.cues) ||
           !response.cues.length ||
-          this.destroyed ||
-          this.settings.panelClosed ||
+          !this.isActiveCaptionSession(captionSessionId) ||
           !this.isCurrentVideoPage()
         ) {
           return;
@@ -2129,13 +2176,23 @@
         }
       } finally {
         window.clearTimeout(timeoutId);
+        this.captionSessions.releaseAbortController(captionSessionId, controller);
         this.transcriptUpgradeInFlight = false;
       }
     }
 
-    async loadTranscript() {
+    async loadTranscript(sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (!this.isActiveCaptionSession(captionSessionId)) {
+        return;
+      }
       this.abortTranscriptLoad();
-      this.loadAbortController = new AbortController();
+      this.loadAbortController = this.captionSessions.createAbortController(captionSessionId);
+      if (!this.loadAbortController) {
+        return;
+      }
+      this.loadAbortSessionId = captionSessionId;
+      const controller = this.loadAbortController;
       const loadId = this.transcriptLoadNonce + 1;
       this.transcriptLoadNonce = loadId;
       this.transcriptLoadInFlight = true;
@@ -2143,9 +2200,9 @@
       this.transcriptLoadAttempts += 1;
 
       const url = window.location.href;
-      const signal = this.loadAbortController.signal;
+      const signal = controller.signal;
       const transcriptTimeoutMs = 10000;
-      if (signal.aborted || this.destroyed) {
+      if (signal.aborted || !this.isActiveCaptionSession(captionSessionId)) {
         if (loadId === this.transcriptLoadNonce) {
           this.transcriptLoadInFlight = false;
         }
@@ -2153,7 +2210,7 @@
       }
       this.maybeProbeCaptions();
       await this.waitForCaptionContextReady(2400);
-      if (signal.aborted || this.destroyed || !this.isCurrentVideoPage()) {
+      if (signal.aborted || !this.isActiveCaptionSession(captionSessionId)) {
         if (loadId === this.transcriptLoadNonce) {
           this.transcriptLoadInFlight = false;
         }
@@ -2179,19 +2236,24 @@
         if (loadId === this.transcriptLoadNonce) {
           this.transcriptLoadInFlight = false;
         }
+        if (this.loadAbortController === controller && this.loadAbortSessionId === captionSessionId) {
+          this.captionSessions.releaseAbortController(captionSessionId, controller);
+          this.loadAbortController = null;
+          this.loadAbortSessionId = 0;
+        }
       }
 
       if (!response || !response.ok) {
-        if (!this.isCurrentVideoPage()) {
+        if (!this.isActiveCaptionSession(captionSessionId)) {
           return;
         }
         const reason = String(response && response.reason ? response.reason : "");
         const isLikelyReloadRace =
           reason.includes("No caption tracks") || reason.includes("No subtitle cues");
-        if (isLikelyReloadRace && this.transcriptLoadAttempts <= 1 && !signal.aborted && !this.destroyed) {
+        if (isLikelyReloadRace && this.transcriptLoadAttempts <= 1 && !signal.aborted && this.isActiveCaptionSession(captionSessionId)) {
           await new Promise((resolve) => window.setTimeout(resolve, 950));
-          if (!signal.aborted && !this.destroyed) {
-            return this.loadTranscript();
+          if (!signal.aborted && this.isActiveCaptionSession(captionSessionId)) {
+            return this.loadTranscript(captionSessionId);
           }
         }
         const shouldEnableLiveCapture =
@@ -2221,7 +2283,7 @@
         return;
       }
 
-      if (response.videoId !== this.videoId || !this.isCurrentVideoPage()) {
+      if (response.videoId !== this.videoId || !this.isActiveCaptionSession(captionSessionId)) {
         return;
       }
 
@@ -2800,6 +2862,7 @@
       }
 
       if (changedPanelClosed && isClosed) {
+        this.invalidateCaptionSession("panel-close");
         this.abortTranscriptLoad();
         this.stopLiveCapturePolling();
         this.stopTranscriptHeartbeat();
@@ -2993,8 +3056,9 @@
       );
     }
 
-    scheduleTranscriptHeartbeatCheck(reason, delayMs) {
-      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+    scheduleTranscriptHeartbeatCheck(reason, delayMs, sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (!this.isActiveCaptionSession(captionSessionId) || this.hasTranscriptActivity()) {
         this.stopTranscriptHeartbeat();
         return;
       }
@@ -3010,7 +3074,7 @@
       // scheduled only while the open panel is still empty.
       this.transcriptHeartbeatTimerId = window.setTimeout(() => {
         this.transcriptHeartbeatTimerId = 0;
-        this.checkTranscriptHeartbeat(reason || "timer");
+        this.checkTranscriptHeartbeat(reason || "timer", captionSessionId);
       }, delay);
     }
 
@@ -3027,8 +3091,9 @@
       return Boolean(video.currentSrc || video.src || Number.isFinite(duration) || duration === Number.POSITIVE_INFINITY);
     }
 
-    checkTranscriptHeartbeat(reason) {
-      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+    checkTranscriptHeartbeat(reason, sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (!this.isActiveCaptionSession(captionSessionId) || this.hasTranscriptActivity()) {
         this.stopTranscriptHeartbeat();
         return;
       }
@@ -3042,15 +3107,16 @@
           });
           return;
         }
-        this.scheduleTranscriptHeartbeatCheck("video-not-ready", TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS);
+        this.scheduleTranscriptHeartbeatCheck("video-not-ready", TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS, captionSessionId);
         return;
       }
       this.transcriptReadinessDeferrals = 0;
-      this.recoverTranscriptActivity(reason || "heartbeat");
+      this.recoverTranscriptActivity(reason || "heartbeat", captionSessionId);
     }
 
-    recoverTranscriptActivity(reason) {
-      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+    recoverTranscriptActivity(reason, sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (!this.isActiveCaptionSession(captionSessionId) || this.hasTranscriptActivity()) {
         return;
       }
       if (this.isTranscriptHeartbeatExhausted()) {
@@ -3069,7 +3135,7 @@
       });
 
       this.ensurePageBridgeForWatchPage();
-      this.startCaptionEnsureLoop();
+      this.startCaptionEnsureLoop(captionSessionId);
       this.ensureCaptionsEnabledOnce();
       this.probeCaptionsNow();
 
@@ -3083,9 +3149,9 @@
       }
 
       if (!this.transcriptLoadInFlight) {
-        this.loadTranscript();
+        this.loadTranscript(captionSessionId);
       }
-      this.scheduleTranscriptHeartbeatCheck("post-recovery", TRANSCRIPT_HEARTBEAT_RECHECK_MS);
+      this.scheduleTranscriptHeartbeatCheck("post-recovery", TRANSCRIPT_HEARTBEAT_RECHECK_MS, captionSessionId);
     }
 
     nudgeCaptionWork(reason) {
@@ -3107,7 +3173,7 @@
       if (this.liveCaptureEnabled) {
         this.startLiveCapturePolling();
       }
-      this.scheduleTranscriptHeartbeatCheck(reason || "nudge", TRANSCRIPT_HEARTBEAT_GRACE_MS);
+      this.scheduleTranscriptHeartbeatCheck(reason || "nudge", TRANSCRIPT_HEARTBEAT_GRACE_MS, this.getActiveCaptionSessionId());
     }
 
     isChunkIndexAlignedWithTime(chunks, index, time) {

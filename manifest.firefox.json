@@ -33,6 +33,7 @@
         "scripts/caption-text.js",
         "scripts/chunker.js",
         "scripts/bubble-state.js",
+        "scripts/caption-session.js",
         "scripts/timeline-scrub.js",
         "scripts/transcript.js",
         "scripts/caption-timeline.js",

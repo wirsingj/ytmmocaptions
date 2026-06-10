@@ -63,6 +63,7 @@ exports.run = async function runComplianceTests(ctx) {
       const pageContextIndex = js.findIndex((item) => item.includes("page-context.js"));
       const captionTextIndex = js.findIndex((item) => item.includes("caption-text.js"));
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
+      const sessionIndex = js.findIndex((item) => item.includes("caption-session.js"));
       const scrubIndex = js.findIndex((item) => item.includes("timeline-scrub.js"));
       const transcriptIndex = js.findIndex((item) => item.includes("transcript.js"));
       const timelineIndex = js.findIndex((item) => item.includes("caption-timeline.js"));
@@ -73,6 +74,7 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(pageContextIndex >= 0, fileName + " missing page-context.js");
       assert.ok(captionTextIndex >= 0, fileName + " missing caption-text.js");
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
+      assert.ok(sessionIndex >= 0, fileName + " missing caption-session.js");
       assert.ok(scrubIndex >= 0, fileName + " missing timeline-scrub.js");
       assert.ok(transcriptIndex >= 0, fileName + " missing transcript.js");
       assert.ok(timelineIndex >= 0, fileName + " missing caption-timeline.js");
@@ -81,7 +83,9 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(diagnosticsIndex < pageContextIndex, fileName + " loads diagnostics before page-context");
       assert.ok(captionTextIndex < contentIndex, fileName + " loads content-script before caption-text");
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
+      assert.ok(sessionIndex < contentIndex, fileName + " loads content-script before caption-session");
       assert.ok(bubbleIndex < scrubIndex, fileName + " loads timeline scrub before bubble-state");
+      assert.ok(sessionIndex < scrubIndex, fileName + " loads timeline scrub before caption-session");
       assert.ok(scrubIndex < contentIndex, fileName + " loads content-script before timeline scrub");
       assert.ok(transcriptIndex < timelineIndex, fileName + " loads caption timeline before transcript");
       assert.ok(timelineIndex < contentIndex, fileName + " loads content-script before caption timeline");

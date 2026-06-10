@@ -174,9 +174,11 @@ exports.run = async function runLiveBubbleTests(ctx) {
 
   await runCase("transcript heartbeat recovers an open panel without becoming an unbounded poll loop", () => {
     assert.ok(source.includes("MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3"));
-    assert.ok(source.includes("scheduleTranscriptHeartbeatCheck(reason, delayMs)"));
-    assert.ok(source.includes("checkTranscriptHeartbeat(reason)"));
-    assert.ok(source.includes("recoverTranscriptActivity(reason)"));
+    assert.ok(source.includes("scheduleTranscriptHeartbeatCheck(reason, delayMs, sessionId)"));
+    assert.ok(source.includes("checkTranscriptHeartbeat(reason, sessionId)"));
+    assert.ok(source.includes("recoverTranscriptActivity(reason, sessionId)"));
+    assert.ok(source.includes("const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());"));
+    assert.ok(source.includes("!this.isActiveCaptionSession(captionSessionId)"));
     assert.ok(source.includes("this.transcriptRecoveryAttempts += 1;"));
     assert.ok(source.includes("this.transcriptRecoveryAttempts >= MAX_TRANSCRIPT_RECOVERY_ATTEMPTS"));
     assert.ok(source.includes("MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS = 20"));
@@ -187,7 +189,7 @@ exports.run = async function runLiveBubbleTests(ctx) {
   });
 
   await runCase("heartbeat recovery nudges caption ingestion without clearing existing live bubbles", () => {
-    const recoverStart = source.indexOf("    recoverTranscriptActivity(reason)");
+    const recoverStart = source.indexOf("    recoverTranscriptActivity(reason, sessionId)");
     const recoverBody = source.slice(
       recoverStart,
       source.indexOf("    nudgeCaptionWork(reason)", recoverStart)
@@ -199,7 +201,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(recoverBody.includes("this.startLiveCapturePolling();"));
     assert.ok(recoverBody.includes("this.captureLiveCaptionLine();"));
     assert.ok(recoverBody.includes("if (!this.transcriptLoadInFlight)"));
-    assert.ok(recoverBody.includes("this.loadTranscript();"));
+    assert.ok(recoverBody.includes("this.loadTranscript(captionSessionId);"));
+    assert.ok(recoverBody.includes("this.scheduleTranscriptHeartbeatCheck(\"post-recovery\", TRANSCRIPT_HEARTBEAT_RECHECK_MS, captionSessionId);"));
     assert.ok(!recoverBody.includes("this.liveBubbles = []"));
     assert.ok(!recoverBody.includes("this.liveBucketToBubble = new Map()"));
   });
@@ -221,11 +224,14 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(resumeBody.includes("const shouldReloadForPreference"));
     assert.ok(resumeBody.includes("nextPreferenceKey !== this.lastCaptionPreferenceKey"));
     assert.ok(resumeBody.includes("if (shouldReloadForPreference)"));
-    assert.ok(resumeBody.includes("if (!shouldReloadForPreference)"));
-    assert.ok(resumeBody.includes("this.startCaptionEnsureLoop();"));
-    assert.ok(resumeBody.includes("await this.loadTranscript();"));
-    assert.ok(resumeBody.indexOf("if (!shouldReloadForPreference)") < resumeBody.indexOf("this.ensureCaptionsEnabledOnce();"));
-    assert.ok(resumeBody.indexOf("return;") < resumeBody.indexOf("this.enableLiveCaptureMode();"));
+    assert.ok(resumeBody.includes("} else {"));
+    assert.ok(resumeBody.includes("this.beginCaptionSession(\"caption-work-reload\")"));
+    assert.ok(resumeBody.includes("this.beginCaptionSession(\"caption-work-reuse\")"));
+    assert.ok(resumeBody.includes("this.startCaptionEnsureLoop(captionSessionId);"));
+    assert.ok(resumeBody.includes("await this.loadTranscript(captionSessionId);"));
+    assert.ok(resumeBody.indexOf("this.beginCaptionSession(\"caption-work-reload\")") < resumeBody.indexOf("this.beginCaptionSession(\"caption-work-reuse\")"));
+    assert.ok(resumeBody.indexOf("return;") < resumeBody.indexOf("this.beginCaptionSession(\"caption-work-reuse\")"));
+    assert.ok(resumeBody.lastIndexOf("return;") > resumeBody.indexOf("this.beginCaptionSession(\"caption-work-reuse\")"));
     assert.ok(openBranch.includes("this.startCaptionWork();"));
   });
 
@@ -247,25 +253,27 @@ exports.run = async function runLiveBubbleTests(ctx) {
     const bridgeBody = source.slice(bridgeStart, source.indexOf("    async waitForVideoElement", bridgeStart));
     const captureStart = source.indexOf("    captureLiveCaptionLine()");
     const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
-    const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript()");
-    const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript()", upgradeStart));
-    const loadStart = source.indexOf("    async loadTranscript()");
+    const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript(sessionId)");
+    const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript(sessionId)", upgradeStart));
+    const loadStart = source.indexOf("    async loadTranscript(sessionId)");
     const loadBody = source.slice(loadStart, source.indexOf("    estimateTokenTimings", loadStart));
 
     assert.ok(source.includes("isCurrentVideoPage()"));
+    assert.ok(source.includes("isActiveCaptionSession(sessionId)"));
     assert.ok(bridgeBody.includes("if (!this.isCurrentVideoPage())"));
     assert.ok(captureBody.includes("!this.isCurrentVideoPage()"));
     assert.ok(upgradeBody.includes("!this.isCurrentVideoPage()"));
-    assert.ok(loadBody.includes("signal.aborted || this.destroyed || !this.isCurrentVideoPage()"));
-    assert.ok(loadBody.includes("if (!this.isCurrentVideoPage())"));
-    assert.ok(loadBody.includes("response.videoId !== this.videoId || !this.isCurrentVideoPage()"));
+    assert.ok(upgradeBody.includes("!this.isActiveCaptionSession(captionSessionId)"));
+    assert.ok(loadBody.includes("signal.aborted || !this.isActiveCaptionSession(captionSessionId)"));
+    assert.ok(loadBody.includes("if (!this.isActiveCaptionSession(captionSessionId))"));
+    assert.ok(loadBody.includes("response.videoId !== this.videoId || !this.isActiveCaptionSession(captionSessionId)"));
   });
 
   await runCase("open live capture freezes to the caption preference from panel open", () => {
     const captureStart = source.indexOf("    captureLiveCaptionLine()");
     const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
-    const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript()");
-    const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript()", upgradeStart));
+    const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript(sessionId)");
+    const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript(sessionId)", upgradeStart));
 
     assert.ok(source.includes("hasOpenCaptionPreferenceChanged()"));
     assert.ok(captureBody.includes("this.hasOpenCaptionPreferenceChanged()"));
@@ -410,7 +418,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
 
   await runCase("live fallback periodically upgrades to full transcript for future previews", () => {
     assert.ok(source.includes("maybeUpgradeLiveCaptureToTranscript()"));
-    assert.ok(source.includes("tryUpgradeLiveCaptureToTranscript()"));
+    assert.ok(source.includes("tryUpgradeLiveCaptureToTranscript(sessionId)"));
+    assert.ok(source.includes("this.tryUpgradeLiveCaptureToTranscript(this.getActiveCaptionSessionId());"));
     assert.ok(source.includes("this.transcriptUpgradeAttempts >= 8"));
     assert.ok(source.includes("Full caption timeline loaded. Next up previews are available."));
     assert.ok(source.includes("this.disableLiveCaptureMode();"));
