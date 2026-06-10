@@ -24,6 +24,7 @@
   const DEFAULT_PANEL_WIDTH_RATIO = 0.52;
   const DEFAULT_PANEL_MARGIN = 12;
   const PANEL_CONTROL_BAR_GAP = 64;
+  const RELATIVE_SIZE_RESTORE_THRESHOLD = 0.86;
   const LAUNCHER_MARGIN = 14;
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
@@ -1055,10 +1056,7 @@
         const rect = this.getElementLocalRect(this.root);
         if (this.isRestorablePanelLayout(rect, rect)) {
           snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
-          snapshot.panelSize = {
-            width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
-            height: Math.max(MIN_PANEL_HEIGHT, Math.round(rect.height))
-          };
+          snapshot.panelSize = this.localToPlayerPanelSize(rect.width, rect.height);
         }
       }
       return snapshot;
@@ -1305,10 +1303,7 @@
         return snapshot;
       }
       snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
-      snapshot.panelSize = {
-        width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
-        height: Math.max(MIN_PANEL_HEIGHT, Math.round(rect.height))
-      };
+      snapshot.panelSize = this.localToPlayerPanelSize(rect.width, rect.height);
       return snapshot;
     }
 
@@ -1359,19 +1354,10 @@
           Number.isFinite(this.settings.panelSize.height) &&
           this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
         ) {
-          const panelFrame = this.getPanelFrameRect();
-          const maxPanelHeight = Math.max(
-            MIN_PANEL_HEIGHT,
-            panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2
-          );
-          const boundedWidth = Math.max(
-            MIN_PANEL_WIDTH,
-            Math.min(panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2, Number(this.settings.panelSize.width))
-          );
-          const boundedHeight = Math.max(
-            MIN_PANEL_HEIGHT,
-            Math.min(maxPanelHeight, Number(this.settings.panelSize.height))
-          );
+          const panelFrame = this.getSafePanelFrameRect();
+          const boundedSize = this.resolveSavedPanelSize(this.settings.panelSize, panelFrame);
+          const boundedWidth = boundedSize.width;
+          const boundedHeight = boundedSize.height;
           this.root.style.width = Math.round(boundedWidth) + "px";
           this.root.style.height = Math.round(boundedHeight) + "px";
         } else if (defaultPanelRect) {
@@ -2159,6 +2145,14 @@
       };
     }
 
+    getSafeLocalYouTubeFrameRect() {
+      const frame = this.getLocalYouTubeFrameRect();
+      return {
+        ...frame,
+        bottom: Math.max(frame.top + MIN_PANEL_HEIGHT + DEFAULT_PANEL_MARGIN * 2, frame.bottom - PANEL_CONTROL_BAR_GAP)
+      };
+    }
+
     clampPositionToRect(left, top, width, height, bounds, margin) {
       const safeWidth = Math.max(1, Number(width) || 1);
       const safeHeight = Math.max(1, Number(height) || 1);
@@ -2184,6 +2178,30 @@
       return {
         ...frame,
         bottom: Math.max(frame.top + LAUNCHER_HEIGHT + LAUNCHER_MARGIN * 2, frame.bottom - LAUNCHER_CONTROL_BAR_GAP)
+      };
+    }
+
+    resolveSavedPanelSize(size, panelFrame) {
+      const frame = panelFrame || this.getSafePanelFrameRect();
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, frame.right - frame.left - DEFAULT_PANEL_MARGIN * 2);
+      const maxHeight = Math.max(MIN_PANEL_HEIGHT, frame.bottom - frame.top - DEFAULT_PANEL_MARGIN * 2);
+      const widthRatio = Number(size && size.widthRatio);
+      const heightRatio = Number(size && size.heightRatio);
+      const savedWidth = Number(size && size.width);
+      const savedHeight = Number(size && size.height);
+      const shouldRestoreRelativeWidth =
+        Number.isFinite(widthRatio) && widthRatio >= RELATIVE_SIZE_RESTORE_THRESHOLD;
+      const shouldRestoreRelativeHeight =
+        Number.isFinite(heightRatio) && heightRatio >= RELATIVE_SIZE_RESTORE_THRESHOLD;
+      const width = shouldRestoreRelativeWidth
+        ? maxWidth * Math.max(0, Math.min(1, widthRatio))
+        : savedWidth;
+      const height = shouldRestoreRelativeHeight
+        ? maxHeight * Math.max(0, Math.min(1, heightRatio))
+        : savedHeight;
+      return {
+        width: Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Number.isFinite(width) ? width : MIN_PANEL_WIDTH)),
+        height: Math.max(MIN_PANEL_HEIGHT, Math.min(maxHeight, Number.isFinite(height) ? height : MIN_PANEL_HEIGHT))
       };
     }
 
@@ -2233,6 +2251,10 @@
     }
 
     getDefaultPanelFrameRect() {
+      return this.getSafePanelFrameRect();
+    }
+
+    getSafePanelFrameRect() {
       const frame = this.getPanelFrameRect();
       return {
         ...frame,
@@ -2241,7 +2263,7 @@
     }
 
     clampPanelPosition(left, top, width, height) {
-      return this.clampPositionToRect(left, top, width, height, this.getPanelFrameRect(), DEFAULT_PANEL_MARGIN);
+      return this.clampPositionToRect(left, top, width, height, this.getSafePanelFrameRect(), DEFAULT_PANEL_MARGIN);
     }
 
     panelPositionToLocal(width, height) {
@@ -2250,7 +2272,7 @@
       }
       const position = this.settings.panelPosition;
       const mountRect = this.getMountViewportRect();
-      const frame = this.getLocalYouTubeFrameRect();
+      const frame = this.getSafeLocalYouTubeFrameRect();
       const frameWidth = Math.max(0, frame.right - frame.left);
       const frameHeight = Math.max(0, frame.bottom - frame.top);
       const availableX = Math.max(0, frameWidth - Number(width) - DEFAULT_PANEL_MARGIN * 2);
@@ -2272,7 +2294,7 @@
 
     localToPlayerPanelPosition(left, top, width, height) {
       const clamped = this.clampPanelPosition(left, top, width, height);
-      const frame = this.getLocalYouTubeFrameRect();
+      const frame = this.getSafeLocalYouTubeFrameRect();
       const frameWidth = Math.max(0, frame.right - frame.left);
       const frameHeight = Math.max(0, frame.bottom - frame.top);
       const availableX = Math.max(0, frameWidth - Number(width) - DEFAULT_PANEL_MARGIN * 2);
@@ -2285,6 +2307,20 @@
         top: Math.max(0, Math.round(clamped.top)),
         xRatio: availableX > 0 ? Math.max(0, Math.min(1, relativeLeft / availableX)) : 0,
         yRatio: availableY > 0 ? Math.max(0, Math.min(1, relativeTop / availableY)) : 0
+      };
+    }
+
+    localToPlayerPanelSize(width, height) {
+      const frame = this.getSafePanelFrameRect();
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, frame.right - frame.left - DEFAULT_PANEL_MARGIN * 2);
+      const maxHeight = Math.max(MIN_PANEL_HEIGHT, frame.bottom - frame.top - DEFAULT_PANEL_MARGIN * 2);
+      const safeWidth = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Number(width) || MIN_PANEL_WIDTH));
+      const safeHeight = Math.max(MIN_PANEL_HEIGHT, Math.min(maxHeight, Number(height) || MIN_PANEL_HEIGHT));
+      return {
+        width: Math.round(safeWidth),
+        height: Math.round(safeHeight),
+        widthRatio: maxWidth > 0 ? Math.max(0, Math.min(1, safeWidth / maxWidth)) : 0,
+        heightRatio: maxHeight > 0 ? Math.max(0, Math.min(1, safeHeight / maxHeight)) : 0
       };
     }
 
@@ -2813,7 +2849,7 @@
         startTop: rect.top,
         startWidth: rect.width,
         startHeight: rect.height,
-        frameBounds: this.getPanelFrameRect()
+        frameBounds: this.getSafePanelFrameRect()
       };
 
       const onMove = (moveEvent) => this.handleResizeMove(moveEvent);
@@ -2898,7 +2934,7 @@
         nextHeight = state.startHeight + deltaY;
       }
 
-      const panelFrame = state.frameBounds || this.getPanelFrameRect();
+      const panelFrame = state.frameBounds || this.getSafePanelFrameRect();
       const maxWidth = Math.max(MIN_PANEL_WIDTH, panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2);
       const maxHeight = Math.max(MIN_PANEL_HEIGHT, panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2);
       nextWidth = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, nextWidth));
@@ -2949,10 +2985,10 @@
           Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
           Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
         ),
-        panelSize: {
-          width: Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
-          height: Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
-        }
+        panelSize: this.localToPlayerPanelSize(
+          Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
+          Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
+        )
       });
     }
 

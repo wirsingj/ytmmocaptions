@@ -279,14 +279,15 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(position.top, 745 - 50 - 54 - 32 - 14);
   });
 
-  await runCase("saved panel position preserves bottom-left intent across fullscreen resize", () => {
+  await runCase("saved panel position preserves bottom-left intent above fullscreen controls", () => {
     const module = loadPanelModule();
     const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
     panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
     panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
     panel.getVisibleYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
 
-    const saved = panel.localToPlayerPanelPosition(12, 720 - 260 - 12, 420, 260);
+    const safeBottom = 720 - 64;
+    const saved = panel.localToPlayerPanelPosition(12, safeBottom - 260 - 12, 420, 260);
 
     assert.equal(saved.anchor, "player");
     assert.equal(saved.xRatio, 0);
@@ -300,21 +301,58 @@ exports.run = async function runUiPanelTests(ctx) {
     const restored = panel.panelPositionToLocal(420, 260);
 
     assert.equal(restored.left, 12);
-    assert.equal(restored.top, 1080 - 260 - 12);
+    assert.equal(restored.top, 1080 - 64 - 260 - 12);
+  });
+
+  await runCase("near-full saved panel size expands across fullscreen resize", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+
+    const savedSize = panel.localToPlayerPanelSize(1256, 632);
+
+    assert.equal(savedSize.widthRatio, 1);
+    assert.equal(savedSize.heightRatio, 1);
+
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+
+    const restored = panel.resolveSavedPanelSize(savedSize);
+
+    assert.equal(restored.width, 1920 - 24);
+    assert.equal(restored.height, 1080 - 64 - 24);
+  });
+
+  await runCase("compact saved panel size remains fixed across fullscreen resize", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1280, bottom: 720 });
+
+    const savedSize = panel.localToPlayerPanelSize(420, 260);
+
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080 });
+
+    const restored = panel.resolveSavedPanelSize(savedSize);
+
+    assert.equal(restored.width, 420);
+    assert.equal(restored.height, 260);
   });
 
   await runCase("legacy saved player pixels upgrade to proportional panel position", () => {
     const module = loadPanelModule();
     const panel = new module.DialoguePanel({
       settings: module.settingsStore.normalizeSettings({
-        panelPosition: { anchor: "player", left: 12, top: 448 }
+        panelPosition: { anchor: "player", left: 12, top: 384 }
       })
     });
     panel.persistLayout = true;
     panel.root = {
       style: { display: "flex", left: "", top: "", right: "", bottom: "" },
       getBoundingClientRect() {
-        return { left: 12, top: 448, right: 432, bottom: 708, width: 420, height: 260 };
+        return { left: 12, top: 384, right: 432, bottom: 644, width: 420, height: 260 };
       },
       classList: { toggle() {} }
     };
@@ -351,7 +389,7 @@ exports.run = async function runUiPanelTests(ctx) {
     panel.root = {
       style: { display: "flex", left: "", top: "", right: "", bottom: "" },
       getBoundingClientRect() {
-        return { left: 12, top: 808, right: 432, bottom: 1068, width: 420, height: 260 };
+        return { left: 12, top: 744, right: 432, bottom: 1004, width: 420, height: 260 };
       },
       classList: { toggle() {} }
     };
@@ -371,7 +409,7 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.settings.panelPosition.xRatio, savedPosition.xRatio);
     assert.equal(panel.settings.panelPosition.yRatio, savedPosition.yRatio);
     assert.equal(panel.root.style.left, "12px");
-    assert.equal(panel.root.style.top, String(1080 - 260 - 12) + "px");
+    assert.equal(panel.root.style.top, String(1080 - 64 - 260 - 12) + "px");
   });
 
   await runCase("bounded history render range includes active and latest rows", () => {

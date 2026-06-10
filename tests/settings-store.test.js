@@ -75,7 +75,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const { normalize } = makeStore();
     const result = normalize({
       panelPosition: { anchor: "player", left: -50, top: 20.4 },
-      panelSize: { width: 200, height: 150 },
+      panelSize: { width: 200, height: 150, widthRatio: 2, heightRatio: -1 },
       futurePreviewHeight: 999,
       futurePreviewEnabled: false,
       fadeTowardVideoCenter: false,
@@ -86,7 +86,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       launcherPosition: { left: 12.6, top: -3 }
     });
     assert.deepEqual(result.panelPosition, { anchor: "player", left: 0, top: 20 });
-    assert.deepEqual(result.panelSize, { width: 280, height: 220 });
+    assert.deepEqual(result.panelSize, { width: 280, height: 220, widthRatio: 1, heightRatio: 0 });
     assert.equal(result.futurePreviewHeight, 360);
     assert.equal(result.futurePreviewEnabled, false);
     assert.equal(result.caseFixEnabled, true);
@@ -96,6 +96,15 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.videoCenterFadeMinOpacity, 8);
     assert.equal(result.timelineModeEnabled, true);
     assert.deepEqual(result.launcherPosition, { left: 13, top: 0 });
+  });
+
+  await runCase("settings normalization preserves optional panel size ratios", () => {
+    const { normalize } = makeStore();
+    const result = normalize({
+      panelSize: { width: 640, height: 360, widthRatio: 0.92, heightRatio: 0.88 }
+    });
+
+    assert.deepEqual(result.panelSize, { width: 640, height: 360, widthRatio: 0.92, heightRatio: 0.88 });
   });
 
   await runCase("settings defaults to closed pill launch", () => {

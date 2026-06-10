@@ -128,10 +128,19 @@
     if (!Number.isFinite(width) || !Number.isFinite(height)) {
       return null;
     }
-    return {
+    const normalized = {
       width: Math.max(280, Math.round(width)),
       height: Math.max(220, Math.round(height))
     };
+    const widthRatio = Number(value.widthRatio);
+    const heightRatio = Number(value.heightRatio);
+    if (Number.isFinite(widthRatio)) {
+      normalized.widthRatio = Math.max(0, Math.min(1, widthRatio));
+    }
+    if (Number.isFinite(heightRatio)) {
+      normalized.heightRatio = Math.max(0, Math.min(1, heightRatio));
+    }
+    return normalized;
   }
 
   function normalizeFuturePreviewHeight(value) {
