@@ -412,7 +412,7 @@ async function measureClickSeek(page) {
   };
 }
 
-async function measureKeyboardSkip(page) {
+async function measureKeyboardOwnership(page) {
   const panel = page.locator("#dc-panel");
   if (!(await panel.count())) {
     return { status: "unsupported", reason: "no_panel" };
@@ -440,17 +440,15 @@ async function measureKeyboardSkip(page) {
       Number.isFinite(before) &&
       Number.isFinite(afterForward) &&
       Number.isFinite(afterBackward) &&
-      afterForward - before >= 5.5 &&
-      afterForward - before <= 10.5 &&
-      afterForward - afterBackward >= 5.5 &&
-      afterForward - afterBackward <= 10.5
+      Math.abs(afterForward - before) < 4 &&
+      Math.abs(afterBackward - afterForward) < 4
         ? "pass"
         : "fail",
     before,
     afterForward,
     afterBackward,
     forwardDelta: Number(afterForward) - Number(before),
-    backwardDelta: Number(afterForward) - Number(afterBackward)
+    backwardDelta: Number(afterBackward) - Number(afterForward)
   };
 }
 
@@ -521,10 +519,10 @@ function buildHealth(browserName, installMode, state, afterScrollState, clickSee
     clickSeek.status === "pass" ? "Click-to-seek landed within tolerance" : "Click-to-seek was unavailable or outside tolerance",
     clickSeek
   );
-  checks.spaceForward = makeScore(
+  checks.keyboardOwnership = makeScore(
     keyboard.status === "pass" ? "pass" : keyboard.status,
     7,
-    keyboard.status === "pass" ? "Space and Shift+Space moved roughly one configured step" : "Keyboard skip behavior needs review",
+    keyboard.status === "pass" ? "Space and Shift+Space did not trigger extension-owned seek" : "Keyboard ownership behavior needs review",
     keyboard
   );
   const seriousErrors = logs.filter((entry) => entry.kind === "pageerror" || (entry.type === "error" && !/googleads|doubleclick|CORS/i.test(entry.text)));
@@ -619,7 +617,7 @@ async function runBrowser(playwright, browserName, url, options, runRoot) {
 
     const state = await getState(page);
     const clickSeek = await measureClickSeek(page);
-    const keyboard = await measureKeyboardSkip(page);
+    const keyboard = await measureKeyboardOwnership(page);
     await page.mouse.wheel(0, 900);
     await page.waitForTimeout(500);
     const afterScrollState = await getState(page);

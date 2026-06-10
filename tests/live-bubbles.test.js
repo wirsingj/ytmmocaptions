@@ -248,7 +248,7 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(routeBody.includes("\"route-still-active\""));
     assert.ok(source.includes("this.scheduleTranscriptHeartbeatCheck(reason || \"nudge\""));
     const nudgeStart = source.indexOf("    nudgeCaptionWork(reason)");
-    const nudgeBody = source.slice(nudgeStart, source.indexOf("    isChunkIndexAlignedWithTime", nudgeStart));
+    const nudgeBody = source.slice(nudgeStart, source.indexOf("    markBubbleFlashOnStart", nudgeStart));
     assert.ok(nudgeBody.includes("this.hasTranscriptActivity() || this.transcriptHeartbeatTimerId || this.isTranscriptHeartbeatExhausted()"));
     assert.ok(nudgeBody.indexOf("return;") < nudgeBody.indexOf("this.ensureCaptionsEnabledOnce();"));
   });
@@ -362,16 +362,15 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(!source.includes("syncTimelineTick"));
   });
 
-  await runCase("space forward chooses and reveals a destination bubble instead of losing focus", () => {
-    assert.ok(source.includes("findShortcutFocusIndex(chunks, targetTime, isBackward)"));
-    assert.ok(source.includes("this.findPlaybackActiveIndex(chunks, target)"));
-    assert.ok(source.includes("canRunShortcutSeek(video)"));
-    assert.ok(source.includes("isYouTubeAdPlaybackActive()"));
-    assert.ok(source.includes("const visibleActiveIndex = Number.isInteger(this.activeIndex) ? this.activeIndex : -1;"));
-    assert.ok(source.includes("this.isChunkIndexAlignedWithTime(sourceChunks, visibleActiveIndex, now)"));
-    assert.ok(source.includes("!isBackward && this.isChunkIndexAlignedWithTime(sourceChunks, focusIndex, rawTarget)"));
-    assert.ok(source.includes('source: isBackward ? "rewind" : "forward"'));
-    assert.ok(source.includes("this.applyTimelineActionFocus(action);"));
+  await runCase("space and shift-space caption navigation is not extension-owned", () => {
+    assert.ok(!source.includes("bindKeyboardHandler()"));
+    assert.ok(!source.includes("handleSpaceShortcut"));
+    assert.ok(!source.includes("findShortcutFocusIndex"));
+    assert.ok(!source.includes("canRunShortcutSeek"));
+    assert.ok(!source.includes("timeline:space"));
+    assert.ok(!source.includes('addEventListener("keydown"'));
+    assert.ok(source.includes('source: "click"'));
+    assert.ok(source.includes('source: "future-preview-click"'));
   });
 
   await runCase("seek focus does not mark a bubble active before its speech anchor", () => {

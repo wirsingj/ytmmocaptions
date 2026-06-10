@@ -203,9 +203,12 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes('error: "blocked_request"'));
   });
 
-  await runCase("global keyboard is pointer-over-panel only", () => {
+  await runCase("extension does not own video navigation keyboard shortcuts", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
-    assert.ok(source.includes("return this.panel.isPointerInside();"));
+    assert.ok(!source.includes("bindKeyboardHandler"));
+    assert.ok(!source.includes("handleSpaceShortcut"));
+    assert.ok(!source.includes("timeline:space"));
+    assert.ok(!source.includes('addEventListener("keydown"'));
     assert.ok(!source.includes("globalKeyboardEnabled"));
   });
 
@@ -538,9 +541,13 @@ exports.run = async function runComplianceTests(ctx) {
 
   await runCase("reading glow cannot persist without an active timing range", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("lastGlowWordEnd"));
     assert.ok(panelSource.includes("this.renderChunkText(textElement, chunk, Boolean(range))"));
     assert.ok(panelSource.includes("this.lastGlowWordEnd = nextGlowWordEnd"));
+    assert.ok(css.includes("margin: 0 -0.08em;"));
+    assert.ok(css.includes("padding: 0 0.16em;"));
+    assert.ok(css.includes("rgba(var(--dc-accent-rgb), 0.48)"));
   });
 
   await runCase("history reading mode treats upward scroll as explicit reading intent", () => {
@@ -654,9 +661,11 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 
-  await runCase("README does not imply global keyboard shortcuts or Android targeting", () => {
+  await runCase("README leaves YouTube keyboard shortcuts with YouTube and avoids Android targeting", () => {
     const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
-    assert.ok(readme.includes("Hover the panel and press `Space`"));
+    assert.ok(readme.includes("YouTube/player keyboard shortcuts remain owned by YouTube."));
+    assert.ok(!readme.includes("Hover the panel and press `Space`"));
+    assert.ok(!readme.includes("Shift+Space"));
     assert.ok(readme.includes("desktop Chrome and desktop Firefox only"));
     assert.ok(readme.includes("Timeline Scrub mode remains experimental and is hidden from the normal release UI."));
     assert.ok(!readme.includes("Optional Timeline Scrub mode turns"));

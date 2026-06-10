@@ -34,20 +34,6 @@
   const MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3;
   const MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS = 20;
 
-  function isTypingContext(target) {
-    const element = target instanceof Element ? target : document.activeElement;
-    if (!element) {
-      return false;
-    }
-    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
-      return true;
-    }
-    if (element.isContentEditable) {
-      return true;
-    }
-    return Boolean(element.closest("[contenteditable='true']"));
-  }
-
   class DialogueCaptionsApp {
     constructor(videoId) {
       this.videoId = videoId;
@@ -69,7 +55,6 @@
       this.destroyed = false;
       this.captionSessions = new CaptionSessionManager();
       this.captionSessionId = 0;
-      this.suppressSpaceKeyUp = false;
       this.timelineActionId = 0;
       this.timelineAction = null;
       this.timelineSyncForceScroll = false;
@@ -144,7 +129,6 @@
         return;
       }
 
-      this.bindKeyboardHandler();
       this.bindVideoSync();
       if (!this.settings.panelClosed) {
         await this.startCaptionWork();
@@ -285,120 +269,6 @@
       return false;
     }
 
-    bindKeyboardHandler() {
-      const SPACE_KEYS = new Set([" ", "Spacebar", "Space"]);
-      const suppressedEvents = new WeakSet();
-      const actionHandledKeydowns = new WeakSet();
-      let lastShortcutAt = 0;
-
-      const isSpaceEvent = (event) => {
-        if (!event) {
-          return false;
-        }
-        if (event.code === "Space") {
-          return true;
-        }
-        return SPACE_KEYS.has(String(event.key || ""));
-      };
-
-      function suppressEvent(event) {
-        if (!event || suppressedEvents.has(event)) {
-          return;
-        }
-        suppressedEvents.add(event);
-        event.preventDefault();
-        event.stopPropagation();
-        if (typeof event.stopImmediatePropagation === "function") {
-          event.stopImmediatePropagation();
-        }
-      }
-
-      const canHandleSpace = (event) => {
-        if (!isSpaceEvent(event)) {
-          return false;
-        }
-        if (event.repeat) {
-          return false;
-        }
-        if (event.ctrlKey || event.altKey || event.metaKey) {
-          return false;
-        }
-        const liveVideo = this.refreshVideoReference();
-        if (!liveVideo || !this.panel) {
-          return false;
-        }
-        if (isTypingContext(event.target)) {
-          return false;
-        }
-        if (!this.canRunShortcutSeek(liveVideo)) {
-          return false;
-        }
-        return this.panel.isPointerInside();
-      };
-
-      const onKeyDown = (event) => {
-        if (actionHandledKeydowns.has(event)) {
-          return;
-        }
-        if (!canHandleSpace(event)) {
-          return;
-        }
-        actionHandledKeydowns.add(event);
-        suppressEvent(event);
-        const nowMs = Date.now();
-        if (nowMs - lastShortcutAt < 85) {
-          this.suppressSpaceKeyUp = true;
-          return;
-        }
-        lastShortcutAt = nowMs;
-        this.suppressSpaceKeyUp = true;
-        this.handleSpaceShortcut(event.shiftKey);
-      };
-
-      const onKeyUp = (event) => {
-        if (!isSpaceEvent(event)) {
-          return;
-        }
-        if (!this.suppressSpaceKeyUp && !canHandleSpace(event)) {
-          return;
-        }
-        suppressEvent(event);
-        this.suppressSpaceKeyUp = false;
-      };
-
-      const onKeyPress = (event) => {
-        if (!canHandleSpace(event) && !this.suppressSpaceKeyUp) {
-          return;
-        }
-        suppressEvent(event);
-      };
-
-      const registerKeyListeners = (target, options) => {
-        if (!target || typeof target.addEventListener !== "function") {
-          return;
-        }
-        target.addEventListener("keydown", onKeyDown, options);
-        target.addEventListener("keyup", onKeyUp, options);
-        target.addEventListener("keypress", onKeyPress, options);
-        this.cleanupFns.push(() => target.removeEventListener("keydown", onKeyDown, options));
-        this.cleanupFns.push(() => target.removeEventListener("keyup", onKeyUp, options));
-        this.cleanupFns.push(() => target.removeEventListener("keypress", onKeyPress, options));
-      };
-
-      const targets = [window, document, document.documentElement];
-      const baseOptions = { capture: true, passive: false };
-      const isFirefox = /firefox/i.test(String(navigator && navigator.userAgent ? navigator.userAgent : ""));
-      for (let index = 0; index < targets.length; index += 1) {
-        const target = targets[index];
-        registerKeyListeners(target, baseOptions);
-
-        if (isFirefox) {
-          const systemOptions = { capture: true, passive: false, mozSystemGroup: true };
-          registerKeyListeners(target, systemOptions);
-        }
-      }
-    }
-
     bindVideoSync() {
       if (!this.video) {
         return;
@@ -508,7 +378,7 @@
       return bubbleState.trimChunkAgainstPrevious(previousText, chunk, {
         normalizeText: (value) => this.normalizeLiveCaptionText(value),
         normalizeToken: (value) => this.normalizeCaptionToken(value),
-        fallbackDurationSeconds: this.getKeyboardStepSeconds()
+        fallbackDurationSeconds: this.getLiveWindowSizeSeconds()
       });
     }
 
@@ -906,7 +776,7 @@
     }
 
     getLiveWindowSeconds() {
-      return this.getKeyboardStepSeconds();
+      return this.getLiveWindowSizeSeconds();
     }
 
     getLiveOverlayAnchorOffsetSeconds() {
@@ -960,39 +830,6 @@
       }
       this.liveLastObservedTime = currentTime;
       this.liveOverlayUtterance = null;
-    }
-
-    isYouTubeAdPlaybackActive() {
-      const player = document.getElementById("movie_player");
-      if (player && player.classList) {
-        const adClasses = ["ad-showing", "ad-interrupting", "ytp-ad-player-overlay"];
-        for (let index = 0; index < adClasses.length; index += 1) {
-          if (player.classList.contains(adClasses[index])) {
-            return true;
-          }
-        }
-      }
-      return Boolean(
-        document.querySelector(
-          ".ytp-ad-module, .ytp-ad-player-overlay, .ytp-ad-skip-button, .ytp-ad-preview-container"
-        )
-      );
-    }
-
-    canRunShortcutSeek(video) {
-      const targetVideo = video || this.refreshVideoReference();
-      if (!targetVideo || this.destroyed) {
-        return false;
-      }
-      if (this.isYouTubeAdPlaybackActive()) {
-        return false;
-      }
-      const readyState = Number(targetVideo.readyState || 0);
-      const duration = Number(targetVideo.duration);
-      if (readyState < 1 || !Number.isFinite(duration) || duration <= 0) {
-        return false;
-      }
-      return true;
     }
 
     suppressLiveCaptureForSeek(targetTime) {
@@ -2271,7 +2108,7 @@
           }
           this.panel.setStatus(
             shouldEnableLiveCapture
-              ? "Turn on YouTube CC if needed. Click any chat bubble to seek, or hover here and use Space / Shift+Space."
+              ? "Turn on YouTube CC if needed. Click any chat bubble to seek."
               : (response && response.reason) || "Subtitles are unavailable."
           );
         }
@@ -2302,17 +2139,12 @@
     }
 
     getTranscriptLoadedStatusMessage(response) {
-      const stepSeconds = this.getKeyboardStepSeconds();
       return (
         "Loaded " +
         this.chunks.length +
         " chunks (" +
         (response.mode || response.sourceType || "caption timeline") +
-        "). Hover panel + Space=+" +
-        stepSeconds +
-        "s, Shift+Space=-" +
-        stepSeconds +
-        "s."
+        "). Click any chat bubble to seek."
       );
     }
 
@@ -2355,7 +2187,7 @@
     }
 
     buildFixedWindowChunksFromCues(cues) {
-      const stepSeconds = this.getKeyboardStepSeconds();
+      const stepSeconds = this.getLiveWindowSizeSeconds();
       const source = Array.isArray(cues) ? cues.slice() : [];
       source.sort((left, right) => Number(left.start || 0) - Number(right.start || 0));
 
@@ -2941,7 +2773,7 @@
       return this.persistSettings({ ...this.settings, ...snapshot }, snapshot);
     }
 
-    getKeyboardStepSeconds() {
+    getLiveWindowSizeSeconds() {
       return 8;
     }
 
@@ -3211,130 +3043,6 @@
         this.startLiveCapturePolling();
       }
       this.scheduleTranscriptHeartbeatCheck(reason || "nudge", TRANSCRIPT_HEARTBEAT_GRACE_MS, this.getActiveCaptionSessionId());
-    }
-
-    isChunkIndexAlignedWithTime(chunks, index, time) {
-      if (!Array.isArray(chunks) || index < 0 || index >= chunks.length) {
-        return false;
-      }
-      const now = Number(time);
-      if (!Number.isFinite(now)) {
-        return false;
-      }
-      const chunk = chunks[index];
-      const chunkStart = this.getChunkActiveStart(chunk);
-      const chunkEnd = Math.max(chunkStart + 0.25, Number(chunk && chunk.end ? chunk.end : chunkStart + 0.25));
-      const nextStart =
-        index < chunks.length - 1
-          ? Math.max(chunkStart + 0.001, this.getChunkActiveStart(chunks[index + 1]))
-          : Number.POSITIVE_INFINITY;
-      const effectiveEnd = Math.max(chunkEnd, nextStart === Number.POSITIVE_INFINITY ? chunkEnd : nextStart);
-      const leadTolerance = 0.08;
-      const trailTolerance = 0.75;
-      return now >= chunkStart - leadTolerance && now <= effectiveEnd + trailTolerance;
-    }
-
-    findShortcutFocusIndex(chunks, targetTime, isBackward) {
-      if (!Array.isArray(chunks) || !chunks.length) {
-        return -1;
-      }
-      const target = Number(targetTime);
-      if (!Number.isFinite(target)) {
-        return -1;
-      }
-      const active = this.findPlaybackActiveIndex(chunks, target);
-      if (active >= 0) {
-        return active;
-      }
-      const floorIndex = chunker.findChunkIndexAtTime(chunks, target);
-      if (isBackward) {
-        return floorIndex;
-      }
-      const nextIndex = floorIndex < 0 ? 0 : floorIndex + 1;
-      if (nextIndex >= 0 && nextIndex < chunks.length) {
-        const nextStart = this.getChunkSeekStart(chunks[nextIndex]);
-        if (Number.isFinite(nextStart) && nextStart <= target + 1.2) {
-          return nextIndex;
-        }
-      }
-      return floorIndex;
-    }
-
-    handleSpaceShortcut(isBackward) {
-      const video = this.refreshVideoReference();
-      if (!this.canRunShortcutSeek(video)) {
-        return;
-      }
-
-      const stepSeconds = this.getKeyboardStepSeconds();
-      const now = Number(video.currentTime || 0);
-      const duration = Number(video.duration);
-      const upperBound = Number.isFinite(duration) ? Math.max(0, duration) : Number.POSITIVE_INFINITY;
-      const sourceChunks = Array.isArray(this.allChunks) ? this.allChunks : [];
-      const timeIndex =
-        sourceChunks.length > 0 ? chunker.findChunkIndexAtTime(sourceChunks, now) : -1;
-      const visibleActiveIndex = Number.isInteger(this.activeIndex) ? this.activeIndex : -1;
-      const currentIndex =
-        this.isChunkIndexAlignedWithTime(sourceChunks, visibleActiveIndex, now)
-          ? visibleActiveIndex
-          : timeIndex;
-      const canUseChunkNavigation =
-        sourceChunks.length > 0 && this.isChunkIndexAlignedWithTime(sourceChunks, currentIndex, now);
-      const rawTarget = isBackward
-        ? Math.max(0, now - stepSeconds)
-        : now + stepSeconds;
-      let target = rawTarget;
-      let flashIndex = -1;
-      let flashAt = Number.NaN;
-
-      if (canUseChunkNavigation) {
-        const focusIndex = this.findShortcutFocusIndex(sourceChunks, rawTarget, isBackward);
-        if (focusIndex >= 0) {
-          const anchoredStart = this.getChunkSeekStart(sourceChunks[focusIndex]);
-          if (isBackward && Number.isFinite(anchoredStart) && anchoredStart <= now - 0.2) {
-            target = anchoredStart;
-            flashIndex = focusIndex;
-            flashAt = anchoredStart;
-          } else if (!isBackward && this.isChunkIndexAlignedWithTime(sourceChunks, focusIndex, rawTarget)) {
-            flashIndex = focusIndex;
-            flashAt = Number.isFinite(anchoredStart) ? anchoredStart : rawTarget;
-          }
-        }
-      }
-
-      target = Math.max(0, Math.min(upperBound, target));
-      if (flashIndex >= 0) {
-        const action = this.beginTimelineAction({
-          source: isBackward ? "rewind" : "forward",
-          targetTime: target,
-          index: flashIndex,
-          seekStart: flashAt,
-          forceGlowReset: true,
-          forceScroll: true
-        });
-        this.applyTimelineActionFocus(action);
-      } else {
-        this.beginTimelineAction({
-          source: isBackward ? "rewind" : "forward",
-          targetTime: target,
-          index: -1,
-          forceGlowReset: true,
-          forceScroll: true
-        });
-      }
-      const wasPaused = video.paused;
-      video.currentTime = target;
-      diagnostics.record("timeline:space", {
-        backward: Boolean(isBackward),
-        from: now,
-        to: target,
-        focused: flashIndex >= 0
-      });
-      this.commitTimelineSync(true);
-      this.requestTimelineSync(true);
-      window.setTimeout(() => this.commitTimelineSync(true), 80);
-      window.setTimeout(() => this.enforcePlaybackState(wasPaused), 0);
-      window.setTimeout(() => this.enforcePlaybackState(wasPaused), 80);
     }
 
     markBubbleFlashOnStart(index, seekStart, source) {

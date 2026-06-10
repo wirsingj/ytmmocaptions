@@ -61,10 +61,10 @@ If subtitles or transcript data are unavailable, the extension fails gracefully 
 
 ## Keyboard Behavior Safety
 
-Keyboard controls are not globally enabled in the release UI.
+The extension does not register video navigation keyboard shortcuts.
 
-- Default mode: shortcuts work only when the pointer is over the extension panel.
-- Shortcuts are ignored while typing in inputs, textareas, selects, or editable fields.
+- Space, Shift+Space, and other YouTube/player shortcuts remain handled by YouTube.
+- Panel buttons, sliders, checkboxes, and other controls remain usable through normal browser interaction.
 
 ## Third-Party Services
 

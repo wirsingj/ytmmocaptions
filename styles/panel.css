@@ -1275,12 +1275,20 @@
 
 .dc-reading-glow {
   position: relative;
+  margin: 0 -0.08em;
+  padding: 0 0.16em;
   border-radius: 6px;
+  color: rgba(255, 255, 255, 0.99);
   background:
-    radial-gradient(ellipse at center, rgba(var(--dc-accent-rgb), 0.34), rgba(var(--dc-accent-rgb), 0.15) 52%, transparent 76%);
+    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08) 34%, transparent 72%),
+    radial-gradient(ellipse at center, rgba(var(--dc-accent-rgb), 0.48), rgba(var(--dc-accent-rgb), 0.24) 56%, transparent 82%);
   box-shadow:
-    0 0 8px rgba(var(--dc-accent-rgb), 0.24),
-    0 0 15px rgba(var(--dc-accent-rgb), 0.11);
+    0 0 11px rgba(var(--dc-accent-rgb), 0.36),
+    0 0 22px rgba(var(--dc-accent-rgb), 0.18),
+    0 0 2px rgba(255, 255, 255, 0.32);
+  text-shadow:
+    0 0 5px rgba(255, 255, 255, 0.34),
+    0 0 10px rgba(var(--dc-accent-rgb), 0.28);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
