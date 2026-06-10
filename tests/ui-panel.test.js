@@ -90,7 +90,7 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.ok(changes.length >= 4);
   });
 
-  await runCase("seeded music workspace preset applies and starts temporary rainbow", () => {
+  await runCase("seeded music workspace preset applies rainbow animated theme", () => {
     const module = loadPanelModule();
     const settingsStore = module.settingsStore;
     const panel = new module.DialoguePanel({
@@ -109,12 +109,13 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.settings.caseFixEnabled, false);
     assert.equal(panel.settings.fadeTowardVideoCenter, false);
     assert.equal(panel.settings.panelPosition.yRatio, 1);
+    assert.equal(panel.settings.animatedThemeName, "rainbow");
     assert.equal(panel.isRainbowThemeEnabled(), true);
     assert.equal(panel.settings.customThemeColor, "#d62fbe");
-    assert.notEqual(panel.getCustomThemeColor(), "#d62fbe");
+    assert.equal(panel.getCustomThemeColor(), "#ff4058");
   });
 
-  await runCase("overwritten music preset does not auto-start rainbow", () => {
+  await runCase("overwritten music preset does not auto-start animated theme", () => {
     const module = loadPanelModule();
     const settingsStore = module.settingsStore;
     const customMusicSlot = {
@@ -122,6 +123,7 @@ exports.run = async function runUiPanelTests(ctx) {
       textScale: 130,
       themeName: "forest",
       customThemeColor: "#ded6c3",
+      animatedThemeName: null,
       fadeTowardVideoCenter: false,
       panelPosition: null,
       panelSize: null,
@@ -137,6 +139,7 @@ exports.run = async function runUiPanelTests(ctx) {
     panel.toggleWorkspacePreset(2);
     assert.equal(panel.settings.activeWorkspacePreset, 2);
     assert.equal(panel.settings.themeName, "forest");
+    assert.equal(panel.settings.animatedThemeName, null);
     assert.equal(panel.isRainbowThemeEnabled(), false);
   });
 
@@ -181,7 +184,7 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.settings.panelClosed, false);
   });
 
-  await runCase("rainbow theme toggle previews live color and restores prior color", () => {
+  await runCase("animated theme presets persist and can be cleared", () => {
     const module = loadPanelModule();
     const settingsStore = module.settingsStore;
     const changes = [];
@@ -195,26 +198,27 @@ exports.run = async function runUiPanelTests(ctx) {
       }
     });
 
-    panel.toggleRainbowThemeMode();
+    panel.applyAnimatedThemePreset("dusk");
     assert.equal(panel.settings.themeName, "custom");
-    assert.equal(panel.settings.customThemeColor, "#336699");
+    assert.equal(panel.settings.customThemeColor, "#ff8a5b");
+    assert.equal(panel.settings.animatedThemeName, "dusk");
     assert.equal(panel.isRainbowThemeEnabled(), true);
-    assert.equal(changes.length, 0);
+    assert.equal(changes.length, 1);
 
-    panel.applyRainbowThemeColor("#77aa44");
-    assert.equal(panel.getCustomThemeColor(), "#77aa44");
-    assert.equal(panel.settings.customThemeColor, "#336699");
-    assert.equal(changes.length, 0);
+    panel.applyRainbowThemeColor("#7a5cc8");
+    assert.equal(panel.getCustomThemeColor(), "#7a5cc8");
+    assert.equal(panel.settings.customThemeColor, "#ff8a5b");
+    assert.equal(changes.length, 1);
 
     panel.toggleRainbowThemeMode();
     assert.equal(panel.isRainbowThemeEnabled(), false);
-    assert.equal(panel.settings.customThemeColor, "#336699");
-    assert.equal(changes.length, 1);
-    assert.equal(changes[0].patch.themeName, "custom");
-    assert.equal(changes[0].patch.customThemeColor, "#336699");
+    assert.equal(panel.settings.animatedThemeName, null);
+    assert.equal(changes.length, 2);
+    assert.equal(changes[0].patch.animatedThemeName, "dusk");
+    assert.equal(changes[1].patch.animatedThemeName, null);
   });
 
-  await runCase("workspace preset apply cancels temporary rainbow preview", () => {
+  await runCase("workspace preset apply clears animated theme when preset is static", () => {
     const module = loadPanelModule();
     const settingsStore = module.settingsStore;
     const preset = {
@@ -241,6 +245,7 @@ exports.run = async function runUiPanelTests(ctx) {
     panel.toggleWorkspacePreset(1);
 
     assert.equal(panel.isRainbowThemeEnabled(), false);
+    assert.equal(panel.settings.animatedThemeName, null);
     assert.equal(panel.settings.activeWorkspacePreset, 1);
     assert.equal(panel.settings.themeName, "forest");
     assert.equal(panel.getThemeName(), "forest");

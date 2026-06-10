@@ -437,6 +437,107 @@
     0 1px 2px rgba(0, 0, 0, 0.34);
 }
 
+.dc-animated-theme {
+  position: relative;
+  width: 34px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--dc-border);
+  border-radius: 7px;
+  background: linear-gradient(90deg, #ff4058, #ffbd32, #72e85a, #35d9e7, #5a70ff, #da45ff);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 1px 2px rgba(0, 0, 0, 0.34);
+  cursor: pointer;
+}
+
+.dc-animated-theme::after {
+  content: "";
+  position: absolute;
+  inset: 4px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
+}
+
+.dc-animated-theme.is-active,
+.dc-animated-theme:hover,
+.dc-animated-theme:focus-visible {
+  border-color: rgba(var(--dc-accent-rgb), 0.76);
+  box-shadow:
+    0 0 9px rgba(var(--dc-accent-rgb), 0.24),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  outline: none;
+}
+
+.dc-animated-popover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483646;
+  width: 168px;
+  padding: 8px;
+  border: 1px solid rgba(var(--dc-accent-rgb), 0.34);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(var(--dc-text-rgb), 0.08), rgba(var(--dc-text-rgb), 0.025)),
+    rgba(10, 10, 12, 0.98);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.46),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(8px);
+}
+
+.dc-animated-popover[hidden] {
+  display: none;
+}
+
+.dc-animated-option {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  height: 30px;
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--dc-text);
+  background: transparent;
+  font: 600 11px/1 "Trebuchet MS", "Segoe UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dc-animated-option + .dc-animated-option {
+  margin-top: 4px;
+}
+
+.dc-animated-option:hover,
+.dc-animated-option:focus-visible,
+.dc-animated-option.is-active {
+  border-color: rgba(var(--dc-accent-rgb), 0.45);
+  background: rgba(var(--dc-accent-rgb), 0.12);
+  outline: none;
+}
+
+.dc-animated-option-swatch {
+  display: block;
+  width: 62px;
+  height: 16px;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 1px 4px rgba(0, 0, 0, 0.34);
+}
+
+.dc-animated-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dc-color-popover {
   position: fixed;
   top: 0;

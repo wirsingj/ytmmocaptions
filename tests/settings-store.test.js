@@ -61,12 +61,14 @@ exports.run = async function runSettingsStoreTests(ctx) {
       keyboardStepSeconds: 999,
       themeName: "forest",
       customThemeColor: "#AABBCC",
+      animatedThemeName: "CYBERPUNK",
       autoScroll: false
     });
     assert.equal(result.panelOpacity, 100);
     assert.equal(result.textScale, 100);
     assert.equal(result.themeName, "forest");
     assert.equal(result.customThemeColor, "#aabbcc");
+    assert.equal(result.animatedThemeName, "cyberpunk");
     assert.equal(Object.prototype.hasOwnProperty.call(result, "keyboardStepSeconds"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(result, "autoScroll"), false);
   });
@@ -98,6 +100,12 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(result.launcherPosition, { left: 13, top: 0 });
   });
 
+  await runCase("settings normalization rejects unknown animated theme preset", () => {
+    const { normalize } = makeStore();
+    const result = normalize({ animatedThemeName: "laser-nope" });
+    assert.equal(result.animatedThemeName, null);
+  });
+
   await runCase("settings normalization preserves optional panel size ratios", () => {
     const { normalize } = makeStore();
     const result = normalize({
@@ -115,6 +123,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.textScale, 120);
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");
+    assert.equal(result.animatedThemeName, null);
     assert.equal(result.futurePreviewHeight, 96);
     assert.equal(result.futurePreviewEnabled, true);
     assert.equal(result.caseFixEnabled, true);
@@ -346,9 +355,11 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.workspacePresets.length, 3);
     assert.equal(persisted.workspacePresets[0].panelOpacity, 76);
     assert.equal(persisted.workspacePresets[0].textScale, 155);
+    assert.equal(persisted.workspacePresets[0].animatedThemeName, null);
     assert.deepEqual(persisted.workspacePresets[0].panelPosition, { anchor: "player", left: 92, top: 48 });
     assert.deepEqual(persisted.workspacePresets[0].panelSize, { width: 610, height: 360 });
     assert.equal(persisted.workspacePresets[1].textScale, 175);
+    assert.equal(persisted.workspacePresets[1].animatedThemeName, "rainbow");
     assert.equal(persisted.workspacePresets[2].textScale, 140);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted.workspacePresets[0], "activeVideoId"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted.workspacePresets[0], "transcriptText"), false);
@@ -357,6 +368,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(stored.layoutLocked, false);
     assert.equal(stored.activeWorkspacePreset, 1);
     assert.equal(stored.workspacePresets[0].textScale, 155);
+    assert.equal(stored.workspacePresets[0].animatedThemeName, null);
+    assert.equal(stored.workspacePresets[1].animatedThemeName, "rainbow");
     assert.equal(stored.workspacePresetBaseline.textScale, 120);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "activeVideoId"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "transcriptText"), false);

@@ -46,7 +46,7 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 - Future / Next Up previews can be turned on or off.
 - Case Fix can be turned off when all-caps captions are intentional, such as music videos.
 - Color, opacity, center fade, and panel open/closed state persist across YouTube videos using extension storage.
-- Custom color includes a temporary rainbow cycle mode for slow ambient hue rotation.
+- The custom color chip sits next to animated gradient presets, including Rainbow, Earth, Dusk, Cyber, and Aurora.
 - Layout Lock can also persist panel size/position, text size, Future / Next Up setting, Case Fix setting, and preview height.
 - With Layout Lock off, panel layout resets for each video/session.
 - Three seeded local workspace preset slots can save and apply temporary panel layout/readability snapshots without changing Lock or Reset behavior.

@@ -18,7 +18,7 @@ The extension does not:
 
 The extension stores only local preference settings in extension storage:
 - preference schema version for safe future migrations;
-- panel theme preset and custom theme color;
+- panel theme preset, animated theme preset, and custom theme color;
 - panel opacity/transparency;
 - Fade setting, which makes the panel more transparent toward the center of the associated video;
 - panel open/closed state;

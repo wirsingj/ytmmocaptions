@@ -631,6 +631,10 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("seekLeadSeconds: 0"));
     assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(panelSource.includes("dc-color-popover"));
+    assert.ok(panelSource.includes("ANIMATED_THEME_PRESETS"));
+    assert.ok(panelSource.includes("dc-animated-theme"));
+    assert.ok(panelSource.includes("dc-animated-popover"));
+    assert.ok(panelSource.includes("applyAnimatedThemePreset"));
     assert.ok(panelSource.includes("dc-rainbow-toggle"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
     assert.ok(panelSource.includes("toggleRainbowThemeMode"));
@@ -642,6 +646,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("Math.sin(radians)"));
     assert.ok(panelSource.includes("50 - Math.cos(radians)"));
     assert.ok(panelSource.includes("document.body.append(this.colorPickerPopover)"));
+    assert.ok(panelSource.includes("document.body.append(this.animatedThemePopover)"));
     assert.ok(!panelSource.includes('type = "color"'));
     assert.ok(panelSource.includes("getPersistenceSnapshot()"));
     assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
@@ -649,6 +654,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("position: fixed;"));
     assert.ok(css.includes("z-index: 2147483646"));
     assert.ok(css.includes(".dc-color-wheel"));
+    assert.ok(css.includes(".dc-animated-theme"));
+    assert.ok(css.includes(".dc-animated-popover"));
+    assert.ok(css.includes(".dc-animated-option-swatch"));
     assert.ok(css.includes(".dc-rainbow-toggle"));
     assert.ok(css.includes(".dc-help-popover"));
     assert.ok(css.includes(".dc-btn-help"));
@@ -702,6 +710,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes("caseFixEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
     assert.ok(source.includes("layoutLocked"));
+    assert.ok(source.includes("animatedThemeName"));
     assert.ok(!source.includes("rainbowThemeEnabled"));
     assert.ok(source.includes("workspacePresets"));
     assert.ok(source.includes("DEFAULT_WORKSPACE_PRESETS"));
@@ -713,7 +722,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
-    assert.ok(privacy.includes("panel theme preset and custom theme color"));
+    assert.ok(privacy.includes("panel theme preset, animated theme preset, and custom theme color"));
     assert.ok(privacy.includes("opacity"));
     assert.ok(privacy.includes("Fade"));
     assert.ok(privacy.includes("Case Fix"));
