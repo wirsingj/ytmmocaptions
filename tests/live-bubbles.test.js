@@ -257,6 +257,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
     const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript(sessionId)", upgradeStart));
     const loadStart = source.indexOf("    async loadTranscript(sessionId)");
     const loadBody = source.slice(loadStart, source.indexOf("    estimateTokenTimings", loadStart));
+    const applyStart = source.indexOf("    canApplyFullTranscriptResponse(response, sessionId)");
+    const applyBody = source.slice(applyStart, source.indexOf("    getTranscriptLoadedStatusMessage(response)", applyStart));
 
     assert.ok(source.includes("isCurrentVideoPage()"));
     assert.ok(source.includes("isActiveCaptionSession(sessionId)"));
@@ -266,7 +268,10 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(upgradeBody.includes("!this.isActiveCaptionSession(captionSessionId)"));
     assert.ok(loadBody.includes("signal.aborted || !this.isActiveCaptionSession(captionSessionId)"));
     assert.ok(loadBody.includes("if (!this.isActiveCaptionSession(captionSessionId))"));
-    assert.ok(loadBody.includes("response.videoId !== this.videoId || !this.isActiveCaptionSession(captionSessionId)"));
+    assert.ok(loadBody.includes("this.canApplyFullTranscriptResponse(response, captionSessionId)"));
+    assert.ok(applyBody.includes("response.videoId === this.videoId"));
+    assert.ok(applyBody.includes("this.isActiveCaptionSession(sessionId)"));
+    assert.ok(applyBody.includes("this.isCurrentVideoPage()"));
   });
 
   await runCase("open live capture freezes to the caption preference from panel open", () => {
@@ -274,10 +279,13 @@ exports.run = async function runLiveBubbleTests(ctx) {
     const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
     const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript(sessionId)");
     const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript(sessionId)", upgradeStart));
+    const applyStart = source.indexOf("    applyFullTranscriptResponse(response, sessionId, options)");
+    const applyBody = source.slice(applyStart, source.indexOf("    buildFixedWindowChunksFromCues(cues)", applyStart));
 
     assert.ok(source.includes("hasOpenCaptionPreferenceChanged()"));
     assert.ok(captureBody.includes("this.hasOpenCaptionPreferenceChanged()"));
-    assert.ok(upgradeBody.includes("this.hasOpenCaptionPreferenceChanged()"));
+    assert.ok(upgradeBody.includes("preserveOpenCaptionPreference: true"));
+    assert.ok(applyBody.includes("opts.preserveOpenCaptionPreference && this.hasOpenCaptionPreferenceChanged()"));
   });
 
   await runCase("video sync listeners are rebound and cleaned when YouTube swaps video elements", () => {

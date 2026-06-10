@@ -2153,23 +2153,12 @@
         ) {
           return;
         }
-        const currentPreferenceKey = this.getCurrentCaptionPreferenceKey();
-        if (this.hasOpenCaptionPreferenceChanged()) {
-          return;
-        }
-
-        this.disableLiveCaptureMode();
-        this.transcriptMode = response.mode || "direct transcript mode";
-        this.lastCaptionPreferenceKey = currentPreferenceKey || this.openCaptionPreferenceKey || this.getCurrentCaptionPreferenceKey();
-        this.cues = response.cues;
-        this.revealedChunkCount = 0;
-        this.rebuildChunks();
-        this.transcriptPreviewChunks = this.allChunks.slice();
-        this.noteTranscriptActivity("transcript-upgrade");
-        this.syncActiveChunk(true);
-        if (this.panel) {
-          this.panel.setStatus("Full caption timeline loaded. Next up previews are available.", true);
-        }
+        this.applyFullTranscriptResponse(response, captionSessionId, {
+          activityReason: "transcript-upgrade",
+          preserveOpenCaptionPreference: true,
+          statusMessage: "Full caption timeline loaded. Next up previews are available.",
+          syncAfterApply: true
+        });
       } catch (error) {
         if (!error || error.name !== "AbortError") {
           // Keep live overlay mode quiet; failed upgrades are expected on some videos.
@@ -2283,38 +2272,80 @@
         return;
       }
 
-      if (response.videoId !== this.videoId || !this.isActiveCaptionSession(captionSessionId)) {
+      if (!this.canApplyFullTranscriptResponse(response, captionSessionId)) {
         return;
       }
 
+      this.applyFullTranscriptResponse(response, captionSessionId, {
+        activityReason: "full-transcript",
+        recordLoadedDiagnostic: true,
+        useLoadedStatusMessage: true
+      });
+    }
+
+    canApplyFullTranscriptResponse(response, sessionId) {
+      return Boolean(
+        response &&
+          response.ok &&
+          response.videoId === this.videoId &&
+          Array.isArray(response.cues) &&
+          response.cues.length &&
+          this.isActiveCaptionSession(sessionId) &&
+          this.isCurrentVideoPage()
+      );
+    }
+
+    getTranscriptLoadedStatusMessage(response) {
+      const stepSeconds = this.getKeyboardStepSeconds();
+      return (
+        "Loaded " +
+        this.chunks.length +
+        " chunks (" +
+        (response.mode || response.sourceType || "caption timeline") +
+        "). Hover panel + Space=+" +
+        stepSeconds +
+        "s, Shift+Space=-" +
+        stepSeconds +
+        "s."
+      );
+    }
+
+    applyFullTranscriptResponse(response, sessionId, options) {
+      const opts = options || {};
+      if (!this.canApplyFullTranscriptResponse(response, sessionId)) {
+        return false;
+      }
+      const currentPreferenceKey = this.getCurrentCaptionPreferenceKey();
+      if (opts.preserveOpenCaptionPreference && this.hasOpenCaptionPreferenceChanged()) {
+        return false;
+      }
       this.disableLiveCaptureMode();
       this.transcriptMode = response.mode || "direct transcript mode";
-      this.lastCaptionPreferenceKey = this.getCurrentCaptionPreferenceKey();
+      this.lastCaptionPreferenceKey = opts.preserveOpenCaptionPreference
+        ? currentPreferenceKey || this.openCaptionPreferenceKey || this.getCurrentCaptionPreferenceKey()
+        : currentPreferenceKey;
       this.cues = response.cues;
       this.revealedChunkCount = 0;
       this.rebuildChunks();
       this.transcriptPreviewChunks = this.allChunks.slice();
-      this.noteTranscriptActivity("full-transcript");
-      diagnostics.record("captions:transcript-loaded", {
-        cueCount: response.cues.length,
-        mode: response.mode || response.sourceType || "direct transcript mode",
-        futureCueCount: response.futureCueCount || 0
-      });
-      if (this.panel) {
-        const stepSeconds = this.getKeyboardStepSeconds();
-        this.panel.setStatus(
-          "Loaded " +
-            this.chunks.length +
-            " chunks (" +
-            (response.mode || response.sourceType || "caption timeline") +
-            "). Hover panel + Space=+" +
-            stepSeconds +
-            "s, Shift+Space=-" +
-            stepSeconds +
-            "s.",
-          true
-        );
+      this.noteTranscriptActivity(opts.activityReason || "full-transcript");
+      if (opts.recordLoadedDiagnostic) {
+        diagnostics.record("captions:transcript-loaded", {
+          cueCount: response.cues.length,
+          mode: response.mode || response.sourceType || "direct transcript mode",
+          futureCueCount: response.futureCueCount || 0
+        });
       }
+      if (opts.syncAfterApply) {
+        this.syncActiveChunk(true);
+      }
+      const statusMessage = opts.useLoadedStatusMessage
+        ? this.getTranscriptLoadedStatusMessage(response)
+        : opts.statusMessage;
+      if (this.panel && statusMessage) {
+        this.panel.setStatus(statusMessage, true);
+      }
+      return true;
     }
 
     buildFixedWindowChunksFromCues(cues) {
