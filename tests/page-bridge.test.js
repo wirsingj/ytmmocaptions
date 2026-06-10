@@ -4,7 +4,8 @@ const vm = require("node:vm");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 
-function loadPageBridge(url) {
+function loadPageBridge(url, options) {
+  const opts = options || {};
   const listeners = {};
   const posted = [];
   let intervalCallback = null;
@@ -71,6 +72,8 @@ function loadPageBridge(url) {
       });
     },
     XMLHttpRequest: function XMLHttpRequest() {},
+    ytInitialPlayerResponse: opts.playerResponse || null,
+    ytInitialData: opts.initialData || null,
     document: {
       currentScript: {
         dataset: {
@@ -79,7 +82,7 @@ function loadPageBridge(url) {
       },
       addEventListener() {},
       getElementById() {
-        return null;
+        return opts.playerElement || null;
       },
       querySelector() {
         return null;
@@ -142,6 +145,12 @@ function loadPageBridge(url) {
       return posted.slice();
     },
     posted,
+    getLastSnapshot() {
+      return posted
+        .slice()
+        .reverse()
+        .find((message) => message.type === "DIALOGUE_CAPTIONS_PAGE_CONTEXT");
+    },
     request,
     requestWithoutToken,
     setUrl(nextUrl) {
@@ -203,6 +212,46 @@ exports.run = async function runPageBridgeTests(ctx) {
     assert.ok(payloadBody.includes("player.getOption(\"captions\", \"track\")"));
     assert.ok(payloadBody.includes("selectedCaptionTrack"));
     assert.ok(!payloadBody.includes("setOption(\"captions\""));
+  });
+
+  await runCase("page bridge filters stale caption tracks from previous videos", () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=current123", {
+      playerResponse: {
+        captions: {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: [
+              { baseUrl: "https://www.youtube.com/api/timedtext?v=previous123&lang=zh", languageCode: "zh" },
+              { baseUrl: "https://www.youtube.com/api/timedtext?v=current123&lang=en", languageCode: "en" }
+            ]
+          }
+        }
+      }
+    });
+    const snapshot = bridge.getLastSnapshot();
+    assert.equal(snapshot.payload.videoId, "current123");
+    assert.deepEqual(
+      snapshot.payload.captionTracks.map((track) => track.languageCode),
+      ["en"]
+    );
+  });
+
+  await runCase("page bridge ignores stale selected caption tracks from previous videos", () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=current123", {
+      playerElement: {
+        getOption(namespace, key) {
+          if (namespace === "captions" && key === "track") {
+            return {
+              baseUrl: "https://www.youtube.com/api/timedtext?v=previous123&lang=zh",
+              languageCode: "zh"
+            };
+          }
+          return null;
+        }
+      }
+    });
+    const snapshot = bridge.getLastSnapshot();
+    assert.equal(snapshot.payload.videoId, "current123");
+    assert.equal(snapshot.payload.selectedCaptionTrack, null);
   });
 
   await runCase("page bridge rejects blocked protocols, hosts, paths, and methods", async () => {

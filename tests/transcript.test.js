@@ -1018,4 +1018,68 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.ok, false);
     assert.ok(!requested.some((url) => url.includes("previous123") && url.includes("/api/timedtext")));
   });
+
+  await runCase("transcript does not use stale window initial data panel params", async () => {
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        ytInitialPlayerResponse: {
+          videoDetails: { videoId: "current123" },
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: []
+            }
+          }
+        },
+        ytInitialData: {
+          getPanelEndpoint: {
+            panelId: "PAmodern_transcript_view",
+            params: "stale-panel-params"
+          },
+          watchEndpoint: {
+            videoId: "previous123"
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=current123" },
+        DialogueCaptions: {
+          pageContext: {
+            getSnapshot() {
+              return {
+                videoId: "current123",
+                captionTracks: [],
+                ytcfg: {
+                  INNERTUBE_API_KEY: "fake-key",
+                  INNERTUBE_CONTEXT: {
+                    client: {
+                      clientName: "WEB",
+                      clientVersion: "2.test"
+                    }
+                  },
+                  INNERTUBE_CONTEXT_CLIENT_NAME: "1",
+                  INNERTUBE_CONTEXT_CLIENT_VERSION: "2.test"
+                }
+              };
+            },
+            getTimedtextCaptures() {
+              return [];
+            }
+          }
+        }
+      },
+      fetch: async (url, init) => {
+        requested.push({ url: String(url), init });
+        return makeTextResponse("{}", 200, "application/json");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=current123",
+      new AbortController().signal
+    );
+    const panelRequest = requested.find((entry) => entry.url.includes("/youtubei/v1/get_panel"));
+
+    assert.equal(result.ok, false);
+    assert.ok(panelRequest, "expected get_panel fallback to be attempted");
+    assert.notEqual(JSON.parse(panelRequest.init.body).params, "stale-panel-params");
+  });
 };

@@ -51,14 +51,27 @@
     if (!isObject(nextSnapshot)) {
       return;
     }
+    const currentVideoId = getCurrentWatchVideoId();
+    const snapshotVideoId = typeof nextSnapshot.videoId === "string" ? nextSnapshot.videoId : "";
+    if (currentVideoId && snapshotVideoId && snapshotVideoId !== currentVideoId) {
+      return;
+    }
     snapshot = nextSnapshot;
     while (pendingSnapshotRequests.length) {
       const resolve = pendingSnapshotRequests.shift();
-      resolve(snapshot);
+      resolve(getSnapshot());
     }
   }
 
   function getSnapshot() {
+    const currentVideoId = getCurrentWatchVideoId();
+    if (!currentVideoId) {
+      return null;
+    }
+    const snapshotVideoId = snapshot && typeof snapshot.videoId === "string" ? snapshot.videoId : "";
+    if (currentVideoId && snapshotVideoId && snapshotVideoId !== currentVideoId) {
+      return null;
+    }
     return snapshot;
   }
 
@@ -164,6 +177,7 @@
     if (!safeUrl || !isCurrentWatchPageWithVideo()) {
       return null;
     }
+    const requestVideoId = getCurrentWatchVideoId();
     const requestId = ++requestCounter;
     const safeInit = isObject(init) ? init : {};
     const timeout = Number.isFinite(timeoutMs) ? timeoutMs : 9000;
@@ -176,6 +190,10 @@
       pendingRequests.set(requestId, {
         resolve(payload) {
           scope.clearTimeout(timer);
+          if (requestVideoId && requestVideoId !== getCurrentWatchVideoId()) {
+            resolve(null);
+            return;
+          }
           resolve(payload);
         }
       });
@@ -280,7 +298,7 @@
 
   function requestSnapshot(timeoutMs) {
     if (!isCurrentWatchPageWithVideo()) {
-      return Promise.resolve(snapshot);
+      return Promise.resolve(null);
     }
     const timeout = Number.isFinite(timeoutMs) ? Math.max(0, Number(timeoutMs)) : 500;
     return new Promise((resolve) => {
@@ -293,7 +311,7 @@
         if (index >= 0) {
           pendingSnapshotRequests.splice(index, 1);
         }
-        resolve(snapshot);
+        resolve(getSnapshot());
       }, timeout);
       pendingSnapshotRequests.push(wrappedResolve);
       scope.postMessage(

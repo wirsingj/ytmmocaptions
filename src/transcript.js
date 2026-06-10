@@ -647,6 +647,9 @@
       };
     }
     if (scope.ytInitialData && typeof scope.ytInitialData === "object") {
+      if (videoId && !initialDataReferencesVideo(scope.ytInitialData, videoId)) {
+        return null;
+      }
       return scope.ytInitialData;
     }
     return null;
@@ -967,6 +970,31 @@
     for (let index = 0; index < keys.length; index += 1) {
       walkObjects(root[keys[index]], visit, cache);
     }
+  }
+
+  function initialDataReferencesVideo(initialData, videoId) {
+    const expected = String(videoId || "");
+    if (!expected) {
+      return false;
+    }
+    let found = false;
+    walkObjects(initialData, function (node) {
+      if (found) {
+        return;
+      }
+      const keys = Object.keys(node);
+      for (let index = 0; index < keys.length; index += 1) {
+        const value = node[keys[index]];
+        if (typeof value !== "string") {
+          continue;
+        }
+        if (value === expected || value.indexOf("v=" + expected) >= 0 || value.indexOf("/watch/" + expected) >= 0) {
+          found = true;
+          return;
+        }
+      }
+    });
+    return found;
   }
 
   function mapXmlToCues(xmlText) {
@@ -1772,7 +1800,7 @@
 
   async function fetchCuesFromGetPanel(pageUrl, signal) {
     const videoId = getVideoId(pageUrl);
-    const initialData = getInitialDataFromWindow() || getInitialDataFromScripts();
+    const initialData = getInitialDataFromWindow(videoId) || getInitialDataFromScripts();
     const params = findTranscriptPanelParams(initialData) || makeTranscriptPanelParams(videoId);
     if (!params) {
       logDebug("youtubei/get_panel skipped: missing transcript panel params");

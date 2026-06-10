@@ -365,17 +365,25 @@
   }
 
   function buildPayload() {
+    const currentVideoId = getVideoId(scope.location.href);
     const playerResponse = scope.ytInitialPlayerResponse && typeof scope.ytInitialPlayerResponse === "object"
       ? scope.ytInitialPlayerResponse
       : null;
     const initialData = scope.ytInitialData && typeof scope.ytInitialData === "object" ? scope.ytInitialData : null;
-    const tracks =
+    const rawTracks =
       playerResponse &&
       playerResponse.captions &&
       playerResponse.captions.playerCaptionsTracklistRenderer &&
       Array.isArray(playerResponse.captions.playerCaptionsTracklistRenderer.captionTracks)
         ? playerResponse.captions.playerCaptionsTracklistRenderer.captionTracks
         : [];
+    const tracks = rawTracks.filter(function (track) {
+      if (!track || typeof track.baseUrl !== "string" || !track.baseUrl || !currentVideoId) {
+        return true;
+      }
+      const trackVideoId = getVideoId(track.baseUrl);
+      return !trackVideoId || trackVideoId === currentVideoId;
+    });
     let selectedCaptionTrack = null;
     try {
       const player = scope.document && scope.document.getElementById
@@ -384,14 +392,18 @@
       if (player && typeof player.getOption === "function") {
         const track = player.getOption("captions", "track");
         if (track && typeof track === "object") {
-          selectedCaptionTrack = {
-            baseUrl: typeof track.baseUrl === "string" ? track.baseUrl : "",
-            languageCode: typeof track.languageCode === "string" ? track.languageCode : "",
-            langCode: typeof track.langCode === "string" ? track.langCode : "",
-            language: typeof track.language === "string" ? track.language : "",
-            kind: typeof track.kind === "string" ? track.kind : "",
-            vssId: typeof track.vssId === "string" ? track.vssId : ""
-          };
+          const selectedTrackVideoId =
+            typeof track.baseUrl === "string" && track.baseUrl ? getVideoId(track.baseUrl) : "";
+          if (!selectedTrackVideoId || !currentVideoId || selectedTrackVideoId === currentVideoId) {
+            selectedCaptionTrack = {
+              baseUrl: typeof track.baseUrl === "string" ? track.baseUrl : "",
+              languageCode: typeof track.languageCode === "string" ? track.languageCode : "",
+              langCode: typeof track.langCode === "string" ? track.langCode : "",
+              language: typeof track.language === "string" ? track.language : "",
+              kind: typeof track.kind === "string" ? track.kind : "",
+              vssId: typeof track.vssId === "string" ? track.vssId : ""
+            };
+          }
         }
       }
     } catch {
@@ -412,7 +424,7 @@
 
     return {
       href: scope.location.href,
-      videoId: getVideoId(scope.location.href),
+      videoId: currentVideoId,
       hasPlayerResponse: Boolean(playerResponse),
       hasInitialData: Boolean(initialData),
       captionTracks: tracks.map(function (track) {

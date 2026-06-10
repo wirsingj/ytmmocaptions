@@ -168,11 +168,15 @@
       if (!pageContext || typeof pageContext.ensureBridgeInjected !== "function") {
         return false;
       }
-      if (!transcript.isWatchPage(window.location.href) || !transcript.getVideoId(window.location.href)) {
+      if (!this.isCurrentVideoPage()) {
         return false;
       }
       pageContext.ensureBridgeInjected();
       return true;
+    }
+
+    isCurrentVideoPage() {
+      return transcript.isWatchPage(window.location.href) && transcript.getVideoId(window.location.href) === this.videoId;
     }
 
     async waitForVideoElement(timeoutMs) {
@@ -221,7 +225,7 @@
           return 0;
         }
         const tracklist = player.getOption("captions", "tracklist");
-        return Array.isArray(tracklist) ? tracklist.length : 0;
+        return Array.isArray(tracklist) ? tracklist.filter((track) => this.isTrackForCurrentVideo(track)).length : 0;
       } catch {
         return 0;
       }
@@ -585,10 +589,26 @@
           return null;
         }
         const track = player.getOption("captions", "track");
-        return track && typeof track === "object" ? track : null;
+        return track && typeof track === "object" && this.isTrackForCurrentVideo(track) ? track : null;
       } catch {
         return null;
       }
+    }
+
+    getTrackVideoId(track) {
+      if (!track || typeof track.baseUrl !== "string" || !track.baseUrl) {
+        return "";
+      }
+      try {
+        return transcript.getVideoId(track.baseUrl);
+      } catch {
+        return "";
+      }
+    }
+
+    isTrackForCurrentVideo(track) {
+      const trackVideoId = this.getTrackVideoId(track);
+      return !trackVideoId || trackVideoId === this.videoId;
     }
 
     getTrackLanguageCode(track) {
@@ -659,7 +679,7 @@
     }
 
     getPreferredCaptionTracks(tracklist) {
-      const tracks = Array.isArray(tracklist) ? tracklist : [];
+      const tracks = Array.isArray(tracklist) ? tracklist.filter((track) => this.isTrackForCurrentVideo(track)) : [];
       const ordered = [];
       const used = new Set();
 
@@ -1230,7 +1250,13 @@
     }
 
     captureLiveCaptionLine() {
-      if (!this.liveCaptureEnabled || !this.video || this.settings.panelClosed) {
+      if (
+        !this.liveCaptureEnabled ||
+        !this.video ||
+        this.settings.panelClosed ||
+        !this.isCurrentVideoPage() ||
+        this.hasOpenCaptionPreferenceChanged()
+      ) {
         return;
       }
 
@@ -1567,6 +1593,15 @@
     getCurrentCaptionPreferenceKey() {
       return this.getCaptionPreferenceKeyFromSnapshot(
         pageContext && typeof pageContext.getSnapshot === "function" ? pageContext.getSnapshot() : null
+      );
+    }
+
+    hasOpenCaptionPreferenceChanged() {
+      const currentPreferenceKey = this.getCurrentCaptionPreferenceKey();
+      return Boolean(
+        this.openCaptionPreferenceKey &&
+          currentPreferenceKey &&
+          currentPreferenceKey !== this.openCaptionPreferenceKey
       );
     }
 
@@ -2029,7 +2064,13 @@
     }
 
     async tryUpgradeLiveCaptureToTranscript() {
-      if (this.transcriptUpgradeInFlight || this.destroyed || this.settings.panelClosed || !this.liveCaptureEnabled) {
+      if (
+        this.transcriptUpgradeInFlight ||
+        this.destroyed ||
+        this.settings.panelClosed ||
+        !this.liveCaptureEnabled ||
+        !this.isCurrentVideoPage()
+      ) {
         return;
       }
       this.transcriptUpgradeInFlight = true;
@@ -2041,7 +2082,13 @@
 
       try {
         await this.waitForCaptionContextReady(1600);
-        if (signal.aborted || this.destroyed || this.settings.panelClosed || !this.liveCaptureEnabled) {
+        if (
+          signal.aborted ||
+          this.destroyed ||
+          this.settings.panelClosed ||
+          !this.liveCaptureEnabled ||
+          !this.isCurrentVideoPage()
+        ) {
           return;
         }
         const response = await captionTimeline.acquireFullTimeline(window.location.href, signal, {
@@ -2054,16 +2101,13 @@
           !Array.isArray(response.cues) ||
           !response.cues.length ||
           this.destroyed ||
-          this.settings.panelClosed
+          this.settings.panelClosed ||
+          !this.isCurrentVideoPage()
         ) {
           return;
         }
         const currentPreferenceKey = this.getCurrentCaptionPreferenceKey();
-        if (
-          this.openCaptionPreferenceKey &&
-          currentPreferenceKey &&
-          currentPreferenceKey !== this.openCaptionPreferenceKey
-        ) {
+        if (this.hasOpenCaptionPreferenceChanged()) {
           return;
         }
 
@@ -2109,7 +2153,7 @@
       }
       this.maybeProbeCaptions();
       await this.waitForCaptionContextReady(2400);
-      if (signal.aborted || this.destroyed) {
+      if (signal.aborted || this.destroyed || !this.isCurrentVideoPage()) {
         if (loadId === this.transcriptLoadNonce) {
           this.transcriptLoadInFlight = false;
         }
@@ -2138,6 +2182,9 @@
       }
 
       if (!response || !response.ok) {
+        if (!this.isCurrentVideoPage()) {
+          return;
+        }
         const reason = String(response && response.reason ? response.reason : "");
         const isLikelyReloadRace =
           reason.includes("No caption tracks") || reason.includes("No subtitle cues");
@@ -2174,7 +2221,7 @@
         return;
       }
 
-      if (response.videoId !== this.videoId) {
+      if (response.videoId !== this.videoId || !this.isCurrentVideoPage()) {
         return;
       }
 

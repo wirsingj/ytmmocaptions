@@ -161,6 +161,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("getPreferredLanguageCodes()"));
     assert.ok(source.includes("navigator.languages"));
     assert.ok(source.includes("isTranslatedCaptionTrack(track)"));
+    assert.ok(source.includes("isTrackForCurrentVideo(track)"));
+    assert.ok(source.includes("this.isTrackForCurrentVideo(track) ? track : null"));
     assert.ok(pickBody.includes("return this.getPreferredCaptionTracks(tracklist)[0] || null;"));
     assert.ok(!source.includes("setOption(\"captions\", \"track\""));
     assert.ok(!source.includes("setOption(\"captions\", \"reload\""));
@@ -238,6 +240,36 @@ exports.run = async function runLiveBubbleTests(ctx) {
     const nudgeBody = source.slice(nudgeStart, source.indexOf("    isChunkIndexAlignedWithTime", nudgeStart));
     assert.ok(nudgeBody.includes("this.hasTranscriptActivity() || this.transcriptHeartbeatTimerId || this.isTranscriptHeartbeatExhausted()"));
     assert.ok(nudgeBody.indexOf("return;") < nudgeBody.indexOf("this.ensureCaptionsEnabledOnce();"));
+  });
+
+  await runCase("caption work ignores stale app instances after URL video changes", () => {
+    const bridgeStart = source.indexOf("    ensurePageBridgeForWatchPage()");
+    const bridgeBody = source.slice(bridgeStart, source.indexOf("    async waitForVideoElement", bridgeStart));
+    const captureStart = source.indexOf("    captureLiveCaptionLine()");
+    const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
+    const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript()");
+    const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript()", upgradeStart));
+    const loadStart = source.indexOf("    async loadTranscript()");
+    const loadBody = source.slice(loadStart, source.indexOf("    estimateTokenTimings", loadStart));
+
+    assert.ok(source.includes("isCurrentVideoPage()"));
+    assert.ok(bridgeBody.includes("if (!this.isCurrentVideoPage())"));
+    assert.ok(captureBody.includes("!this.isCurrentVideoPage()"));
+    assert.ok(upgradeBody.includes("!this.isCurrentVideoPage()"));
+    assert.ok(loadBody.includes("signal.aborted || this.destroyed || !this.isCurrentVideoPage()"));
+    assert.ok(loadBody.includes("if (!this.isCurrentVideoPage())"));
+    assert.ok(loadBody.includes("response.videoId !== this.videoId || !this.isCurrentVideoPage()"));
+  });
+
+  await runCase("open live capture freezes to the caption preference from panel open", () => {
+    const captureStart = source.indexOf("    captureLiveCaptionLine()");
+    const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
+    const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript()");
+    const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript()", upgradeStart));
+
+    assert.ok(source.includes("hasOpenCaptionPreferenceChanged()"));
+    assert.ok(captureBody.includes("this.hasOpenCaptionPreferenceChanged()"));
+    assert.ok(upgradeBody.includes("this.hasOpenCaptionPreferenceChanged()"));
   });
 
   await runCase("video sync listeners are rebound and cleaned when YouTube swaps video elements", () => {
