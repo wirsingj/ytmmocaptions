@@ -44,7 +44,12 @@
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   border: 1px solid var(--dc-border);
   border-radius: 14px;
-  background: rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-base));
+  background:
+    radial-gradient(ellipse 128% 112% at var(--dc-fade-x) var(--dc-fade-y),
+      rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-inner)) 0%,
+      rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-inner)) 18%,
+      rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-mid)) 58%,
+      rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-outer)) 100%);
   box-shadow:
     inset 0 0 0 2px rgba(var(--dc-accent-rgb), 0.07),
     0 12px 26px rgba(0, 0, 0, 0.32);
@@ -53,8 +58,6 @@
   flex-direction: column;
   overflow: hidden;
   isolation: isolate;
-  -webkit-mask-image: radial-gradient(ellipse 128% 112% at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-alpha)) 18%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) 58%, rgba(0, 0, 0, var(--dc-edge-mask-alpha)) 100%);
-  mask-image: radial-gradient(ellipse 128% 112% at var(--dc-fade-x) var(--dc-fade-y), rgba(0, 0, 0, var(--dc-center-mask-alpha)) 0%, rgba(0, 0, 0, var(--dc-center-mask-alpha)) 18%, rgba(0, 0, 0, var(--dc-center-mask-mid-alpha)) 58%, rgba(0, 0, 0, var(--dc-edge-mask-alpha)) 100%);
 }
 
 .dc-panel.is-anchor-offscreen,

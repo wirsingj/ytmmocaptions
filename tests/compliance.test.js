@@ -786,10 +786,12 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('this.timelineTooltip.classList.toggle("is-hover"'));
     assert.ok(panelSource.includes("Math.pow(blend, 0.72)"));
     assert.ok(panelSource.includes("const fadeX = Math.max(0, Math.min(100"));
-    assert.ok(panelSource.includes("const centerAlpha = enabled ?"));
-    assert.ok(panelSource.includes('this.root.style.setProperty("--dc-edge-mask-alpha"'));
+    assert.ok(panelSource.includes("const centerAlpha = enabled"));
+    assert.ok(panelSource.includes('setAlpha("--dc-panel-alpha-inner", centerAlpha)'));
     assert.ok(panelSource.includes('setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84)'));
     assert.ok(panelSource.includes('setAlpha("--dc-card-alpha", 0.2 + eased * 0.8)'));
+    assert.ok(css.includes("rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-inner))"));
+    assert.equal(css.includes("mask-image: radial-gradient"), false);
     assert.ok(scrubSource.includes("hoverXToTime"));
     assert.ok(scrubSource.includes("findChunkIndexAtTime"));
     assert.ok(css.includes(".dc-timeline-layer"));

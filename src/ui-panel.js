@@ -1966,8 +1966,23 @@
       const strength = Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100;
       const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 48)));
       const opacityBlend = (opacityPercent - 10) / 90;
-      const centerAlpha = enabled ? Math.min(0.86, 0.36 + opacityBlend * 0.38 + (1 - strength) * 0.08) : 1;
-      const midAlpha = enabled ? centerAlpha + (1 - centerAlpha) * 0.46 : 1;
+      const eased = Math.pow(opacityBlend, 0.72);
+      const baseAlpha = 0.02 + eased * 0.98;
+      const outerAlpha = 0.16 + eased * 0.84;
+      const centerAlpha = enabled
+        ? Math.max(0.035, Math.min(0.42, 0.08 + opacityBlend * 0.2 + (1 - strength) * 0.06))
+        : baseAlpha;
+      const midAlpha = enabled ? centerAlpha + (outerAlpha - centerAlpha) * 0.48 : baseAlpha;
+      const setAlpha = (name, value) => {
+        const alpha = Math.max(0, Math.min(1, value)).toFixed(3);
+        this.root.style.setProperty(name, alpha);
+        if (this.timelineLayer) {
+          this.timelineLayer.style.setProperty(name, alpha);
+        }
+      };
+      setAlpha("--dc-panel-alpha-inner", centerAlpha);
+      setAlpha("--dc-panel-alpha-mid", midAlpha);
+      setAlpha("--dc-panel-alpha-outer", enabled ? outerAlpha : baseAlpha);
       this.root.style.setProperty("--dc-center-mask-alpha", centerAlpha.toFixed(3));
       this.root.style.setProperty("--dc-center-mask-mid-alpha", midAlpha.toFixed(3));
       this.root.style.setProperty("--dc-edge-mask-alpha", "1");
