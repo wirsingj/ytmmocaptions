@@ -136,18 +136,23 @@ exports.run = async function runLiveBubbleTests(ctx) {
     const restoreStart = source.indexOf("    restoreSubtitlesIfExtensionEnabled()");
     const restoreBody = source.slice(restoreStart, source.indexOf("    ensureCaptionsEnabledOnce()", restoreStart));
     const ensureStart = source.indexOf("    ensureCaptionsEnabledOnce()");
-    const ensureBody = source.slice(ensureStart, source.indexOf("    startCaptionEnsureLoop()", ensureStart));
+    const ensureBody = source.slice(ensureStart, source.indexOf("    startCaptionEnsureLoop(sessionId)", ensureStart));
 
     assert.ok(source.includes("captureInitialSubtitleState()"));
+    assert.ok(source.includes("resetCaptionEnsureState()"));
     assert.ok(probeBody.includes("this.captureInitialSubtitleState();"));
     assert.ok(probeBody.includes("this.captionsEnabledByExtension = true;"));
     assert.ok(ensureBody.includes("this.captureInitialSubtitleState();"));
     assert.ok(ensureBody.includes("this.captionsEnabledByExtension = true;"));
     assert.ok(restoreBody.includes("const subtitlesWereOff = this.captionsWereOnBeforeExtension === false;"));
+    assert.ok(restoreBody.includes("this.captionsEnabledByExtension && subtitlesWereOff && this.isSubtitlesEnabled()"));
     assert.ok(restoreBody.includes("this.setSubtitlesEnabled(false);"));
     assert.ok(restoreBody.includes("this.captionsWereOnBeforeExtension = null;"));
-    assert.ok(restoreBody.includes("this.captionsEnsured = false;"));
-    assert.ok(restoreBody.includes("this.captionEnsureStarted = false;"));
+    assert.ok(restoreBody.includes("this.resetCaptionEnsureState();"));
+    const sessionStart = source.indexOf("    beginCaptionSession(reason)");
+    const sessionBody = source.slice(sessionStart, source.indexOf("    getActiveCaptionSessionId()", sessionStart));
+    assert.ok(sessionBody.includes("this.stopTranscriptHeartbeat();"));
+    assert.ok(sessionBody.includes("this.resetCaptionEnsureState();"));
   });
 
   await runCase("caption probing does not change YouTube's selected caption language", () => {

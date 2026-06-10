@@ -191,6 +191,8 @@
     }
 
     beginCaptionSession(reason) {
+      this.stopTranscriptHeartbeat();
+      this.resetCaptionEnsureState();
       this.captionSessionId = this.captionSessions.begin(reason || "caption-work");
       return this.captionSessionId;
     }
@@ -1540,15 +1542,19 @@
       this.captionsWereOnBeforeExtension = this.isSubtitlesEnabled();
     }
 
+    resetCaptionEnsureState() {
+      this.captionsEnsured = false;
+      this.captionEnsureStarted = false;
+    }
+
     restoreSubtitlesIfExtensionEnabled() {
       const subtitlesWereOff = this.captionsWereOnBeforeExtension === false;
-      if (subtitlesWereOff && this.isSubtitlesEnabled()) {
+      if (this.captionsEnabledByExtension && subtitlesWereOff && this.isSubtitlesEnabled()) {
         this.setSubtitlesEnabled(false);
       }
       this.captionsEnabledByExtension = false;
       this.captionsWereOnBeforeExtension = null;
-      this.captionsEnsured = false;
-      this.captionEnsureStarted = false;
+      this.resetCaptionEnsureState();
     }
 
     ensureCaptionsEnabledOnce() {
