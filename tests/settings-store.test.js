@@ -130,8 +130,33 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.workspacePresets[1].themeName, "custom");
     assert.equal(result.workspacePresets[1].caseFixEnabled, false);
     assert.equal(result.workspacePresets[1].panelOpacity, 10);
+    assert.equal(result.workspacePresets[1].panelPosition.yRatio, 1);
     assert.equal(result.workspacePresets[2].themeName, "ocean");
     assert.equal(result.workspacePresets[2].textScale, 140);
+  });
+
+  await runCase("legacy seeded music preset migrates to bottom alignment", () => {
+    const { normalize } = makeStore();
+    const result = normalize({
+      workspacePresets: [
+        null,
+        {
+          panelOpacity: 10,
+          textScale: 175,
+          themeName: "custom",
+          customThemeColor: "#d62fbe",
+          panelPosition: { anchor: "player", left: 12, top: 12 },
+          panelSize: { width: 2400, height: 760 },
+          futurePreviewEnabled: true,
+          caseFixEnabled: false,
+          fadeTowardVideoCenter: false
+        },
+        null
+      ]
+    });
+
+    assert.equal(result.workspacePresets[1].panelPosition.xRatio, 0);
+    assert.equal(result.workspacePresets[1].panelPosition.yRatio, 1);
   });
 
   await runCase("settings normalization sanitizes theme preferences", () => {

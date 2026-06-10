@@ -22,7 +22,7 @@
       textScale: 175,
       themeName: "custom",
       customThemeColor: "#d62fbe",
-      panelPosition: Object.freeze({ anchor: "player", left: 12, top: 12 }),
+      panelPosition: Object.freeze({ anchor: "player", left: 12, top: 12, xRatio: 0, yRatio: 1 }),
       panelSize: Object.freeze({ width: 2400, height: 760 }),
       futurePreviewEnabled: true,
       caseFixEnabled: false,
@@ -215,11 +215,39 @@
     };
   }
 
+  function isLegacyBuiltInMusicWorkspaceSnapshot(snapshot) {
+    const position = snapshot && snapshot.panelPosition;
+    const size = snapshot && snapshot.panelSize;
+    return Boolean(
+      snapshot &&
+        snapshot.panelOpacity === 10 &&
+        snapshot.textScale === 175 &&
+        snapshot.themeName === "custom" &&
+        snapshot.customThemeColor === "#d62fbe" &&
+        snapshot.futurePreviewEnabled === true &&
+        snapshot.caseFixEnabled === false &&
+        snapshot.fadeTowardVideoCenter === false &&
+        position &&
+        position.anchor === "player" &&
+        position.left === 12 &&
+        position.top === 12 &&
+        !Number.isFinite(Number(position.yRatio)) &&
+        size &&
+        size.width === 2400 &&
+        size.height === 760
+    );
+  }
+
   function normalizeWorkspacePresets(value) {
     const source = Array.isArray(value) ? value : [];
     const presets = [];
     for (let index = 0; index < WORKSPACE_PRESET_COUNT; index += 1) {
-      presets.push(normalizeWorkspaceSnapshot(source[index]) || normalizeWorkspaceSnapshot(DEFAULT_WORKSPACE_PRESETS[index]));
+      const normalized = normalizeWorkspaceSnapshot(source[index]);
+      presets.push(
+        index === 1 && isLegacyBuiltInMusicWorkspaceSnapshot(normalized)
+          ? normalizeWorkspaceSnapshot(DEFAULT_WORKSPACE_PRESETS[index])
+          : normalized || normalizeWorkspaceSnapshot(DEFAULT_WORKSPACE_PRESETS[index])
+      );
     }
     return presets;
   }

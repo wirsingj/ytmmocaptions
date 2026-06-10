@@ -108,6 +108,7 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.settings.themeName, "custom");
     assert.equal(panel.settings.caseFixEnabled, false);
     assert.equal(panel.settings.fadeTowardVideoCenter, false);
+    assert.equal(panel.settings.panelPosition.yRatio, 1);
     assert.equal(panel.isRainbowThemeEnabled(), true);
     assert.equal(panel.settings.customThemeColor, "#d62fbe");
     assert.notEqual(panel.getCustomThemeColor(), "#d62fbe");
