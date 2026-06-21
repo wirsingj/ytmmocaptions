@@ -23,10 +23,17 @@ jobs:
       CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
       CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
     steps:
+      - name: Normalize release tag
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          if ($tag -match '^V') { $tag = 'v' + $tag.Substring(1) }
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Check out release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -35,16 +42,16 @@ jobs:
           node-version: "20"
 
       - name: Verify tag matches package and manifests
-        run: node scripts/verify-release-version.mjs "${{ inputs.release_tag }}"
+        run: node scripts/verify-release-version.mjs "${{ env.RELEASE_TAG }}"
 
       - name: Check release tag ancestry
         shell: pwsh
         run: |
           git fetch origin main
-          $tagCommit = git rev-list -n 1 "${{ inputs.release_tag }}"
+          $tagCommit = git rev-list -n 1 "${{ env.RELEASE_TAG }}"
           git merge-base --is-ancestor $tagCommit origin/main
           if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Release tag ${{ inputs.release_tag }} is not reachable from origin/main yet. Continuing because the checked-out tag version was verified."
+            Write-Warning "Release tag ${{ env.RELEASE_TAG }} is not reachable from origin/main yet. Continuing because the checked-out tag version was verified."
           }
 
       - name: Build and run release sanity checks
@@ -82,5 +89,5 @@ jobs:
         run: |
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Chrome Web Store"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Release tag: ``${{ inputs.release_tag }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Release tag: ``${{ env.RELEASE_TAG }}``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Action: ``publish``"
