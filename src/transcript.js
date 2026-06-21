@@ -319,6 +319,42 @@
     return Boolean(parsed && parsed.pathname === "/watch");
   }
 
+  function getPlayerResponseVideoId(playerResponse) {
+    return playerResponse &&
+      playerResponse.videoDetails &&
+      typeof playerResponse.videoDetails.videoId === "string"
+      ? playerResponse.videoDetails.videoId
+      : "";
+  }
+
+  function isTrackForVideo(track, videoId) {
+    if (!track || typeof track.baseUrl !== "string" || !track.baseUrl || !videoId) {
+      return true;
+    }
+    try {
+      const parsed = new URL(track.baseUrl);
+      const trackVideoId = parsed.searchParams.get("v");
+      return !trackVideoId || trackVideoId === videoId;
+    } catch {
+      return true;
+    }
+  }
+
+  function filterTracksForVideo(tracks, videoId) {
+    const source = Array.isArray(tracks) ? tracks : [];
+    return source.filter(function (track) {
+      return isTrackForVideo(track, videoId);
+    });
+  }
+
+  function isPageSnapshotForVideo(pageSnapshot, videoId) {
+    if (!pageSnapshot || !videoId) {
+      return false;
+    }
+    const snapshotVideoId = typeof pageSnapshot.videoId === "string" ? pageSnapshot.videoId : "";
+    return !snapshotVideoId || snapshotVideoId === videoId;
+  }
+
   function decodeHtmlEntities(input) {
     return String(input || "").replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);/g, function (match, entity) {
       const value = String(entity || "");
@@ -564,27 +600,39 @@
     return hasConfig ? mergedConfig : null;
   }
 
-  function getPlayerResponseFromWindow() {
+  function getPlayerResponseFromWindow(videoId) {
     const pageSnapshot = getPageContextSnapshot();
-    if (pageSnapshot && Array.isArray(pageSnapshot.captionTracks) && pageSnapshot.captionTracks.length) {
+    if (
+      isPageSnapshotForVideo(pageSnapshot, videoId) &&
+      Array.isArray(pageSnapshot.captionTracks) &&
+      pageSnapshot.captionTracks.length
+    ) {
+      const captionTracks = filterTracksForVideo(pageSnapshot.captionTracks, videoId);
+      if (!captionTracks.length) {
+        return null;
+      }
       return {
         captions: {
           playerCaptionsTracklistRenderer: {
-            captionTracks: pageSnapshot.captionTracks
+            captionTracks: captionTracks
           }
         }
       };
     }
     if (scope.ytInitialPlayerResponse && typeof scope.ytInitialPlayerResponse === "object") {
+      const playerVideoId = getPlayerResponseVideoId(scope.ytInitialPlayerResponse);
+      if (videoId && playerVideoId && playerVideoId !== videoId) {
+        return null;
+      }
       return scope.ytInitialPlayerResponse;
     }
     return null;
   }
 
-  function getInitialDataFromWindow() {
+  function getInitialDataFromWindow(videoId) {
     const pageSnapshot = getPageContextSnapshot();
     if (
-      pageSnapshot &&
+      isPageSnapshotForVideo(pageSnapshot, videoId) &&
       ((typeof pageSnapshot.transcriptParams === "string" && pageSnapshot.transcriptParams) ||
         (typeof pageSnapshot.transcriptPanelParams === "string" && pageSnapshot.transcriptPanelParams))
     ) {
@@ -599,6 +647,9 @@
       };
     }
     if (scope.ytInitialData && typeof scope.ytInitialData === "object") {
+      if (videoId && !initialDataReferencesVideo(scope.ytInitialData, videoId)) {
+        return null;
+      }
       return scope.ytInitialData;
     }
     return null;
@@ -653,7 +704,8 @@
   }
 
   async function resolvePlayerResponse(pageUrl, signal) {
-    const fromWindow = getPlayerResponseFromWindow();
+    const videoId = getVideoId(pageUrl);
+    const fromWindow = getPlayerResponseFromWindow(videoId);
     if (fromWindow) {
       return fromWindow;
     }
@@ -667,7 +719,8 @@
   }
 
   async function resolveInitialData(pageUrl, signal) {
-    const fromWindow = getInitialDataFromWindow();
+    const videoId = getVideoId(pageUrl);
+    const fromWindow = getInitialDataFromWindow(videoId);
     if (fromWindow) {
       return fromWindow;
     }
@@ -686,27 +739,151 @@
     return tracks;
   }
 
+  function getTrackLanguageCode(track) {
+    if (track && typeof track.baseUrl === "string" && track.baseUrl) {
+      try {
+        const parsed = new URL(track.baseUrl);
+        const translatedLanguage = parsed.searchParams.get("tlang");
+        if (translatedLanguage) {
+          return translatedLanguage.toLowerCase();
+        }
+      } catch {
+        // Ignore malformed URLs and fall back to track metadata.
+      }
+    }
+    const vssId = track && typeof track.vssId === "string" ? track.vssId.toLowerCase() : "";
+    if (vssId) {
+      const normalizedVssId = vssId.replace(/^a?\./, "");
+      if (normalizedVssId) {
+        return normalizedVssId;
+      }
+    }
+    const languageCode =
+      track && typeof track.languageCode === "string"
+        ? track.languageCode
+        : track && typeof track.langCode === "string"
+          ? track.langCode
+          : track && typeof track.language === "string"
+            ? track.language
+            : "";
+    if (languageCode) {
+      return languageCode.toLowerCase();
+    }
+    if (track && typeof track.baseUrl === "string" && track.baseUrl) {
+      try {
+        const parsed = new URL(track.baseUrl);
+        return (parsed.searchParams.get("lang") || "").toLowerCase();
+      } catch {
+        return "";
+      }
+    }
+    return "";
+  }
+
+  function getPreferredLanguageCodes() {
+    const nav = scope.navigator || {};
+    const rawLanguages = [];
+    const pageSnapshot = getPageContextSnapshot();
+    const selectedCaptionTrack = pageSnapshot && pageSnapshot.selectedCaptionTrack;
+    const selectedLanguage = getTrackLanguageCode(selectedCaptionTrack);
+    if (selectedLanguage) {
+      rawLanguages.push(selectedLanguage);
+    }
+    if (Array.isArray(nav.languages)) {
+      rawLanguages.push(...nav.languages);
+    }
+    rawLanguages.push(nav.language, nav.userLanguage, "en");
+
+    const languages = [];
+    const used = new Set();
+    for (const rawLanguage of rawLanguages) {
+      const language = String(rawLanguage || "").trim().toLowerCase();
+      if (!language || used.has(language)) {
+        continue;
+      }
+      used.add(language);
+      languages.push(language);
+      const baseLanguage = language.split("-")[0];
+      if (baseLanguage && !used.has(baseLanguage)) {
+        used.add(baseLanguage);
+        languages.push(baseLanguage);
+      }
+    }
+    return languages;
+  }
+
+  function languageMatchesPreference(languageCode, preference) {
+    const language = String(languageCode || "").toLowerCase();
+    const preferred = String(preference || "").toLowerCase();
+    if (!language || !preferred) {
+      return false;
+    }
+    return language === preferred || language.startsWith(preferred + "-") || preferred.startsWith(language + "-");
+  }
+
+  function isPreferredLanguageTrack(track, preference) {
+    return languageMatchesPreference(getTrackLanguageCode(track), preference);
+  }
+
+  function isManualTrack(track) {
+    return String(track && track.kind ? track.kind : "").toLowerCase() !== "asr";
+  }
+
+  function isTranslatedTrack(track) {
+    if (!track || typeof track.baseUrl !== "string" || !track.baseUrl) {
+      return false;
+    }
+    try {
+      return new URL(track.baseUrl).searchParams.has("tlang");
+    } catch {
+      return false;
+    }
+  }
+
+  function buildPreferredTrackOrder(tracks) {
+    const normalizedTracks = Array.isArray(tracks) ? tracks : [];
+    const ordered = [];
+    const used = new Set();
+
+    function pushWhere(predicate) {
+      for (const track of normalizedTracks) {
+        if (!track || used.has(track)) {
+          continue;
+        }
+        if (!predicate(track)) {
+          continue;
+        }
+        used.add(track);
+        ordered.push(track);
+      }
+    }
+
+    for (const preference of getPreferredLanguageCodes()) {
+      pushWhere(function (track) {
+        return isPreferredLanguageTrack(track, preference) && isManualTrack(track);
+      });
+      pushWhere(function (track) {
+        return isPreferredLanguageTrack(track, preference);
+      });
+    }
+    pushWhere(function (track) {
+      return isManualTrack(track) && !isTranslatedTrack(track);
+    });
+    pushWhere(function (track) {
+      return !isTranslatedTrack(track);
+    });
+    pushWhere(function () {
+      return true;
+    });
+
+    return ordered;
+  }
+
   function chooseTrack(tracks) {
-    if (!tracks.length) {
-      return null;
-    }
-
-    const englishManual = tracks.find(function (track) {
-      const languageCode = typeof track.languageCode === "string" ? track.languageCode.toLowerCase() : "";
-      return languageCode.indexOf("en") === 0 && track.kind !== "asr";
-    });
-    if (englishManual) {
-      return englishManual;
-    }
-
-    const manualTrack = tracks.find(function (track) {
-      return track.kind !== "asr";
-    });
-    return manualTrack || tracks[0];
+    return buildPreferredTrackOrder(tracks)[0] || null;
   }
 
   function buildTrackCandidates(tracks) {
-    const normalizedTracks = Array.isArray(tracks) ? tracks : [];
     const used = new Set();
     const candidates = [];
 
@@ -721,27 +898,10 @@
       candidates.push(track);
     }
 
-    const primary = chooseTrack(normalizedTracks);
+    const primary = chooseTrack(tracks);
     push(primary);
 
-    for (const track of normalizedTracks) {
-      const languageCode = typeof track.languageCode === "string" ? track.languageCode.toLowerCase() : "";
-      if (languageCode.startsWith("en") && track.kind !== "asr") {
-        push(track);
-      }
-    }
-    for (const track of normalizedTracks) {
-      if (track.kind !== "asr") {
-        push(track);
-      }
-    }
-    for (const track of normalizedTracks) {
-      const languageCode = typeof track.languageCode === "string" ? track.languageCode.toLowerCase() : "";
-      if (languageCode.startsWith("en")) {
-        push(track);
-      }
-    }
-    for (const track of normalizedTracks) {
+    for (const track of buildPreferredTrackOrder(tracks)) {
       push(track);
     }
 
@@ -810,6 +970,31 @@
     for (let index = 0; index < keys.length; index += 1) {
       walkObjects(root[keys[index]], visit, cache);
     }
+  }
+
+  function initialDataReferencesVideo(initialData, videoId) {
+    const expected = String(videoId || "");
+    if (!expected) {
+      return false;
+    }
+    let found = false;
+    walkObjects(initialData, function (node) {
+      if (found) {
+        return;
+      }
+      const keys = Object.keys(node);
+      for (let index = 0; index < keys.length; index += 1) {
+        const value = node[keys[index]];
+        if (typeof value !== "string") {
+          continue;
+        }
+        if (value === expected || value.indexOf("v=" + expected) >= 0 || value.indexOf("/watch/" + expected) >= 0) {
+          found = true;
+          return;
+        }
+      }
+    });
+    return found;
   }
 
   function mapXmlToCues(xmlText) {
@@ -1615,7 +1800,7 @@
 
   async function fetchCuesFromGetPanel(pageUrl, signal) {
     const videoId = getVideoId(pageUrl);
-    const initialData = getInitialDataFromWindow() || getInitialDataFromScripts();
+    const initialData = getInitialDataFromWindow(videoId) || getInitialDataFromScripts();
     const params = findTranscriptPanelParams(initialData) || makeTranscriptPanelParams(videoId);
     if (!params) {
       logDebug("youtubei/get_panel skipped: missing transcript panel params");
@@ -1739,8 +1924,9 @@
       tracks.push(videoElement.textTracks[index]);
     }
 
-    for (let index = 0; index < tracks.length; index += 1) {
-      const track = tracks[index];
+    const orderedTracks = buildPreferredTrackOrder(tracks);
+    for (let index = 0; index < orderedTracks.length; index += 1) {
+      const track = orderedTracks[index];
       const previousMode = track.mode;
       try {
         if (track.mode === "disabled") {
@@ -2203,12 +2389,6 @@
         }
         return null;
       };
-
-      const panelResult = await getPanelResult();
-      if (panelResult) {
-        panelResult.mode = "direct transcript mode";
-        return panelResult;
-      }
 
       const playerResponse = await resolvePlayerResponse(pageUrl, signal);
       if (!playerResponse) {

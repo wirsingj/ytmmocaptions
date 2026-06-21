@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YTMMOCC",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "MMO-style dialogue panel for YouTube captions and transcripts.",
   "host_permissions": [
     "https://www.youtube.com/*"
@@ -22,6 +22,7 @@
         "scripts/caption-text.js",
         "scripts/chunker.js",
         "scripts/bubble-state.js",
+        "scripts/caption-session.js",
         "scripts/timeline-scrub.js",
         "scripts/transcript.js",
         "scripts/caption-timeline.js",

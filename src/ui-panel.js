@@ -24,6 +24,7 @@
   const DEFAULT_PANEL_WIDTH_RATIO = 0.52;
   const DEFAULT_PANEL_MARGIN = 12;
   const PANEL_CONTROL_BAR_GAP = 64;
+  const RELATIVE_SIZE_RESTORE_THRESHOLD = 0.86;
   const LAUNCHER_MARGIN = 14;
   const LAUNCHER_WIDTH = 96;
   const LAUNCHER_HEIGHT = 32;
@@ -40,6 +41,28 @@
   const RAINBOW_THEME_FRAME_MS = 33;
   const RAINBOW_THEME_SATURATION = 0.84;
   const RAINBOW_THEME_VALUE = 0.88;
+  const ANIMATED_THEME_PRESETS = Object.freeze({
+    rainbow: Object.freeze({
+      label: "Rainbow",
+      colors: Object.freeze(["#ff4058", "#ffbd32", "#72e85a", "#35d9e7", "#5a70ff", "#da45ff"])
+    }),
+    earth: Object.freeze({
+      label: "Earth",
+      colors: Object.freeze(["#7b7a68", "#a38d62", "#6d7f66", "#9aa09a", "#5f6966"])
+    }),
+    dusk: Object.freeze({
+      label: "Dusk",
+      colors: Object.freeze(["#ff8a5b", "#d65b89", "#7a5cc8", "#344b8f", "#1f2846"])
+    }),
+    cyberpunk: Object.freeze({
+      label: "Cyber",
+      colors: Object.freeze(["#00f5ff", "#ff2bd6", "#f9f871", "#7b2cff", "#17ff8a"])
+    }),
+    aurora: Object.freeze({
+      label: "Aurora",
+      colors: Object.freeze(["#65ffd0", "#63b3ff", "#a98cff", "#d6ff7f", "#4ce3a2"])
+    })
+  });
   // Timeline mode is intentionally shipped dormant until it gets a focused UX pass.
   const TIMELINE_MODE_EXPERIMENT_ENABLED = false;
   const THEME_PRESETS = Object.freeze({
@@ -124,6 +147,9 @@
       this.themeSelect = null;
       this.themeColorButton = null;
       this.themeColorSwatch = null;
+      this.animatedThemeButton = null;
+      this.animatedThemePopover = null;
+      this.animatedThemeControls = [];
       this.colorPickerPopover = null;
       this.colorWheel = null;
       this.colorPickerIndicator = null;
@@ -335,6 +361,40 @@
       this.themeColorSwatch.className = "dc-theme-color-swatch";
       this.themeColorButton.append(this.themeColorSwatch);
 
+      this.animatedThemeButton = document.createElement("button");
+      this.animatedThemeButton.type = "button";
+      this.animatedThemeButton.className = "dc-animated-theme";
+      this.animatedThemeButton.title = "Pick animated theme";
+      this.animatedThemeButton.setAttribute("aria-label", "Animated theme presets");
+      this.animatedThemeButton.setAttribute("aria-expanded", "false");
+
+      this.animatedThemePopover = document.createElement("div");
+      this.animatedThemePopover.className = "dc-animated-popover";
+      this.animatedThemePopover.dataset.dcInstanceId = this.instanceId || "youtube";
+      this.animatedThemePopover.hidden = true;
+      this.animatedThemePopover.setAttribute("role", "dialog");
+      this.animatedThemePopover.setAttribute("aria-label", "Animated theme presets");
+      const animatedKeys = Object.keys(ANIMATED_THEME_PRESETS);
+      for (let index = 0; index < animatedKeys.length; index += 1) {
+        const name = animatedKeys[index];
+        const preset = ANIMATED_THEME_PRESETS[name];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "dc-animated-option";
+        button.setAttribute("data-animated-theme", name);
+        button.title = preset.label + " animated theme";
+        button.setAttribute("aria-label", button.title);
+        const swatch = document.createElement("span");
+        swatch.className = "dc-animated-option-swatch";
+        swatch.style.background = this.getAnimatedThemeGradient(name);
+        const label = document.createElement("span");
+        label.className = "dc-animated-option-label";
+        label.textContent = preset.label;
+        button.append(swatch, label);
+        this.animatedThemePopover.append(button);
+        this.animatedThemeControls.push({ name, button });
+      }
+
       this.colorPickerPopover = document.createElement("div");
       this.colorPickerPopover.id = this.colorPickerId;
       this.colorPickerPopover.className = "dc-color-popover";
@@ -429,6 +489,7 @@
       controls.append(
         this.themeSelect,
         this.themeColorButton,
+        this.animatedThemeButton,
         opacityWrap,
         textScaleWrap,
         centerFadeWrap
@@ -526,6 +587,7 @@
       }
       (this.mountElement || document.body).append(this.root);
       document.body.append(this.helpPopover);
+      document.body.append(this.animatedThemePopover);
       document.body.append(this.colorPickerPopover);
 
       this.timelineLayer = document.createElement("div");
@@ -588,6 +650,11 @@
         this.launcherButton.remove();
         this.launcherButton = null;
       }
+      if (this.animatedThemePopover) {
+        this.animatedThemePopover.remove();
+        this.animatedThemePopover = null;
+        this.animatedThemeControls = [];
+      }
       if (this.timelineLayer) {
         this.timelineLayer.remove();
         this.timelineLayer = null;
@@ -611,7 +678,7 @@
 
     removeExistingUiNodes() {
       const knownNodes = document.querySelectorAll(
-        "#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId + ", #" + this.colorPickerId + ", #" + this.helpPopoverId
+        "#" + this.panelId + ", #" + this.launcherId + ", #" + this.timelineId + ", #" + this.colorPickerId + ", #" + this.helpPopoverId + ", .dc-animated-popover[data-dc-instance-id='" + (this.instanceId || "youtube") + "']"
       );
       knownNodes.forEach((node) => {
         if (node instanceof Element) {
@@ -770,10 +837,11 @@
 
       const onThemeChange = () => {
         this.cancelRainbowThemePreview(false);
-        this.updateSettings({ themeName: this.themeSelect.value || "stone" });
+        this.updateSettings({ themeName: this.themeSelect.value || "stone", animatedThemeName: null });
         if (this.themeSelect.value !== "custom") {
           this.closeColorPicker();
         }
+        this.closeAnimatedThemePopover();
       };
       this.addListener(this.themeSelect, "change", onThemeChange);
 
@@ -783,6 +851,27 @@
         this.toggleColorPicker();
       };
       this.addListener(this.themeColorButton, "click", onThemeColorClick);
+
+      const onAnimatedThemeClick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleAnimatedThemePopover();
+      };
+      this.addListener(this.animatedThemeButton, "click", onAnimatedThemeClick);
+
+      const onAnimatedThemePopoverPointerDown = (event) => {
+        event.stopPropagation();
+      };
+      this.addListener(this.animatedThemePopover, "pointerdown", onAnimatedThemePopoverPointerDown);
+      this.addListener(this.animatedThemePopover, "click", (event) => {
+        event.stopPropagation();
+        const target = event.target instanceof Element ? event.target.closest(".dc-animated-option") : null;
+        if (!target) {
+          return;
+        }
+        const name = target.getAttribute("data-animated-theme");
+        this.applyAnimatedThemePreset(name);
+      });
 
       const onColorPickerPointerDown = (event) => {
         event.stopPropagation();
@@ -808,6 +897,7 @@
       const onColorPickerEscape = (event) => {
         if (event.key === "Escape") {
           this.closeColorPicker();
+          this.closeAnimatedThemePopover();
           this.closeHelpPopover();
         }
       };
@@ -828,6 +918,22 @@
         this.closeColorPicker();
       };
       this.addListener(document, "pointerdown", onColorPickerOutside);
+
+      const onAnimatedThemeOutside = (event) => {
+        if (!this.animatedThemePopover || this.animatedThemePopover.hidden) {
+          return;
+        }
+        const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+        if (path.includes(this.animatedThemePopover) || path.includes(this.animatedThemeButton)) {
+          return;
+        }
+        const target = event.target;
+        if (target instanceof Element && (target.closest(".dc-animated-popover") || target.closest(".dc-animated-theme"))) {
+          return;
+        }
+        this.closeAnimatedThemePopover();
+      };
+      this.addListener(document, "pointerdown", onAnimatedThemeOutside);
 
       const onTextScaleInput = () => {
         this.updateSettings({ textScale: Number(this.textScaleInput.value) });
@@ -970,7 +1076,7 @@
       this.addListener(this.listViewport, "scroll", onScroll, { passive: true });
 
       const onResize = () => {
-        this.applySettings();
+        this.applySettings({ persistNormalizedPanelPosition: false });
         this.updateColorPickerPosition();
         this.updateHelpPopoverPosition();
       };
@@ -983,7 +1089,10 @@
       };
       this.addListener(window, "scroll", onWindowScroll, { passive: true });
 
-      const onFullscreenChange = () => this.refreshAnchorLayout();
+      const onFullscreenChange = () => {
+        this.refreshAnchorLayout({ persistNormalizedPanelPosition: false });
+        this.scheduleSettledLayoutRefresh();
+      };
       this.addListener(document, "fullscreenchange", onFullscreenChange);
     }
 
@@ -1023,6 +1132,7 @@
         fadeTowardVideoCenter: normalized.fadeTowardVideoCenter !== false,
         themeName: normalized.themeName || "stone",
         customThemeColor: normalized.customThemeColor || "#ded6c3",
+        animatedThemeName: this.normalizeAnimatedThemeName(normalized.animatedThemeName),
         futurePreviewEnabled: normalized.futurePreviewEnabled !== false,
         caseFixEnabled: normalized.caseFixEnabled !== false
       };
@@ -1052,10 +1162,7 @@
         const rect = this.getElementLocalRect(this.root);
         if (this.isRestorablePanelLayout(rect, rect)) {
           snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
-          snapshot.panelSize = {
-            width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
-            height: Math.max(MIN_PANEL_HEIGHT, Math.round(rect.height))
-          };
+          snapshot.panelSize = this.localToPlayerPanelSize(rect.width, rect.height);
         }
       }
       return snapshot;
@@ -1090,7 +1197,6 @@
       if (!preset) {
         return;
       }
-      const shouldStartRainbow = this.isBuiltInMusicWorkspacePreset(presetId, preset);
       this.cancelRainbowThemePreview(false);
       // Keep the first baseline while switching presets so toggle-off returns to the pre-preset workspace.
       const baseline = this.settings.workspacePresetBaseline
@@ -1102,9 +1208,6 @@
         activeWorkspacePreset: presetId,
         workspacePresetBaseline: baseline
       });
-      if (shouldStartRainbow) {
-        this.startRainbowThemePreview();
-      }
     }
 
     disableWorkspacePreset() {
@@ -1166,7 +1269,7 @@
     areWorkspaceSnapshotsEquivalent(left, right) {
       const a = this.normalizeWorkspaceSnapshot(left);
       const b = this.normalizeWorkspaceSnapshot(right);
-      const fields = ["textScale", "panelOpacity", "fadeTowardVideoCenter", "themeName", "customThemeColor", "futurePreviewEnabled", "caseFixEnabled"];
+      const fields = ["textScale", "panelOpacity", "fadeTowardVideoCenter", "themeName", "customThemeColor", "animatedThemeName", "futurePreviewEnabled", "caseFixEnabled"];
       for (let index = 0; index < fields.length; index += 1) {
         const field = fields[index];
         if (a[field] !== b[field]) {
@@ -1302,10 +1405,7 @@
         return snapshot;
       }
       snapshot.panelPosition = this.localToPlayerPanelPosition(rect.left, rect.top, rect.width, rect.height);
-      snapshot.panelSize = {
-        width: Math.max(MIN_PANEL_WIDTH, Math.round(rect.width)),
-        height: Math.max(MIN_PANEL_HEIGHT, Math.round(rect.height))
-      };
+      snapshot.panelSize = this.localToPlayerPanelSize(rect.width, rect.height);
       return snapshot;
     }
 
@@ -1314,7 +1414,7 @@
       for (let index = 0; index < delays.length; index += 1) {
         const timerId = window.setTimeout(() => {
           if (this.root) {
-            this.applySettings();
+            this.applySettings({ persistNormalizedPanelPosition: false });
           }
         }, delays[index]);
         this.layoutRefreshTimers.push(timerId);
@@ -1326,6 +1426,7 @@
         return;
       }
       const preservePanelPlacement = Boolean(options && options.preservePanelPlacement);
+      const persistNormalizedPanelPosition = Boolean(options && options.persistNormalizedPanelPosition);
 
       const panelClosed = Boolean(this.settings.panelClosed);
       this.root.style.display = panelClosed ? "none" : "flex";
@@ -1355,19 +1456,10 @@
           Number.isFinite(this.settings.panelSize.height) &&
           this.isRestorablePanelLayout(this.settings.panelPosition, this.settings.panelSize)
         ) {
-          const panelFrame = this.getPanelFrameRect();
-          const maxPanelHeight = Math.max(
-            MIN_PANEL_HEIGHT,
-            panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2
-          );
-          const boundedWidth = Math.max(
-            MIN_PANEL_WIDTH,
-            Math.min(panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2, Number(this.settings.panelSize.width))
-          );
-          const boundedHeight = Math.max(
-            MIN_PANEL_HEIGHT,
-            Math.min(maxPanelHeight, Number(this.settings.panelSize.height))
-          );
+          const panelFrame = this.getSafePanelFrameRect();
+          const boundedSize = this.resolveSavedPanelSize(this.settings.panelSize, panelFrame);
+          const boundedWidth = boundedSize.width;
+          const boundedHeight = boundedSize.height;
           this.root.style.width = Math.round(boundedWidth) + "px";
           this.root.style.height = Math.round(boundedHeight) + "px";
         } else if (defaultPanelRect) {
@@ -1440,8 +1532,11 @@
       }
       this.updateColorPickerIndicator();
       this.updateRainbowThemeButton();
+      this.updateAnimatedThemeButton();
+      this.updateAnimatedThemeControls();
       this.syncRainbowThemeCycle();
       this.updateColorPickerPosition();
+      this.updateAnimatedThemePopoverPosition();
       this.applyFuturePreviewHeight();
       if (this.stickToBottom) {
         this.scrollToBottom();
@@ -1472,7 +1567,7 @@
       this.updatePanelFade();
       this.applyLauncherPosition();
       if (!preservePanelPlacement) {
-        this.normalizeSavedPanelPosition();
+        this.normalizeSavedPanelPosition({ persist: persistNormalizedPanelPosition });
       }
       this.updatePanelFade();
       this.updateTimelineLayer();
@@ -1506,7 +1601,7 @@
     }
 
     getThemeName() {
-      if (this.rainbowThemeEnabled) {
+      if (this.isAnimatedThemeActive()) {
         return "custom";
       }
       const name = String(this.settings.themeName || "stone").toLowerCase();
@@ -1514,11 +1609,39 @@
     }
 
     getCustomThemeColor() {
-      if (this.rainbowThemeEnabled && /^#[0-9a-f]{6}$/i.test(String(this.rainbowThemePreviewColor || ""))) {
+      if (this.isAnimatedThemeActive() && /^#[0-9a-f]{6}$/i.test(String(this.rainbowThemePreviewColor || ""))) {
         return String(this.rainbowThemePreviewColor).toLowerCase();
+      }
+      const animated = this.getAnimatedThemePreset(this.getAnimatedThemeName());
+      if (animated && Array.isArray(animated.colors) && animated.colors[0]) {
+        return animated.colors[0];
       }
       const color = String(this.settings.customThemeColor || "#ded6c3").trim();
       return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#ded6c3";
+    }
+
+    normalizeAnimatedThemeName(name) {
+      const value = String(name || "").toLowerCase();
+      return Object.prototype.hasOwnProperty.call(ANIMATED_THEME_PRESETS, value) ? value : null;
+    }
+
+    getAnimatedThemeName() {
+      return this.normalizeAnimatedThemeName(this.settings.animatedThemeName);
+    }
+
+    getAnimatedThemePreset(name) {
+      const key = this.normalizeAnimatedThemeName(name);
+      return key ? ANIMATED_THEME_PRESETS[key] : null;
+    }
+
+    getAnimatedThemeGradient(name) {
+      const preset = this.getAnimatedThemePreset(name);
+      const colors = preset && Array.isArray(preset.colors) ? preset.colors : ANIMATED_THEME_PRESETS.rainbow.colors;
+      return "linear-gradient(90deg, " + colors.join(", ") + ")";
+    }
+
+    isAnimatedThemeActive() {
+      return Boolean(this.rainbowThemeEnabled || this.getAnimatedThemeName());
     }
 
     isRestorablePanelLayout(position, size) {
@@ -1546,6 +1669,7 @@
       this.themeColorButton.setAttribute("aria-expanded", nextOpen ? "true" : "false");
       if (nextOpen) {
         this.closeHelpPopover();
+        this.closeAnimatedThemePopover();
         this.updateColorPickerPosition();
         this.updateColorPickerIndicator();
       }
@@ -1561,6 +1685,32 @@
       }
     }
 
+    toggleAnimatedThemePopover() {
+      if (!this.animatedThemePopover) {
+        return;
+      }
+      const nextOpen = Boolean(this.animatedThemePopover.hidden);
+      this.animatedThemePopover.hidden = !nextOpen;
+      if (this.animatedThemeButton) {
+        this.animatedThemeButton.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+      }
+      if (nextOpen) {
+        this.closeHelpPopover();
+        this.closeColorPicker();
+        this.updateAnimatedThemePopoverPosition();
+      }
+    }
+
+    closeAnimatedThemePopover() {
+      if (!this.animatedThemePopover) {
+        return;
+      }
+      this.animatedThemePopover.hidden = true;
+      if (this.animatedThemeButton) {
+        this.animatedThemeButton.setAttribute("aria-expanded", "false");
+      }
+    }
+
     toggleHelpPopover() {
       if (!this.helpPopover) {
         return;
@@ -1568,6 +1718,7 @@
       const nextOpen = Boolean(this.helpPopover.hidden);
       if (nextOpen) {
         this.closeColorPicker();
+        this.closeAnimatedThemePopover();
         this.openHelpPopover();
       } else {
         this.closeHelpPopover();
@@ -1610,7 +1761,7 @@
       const hue = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
       const color = this.hsvToHex(hue, saturation, 0.92);
       this.cancelRainbowThemePreview(false);
-      this.updateSettings({ themeName: "custom", customThemeColor: color });
+      this.updateSettings({ themeName: "custom", customThemeColor: color, animatedThemeName: null });
       if (this.colorPickerPopover) {
         this.colorPickerPopover.hidden = false;
         this.updateColorPickerPosition();
@@ -1621,12 +1772,29 @@
     }
 
     toggleRainbowThemeMode() {
-      const nextEnabled = !this.isRainbowThemeEnabled();
-      if (nextEnabled) {
-        this.startRainbowThemePreview();
+      if (this.isAnimatedThemeActive()) {
+        this.cancelRainbowThemePreview(false);
+        this.updateSettings({ themeName: "custom", animatedThemeName: null });
         return;
       }
-      this.cancelRainbowThemePreview(true);
+      this.applyAnimatedThemePreset("rainbow");
+    }
+
+    applyAnimatedThemePreset(name) {
+      const presetName = this.normalizeAnimatedThemeName(name);
+      const preset = this.getAnimatedThemePreset(presetName);
+      if (!preset) {
+        return;
+      }
+      const firstColor = preset.colors[0] || this.getCustomThemeColor();
+      this.cancelRainbowThemePreview(false);
+      this.rainbowThemePreviewColor = firstColor;
+      this.updateSettings({
+        themeName: "custom",
+        customThemeColor: firstColor,
+        animatedThemeName: presetName
+      });
+      this.closeAnimatedThemePopover();
     }
 
     startRainbowThemePreview() {
@@ -1646,7 +1814,7 @@
     }
 
     isRainbowThemeEnabled() {
-      return Boolean(this.rainbowThemeEnabled);
+      return this.isAnimatedThemeActive();
     }
 
     updateRainbowThemeButton() {
@@ -1656,13 +1824,13 @@
       const enabled = this.isRainbowThemeEnabled();
       this.rainbowThemeButton.classList.toggle("is-active", enabled);
       this.rainbowThemeButton.textContent = enabled ? "||" : ">";
-      this.rainbowThemeButton.title = enabled ? "Stop cycling theme color" : "Cycle theme color";
+      this.rainbowThemeButton.title = enabled ? "Stop animated theme" : "Use rainbow animated theme";
       this.rainbowThemeButton.setAttribute("aria-label", this.rainbowThemeButton.title);
       this.rainbowThemeButton.setAttribute("aria-pressed", enabled ? "true" : "false");
     }
 
     syncRainbowThemeCycle() {
-      if (this.isRainbowThemeEnabled()) {
+      if (this.isAnimatedThemeActive()) {
         this.startRainbowThemeCycle();
       } else {
         this.stopRainbowThemeCycle();
@@ -1673,12 +1841,10 @@
       if (this.rainbowThemeRafId) {
         return;
       }
-      const hsv = this.hexToHsv(this.getCustomThemeColor());
-      this.rainbowThemeStartHue = Number.isFinite(hsv.h) ? hsv.h : 0;
       this.rainbowThemeStartTime = Date.now();
       this.rainbowThemeLastFrameTime = 0;
       const tick = () => {
-        if (!this.isRainbowThemeEnabled()) {
+        if (!this.isAnimatedThemeActive()) {
           this.stopRainbowThemeCycle();
           return;
         }
@@ -1686,8 +1852,8 @@
         if (!this.rainbowThemeLastFrameTime || now - this.rainbowThemeLastFrameTime >= RAINBOW_THEME_FRAME_MS) {
           this.rainbowThemeLastFrameTime = now;
           const elapsed = now - this.rainbowThemeStartTime;
-          const hue = (this.rainbowThemeStartHue + (elapsed / RAINBOW_THEME_CYCLE_MS) * 360) % 360;
-          this.applyRainbowThemeColor(this.hsvToHex(hue, RAINBOW_THEME_SATURATION, RAINBOW_THEME_VALUE));
+          const progress = (elapsed % RAINBOW_THEME_CYCLE_MS) / RAINBOW_THEME_CYCLE_MS;
+          this.applyRainbowThemeColor(this.getAnimatedThemeColorAt(progress));
         }
         this.rainbowThemeRafId = platform.requestFrame(tick);
       };
@@ -1710,10 +1876,13 @@
       this.rainbowThemePreviewColor = null;
       this.rainbowThemeRestoreSnapshot = null;
       this.updateRainbowThemeButton();
+      this.updateAnimatedThemeButton();
+      this.updateAnimatedThemeControls();
       if (restore && snapshot) {
         this.updateSettings({
           themeName: snapshot.themeName,
-          customThemeColor: snapshot.customThemeColor
+          customThemeColor: snapshot.customThemeColor,
+          animatedThemeName: null
         });
       }
     }
@@ -1731,7 +1900,46 @@
       if (this.themeColorButton) {
         this.themeColorButton.classList.add("is-active");
       }
+      this.updateAnimatedThemeButton();
+      this.updateAnimatedThemeControls();
       this.updateColorPickerIndicator();
+    }
+
+    getAnimatedThemeColorAt(progress) {
+      const preset = this.getAnimatedThemePreset(this.getAnimatedThemeName()) || ANIMATED_THEME_PRESETS.rainbow;
+      const colors = Array.isArray(preset.colors) && preset.colors.length ? preset.colors : ANIMATED_THEME_PRESETS.rainbow.colors;
+      const count = colors.length;
+      const normalized = ((Number(progress) % 1) + 1) % 1;
+      const scaled = normalized * count;
+      const index = Math.floor(scaled) % count;
+      const nextIndex = (index + 1) % count;
+      const amount = scaled - Math.floor(scaled);
+      return this.rgbToHex(this.mixColor(this.hexToRgb(colors[index]), this.hexToRgb(colors[nextIndex]), amount));
+    }
+
+    updateAnimatedThemeButton() {
+      if (!this.animatedThemeButton) {
+        return;
+      }
+      const name = this.getAnimatedThemeName();
+      const preset = this.getAnimatedThemePreset(name);
+      this.animatedThemeButton.classList.toggle("is-active", Boolean(preset));
+      this.animatedThemeButton.style.background = preset ? this.getAnimatedThemeGradient(name) : this.getAnimatedThemeGradient("rainbow");
+      this.animatedThemeButton.title = preset ? "Animated theme: " + preset.label : "Pick animated theme";
+      this.animatedThemeButton.setAttribute("aria-label", this.animatedThemeButton.title);
+    }
+
+    updateAnimatedThemeControls() {
+      if (!Array.isArray(this.animatedThemeControls)) {
+        return;
+      }
+      const active = this.getAnimatedThemeName();
+      for (let index = 0; index < this.animatedThemeControls.length; index += 1) {
+        const control = this.animatedThemeControls[index];
+        const selected = active === control.name;
+        control.button.classList.toggle("is-active", selected);
+        control.button.setAttribute("aria-pressed", selected ? "true" : "false");
+      }
     }
 
     updateColorPickerIndicator() {
@@ -1766,6 +1974,26 @@
       );
       this.colorPickerPopover.style.left = Math.round(left) + "px";
       this.colorPickerPopover.style.top = Math.round(top) + "px";
+    }
+
+    updateAnimatedThemePopoverPosition() {
+      if (!this.animatedThemePopover || !this.animatedThemeButton || this.animatedThemePopover.hidden) {
+        return;
+      }
+      const rect = this.animatedThemeButton.getBoundingClientRect();
+      const popoverWidth = this.animatedThemePopover.offsetWidth || 168;
+      const popoverHeight = this.animatedThemePopover.offsetHeight || 188;
+      const margin = 8;
+      const left = Math.max(
+        margin,
+        Math.min(window.innerWidth - popoverWidth - margin, rect.left)
+      );
+      const top = Math.max(
+        margin,
+        Math.min(window.innerHeight - popoverHeight - margin, rect.bottom + 6)
+      );
+      this.animatedThemePopover.style.left = Math.round(left) + "px";
+      this.animatedThemePopover.style.top = Math.round(top) + "px";
     }
 
     updateHelpPopoverPosition() {
@@ -1976,8 +2204,23 @@
       const strength = Math.max(0, Math.min(90, Number(this.settings.videoCenterFadeStrength || 84))) / 100;
       const opacityPercent = Math.max(10, Math.min(100, Number(this.settings.panelOpacity || 48)));
       const opacityBlend = (opacityPercent - 10) / 90;
-      const centerAlpha = enabled ? Math.min(0.86, 0.36 + opacityBlend * 0.38 + (1 - strength) * 0.08) : 1;
-      const midAlpha = enabled ? centerAlpha + (1 - centerAlpha) * 0.46 : 1;
+      const eased = Math.pow(opacityBlend, 0.72);
+      const baseAlpha = 0.02 + eased * 0.98;
+      const outerAlpha = 0.16 + eased * 0.84;
+      const centerAlpha = enabled
+        ? Math.max(0.035, Math.min(0.42, 0.08 + opacityBlend * 0.2 + (1 - strength) * 0.06))
+        : baseAlpha;
+      const midAlpha = enabled ? centerAlpha + (outerAlpha - centerAlpha) * 0.48 : baseAlpha;
+      const setAlpha = (name, value) => {
+        const alpha = Math.max(0, Math.min(1, value)).toFixed(3);
+        this.root.style.setProperty(name, alpha);
+        if (this.timelineLayer) {
+          this.timelineLayer.style.setProperty(name, alpha);
+        }
+      };
+      setAlpha("--dc-panel-alpha-inner", centerAlpha);
+      setAlpha("--dc-panel-alpha-mid", midAlpha);
+      setAlpha("--dc-panel-alpha-outer", enabled ? outerAlpha : baseAlpha);
       this.root.style.setProperty("--dc-center-mask-alpha", centerAlpha.toFixed(3));
       this.root.style.setProperty("--dc-center-mask-mid-alpha", midAlpha.toFixed(3));
       this.root.style.setProperty("--dc-edge-mask-alpha", "1");
@@ -2022,8 +2265,8 @@
       return {
         left: clamped.left,
         top: clamped.top,
-        width: width,
-        height: height
+        width: clamped.width,
+        height: clamped.height
       };
     }
 
@@ -2144,25 +2387,82 @@
       };
     }
 
+    getLocalYouTubeFrameRect() {
+      const frame = this.getYouTubeFrameRect();
+      const mountRect = this.getMountViewportRect();
+      return {
+        left: frame.left - mountRect.left,
+        top: frame.top - mountRect.top,
+        right: frame.right - mountRect.left,
+        bottom: frame.bottom - mountRect.top
+      };
+    }
+
+    getSafeLocalYouTubeFrameRect() {
+      const frame = this.getLocalYouTubeFrameRect();
+      return {
+        ...frame,
+        bottom: Math.max(frame.top + MIN_PANEL_HEIGHT + DEFAULT_PANEL_MARGIN * 2, frame.bottom - PANEL_CONTROL_BAR_GAP)
+      };
+    }
+
     clampPositionToRect(left, top, width, height, bounds, margin) {
-      const safeWidth = Math.max(1, Number(width) || 1);
-      const safeHeight = Math.max(1, Number(height) || 1);
       const safeMargin = Math.max(0, Number(margin) || 0);
+      const boundsWidth = Math.max(1, Number(bounds.right) - Number(bounds.left) - safeMargin * 2);
+      const boundsHeight = Math.max(1, Number(bounds.bottom) - Number(bounds.top) - safeMargin * 2);
+      const requestedWidth = Math.max(1, Number(width) || 1);
+      const requestedHeight = Math.max(1, Number(height) || 1);
+      const safeWidth = Math.max(1, Math.min(boundsWidth, requestedWidth));
+      const safeHeight = Math.max(1, Math.min(boundsHeight, requestedHeight));
+      const resized = safeWidth !== requestedWidth || safeHeight !== requestedHeight;
       const minLeft = Math.round(bounds.left + safeMargin);
       const minTop = Math.round(bounds.top + safeMargin);
       const maxLeft = Math.round(Math.max(minLeft, bounds.right - safeWidth - safeMargin));
       const maxTop = Math.round(Math.max(minTop, bounds.bottom - safeHeight - safeMargin));
       return {
         left: Math.max(minLeft, Math.min(maxLeft, Math.round(Number(left) || minLeft))),
-        top: Math.max(minTop, Math.min(maxTop, Math.round(Number(top) || minTop)))
+        top: Math.max(minTop, Math.min(maxTop, Math.round(Number(top) || minTop))),
+        width: Math.round(safeWidth),
+        height: Math.round(safeHeight),
+        resized
       };
     }
 
     getLauncherFrameRect() {
-      const frame = this.getPanelFrameRect();
+      const playerFrame = this.getLocalYouTubeFrameRect();
+      const panelFrame = this.getPanelFrameRect();
+      const frameWidth = Math.max(0, playerFrame.right - playerFrame.left);
+      const frameHeight = Math.max(0, playerFrame.bottom - playerFrame.top);
+      const frame = frameWidth >= LAUNCHER_WIDTH && frameHeight >= LAUNCHER_HEIGHT
+        ? playerFrame
+        : panelFrame;
       return {
         ...frame,
         bottom: Math.max(frame.top + LAUNCHER_HEIGHT + LAUNCHER_MARGIN * 2, frame.bottom - LAUNCHER_CONTROL_BAR_GAP)
+      };
+    }
+
+    resolveSavedPanelSize(size, panelFrame) {
+      const frame = panelFrame || this.getSafePanelFrameRect();
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, frame.right - frame.left - DEFAULT_PANEL_MARGIN * 2);
+      const maxHeight = Math.max(MIN_PANEL_HEIGHT, frame.bottom - frame.top - DEFAULT_PANEL_MARGIN * 2);
+      const widthRatio = Number(size && size.widthRatio);
+      const heightRatio = Number(size && size.heightRatio);
+      const savedWidth = Number(size && size.width);
+      const savedHeight = Number(size && size.height);
+      const shouldRestoreRelativeWidth =
+        Number.isFinite(widthRatio) && widthRatio >= RELATIVE_SIZE_RESTORE_THRESHOLD;
+      const shouldRestoreRelativeHeight =
+        Number.isFinite(heightRatio) && heightRatio >= RELATIVE_SIZE_RESTORE_THRESHOLD;
+      const width = shouldRestoreRelativeWidth
+        ? maxWidth * Math.max(0, Math.min(1, widthRatio))
+        : savedWidth;
+      const height = shouldRestoreRelativeHeight
+        ? maxHeight * Math.max(0, Math.min(1, heightRatio))
+        : savedHeight;
+      return {
+        width: Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Number.isFinite(width) ? width : MIN_PANEL_WIDTH)),
+        height: Math.max(MIN_PANEL_HEIGHT, Math.min(maxHeight, Number.isFinite(height) ? height : MIN_PANEL_HEIGHT))
       };
     }
 
@@ -2178,7 +2478,8 @@
       };
     }
 
-    refreshAnchorLayout() {
+    refreshAnchorLayout(options) {
+      const persistNormalizedPanelPosition = Boolean(options && options.persistNormalizedPanelPosition);
       let anchorVisible = this.isAnchorUsablyVisible();
       if (this.root) {
         this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
@@ -2202,7 +2503,7 @@
           }
         }
       } else {
-        this.normalizeSavedPanelPosition();
+        this.normalizeSavedPanelPosition({ persist: persistNormalizedPanelPosition });
       }
       this.root.classList.toggle("is-anchor-offscreen", !anchorVisible);
       this.applyLauncherPosition();
@@ -2211,6 +2512,10 @@
     }
 
     getDefaultPanelFrameRect() {
+      return this.getSafePanelFrameRect();
+    }
+
+    getSafePanelFrameRect() {
       const frame = this.getPanelFrameRect();
       return {
         ...frame,
@@ -2219,7 +2524,7 @@
     }
 
     clampPanelPosition(left, top, width, height) {
-      return this.clampPositionToRect(left, top, width, height, this.getPanelFrameRect(), DEFAULT_PANEL_MARGIN);
+      return this.clampPositionToRect(left, top, width, height, this.getSafePanelFrameRect(), DEFAULT_PANEL_MARGIN);
     }
 
     panelPositionToLocal(width, height) {
@@ -2228,17 +2533,55 @@
       }
       const position = this.settings.panelPosition;
       const mountRect = this.getMountViewportRect();
-      const sourceLeft = position.anchor === "player" ? Number(position.left) : Number(position.left) - mountRect.left;
-      const sourceTop = position.anchor === "player" ? Number(position.top) : Number(position.top) - mountRect.top;
+      const frame = this.getSafeLocalYouTubeFrameRect();
+      const frameWidth = Math.max(0, frame.right - frame.left);
+      const frameHeight = Math.max(0, frame.bottom - frame.top);
+      const availableX = Math.max(0, frameWidth - Number(width) - DEFAULT_PANEL_MARGIN * 2);
+      const availableY = Math.max(0, frameHeight - Number(height) - DEFAULT_PANEL_MARGIN * 2);
+      const xRatio = Number(position.xRatio);
+      const yRatio = Number(position.yRatio);
+      const sourceLeft = position.anchor === "player" && Number.isFinite(xRatio)
+        ? frame.left + DEFAULT_PANEL_MARGIN + availableX * Math.max(0, Math.min(1, xRatio))
+        : position.anchor === "player"
+          ? Number(position.left)
+          : Number(position.left) - mountRect.left;
+      const sourceTop = position.anchor === "player" && Number.isFinite(yRatio)
+        ? frame.top + DEFAULT_PANEL_MARGIN + availableY * Math.max(0, Math.min(1, yRatio))
+        : position.anchor === "player"
+          ? Number(position.top)
+          : Number(position.top) - mountRect.top;
       return this.clampPanelPosition(sourceLeft, sourceTop, width, height);
     }
 
     localToPlayerPanelPosition(left, top, width, height) {
       const clamped = this.clampPanelPosition(left, top, width, height);
+      const frame = this.getSafeLocalYouTubeFrameRect();
+      const frameWidth = Math.max(0, frame.right - frame.left);
+      const frameHeight = Math.max(0, frame.bottom - frame.top);
+      const availableX = Math.max(0, frameWidth - Number(width) - DEFAULT_PANEL_MARGIN * 2);
+      const availableY = Math.max(0, frameHeight - Number(height) - DEFAULT_PANEL_MARGIN * 2);
+      const relativeLeft = clamped.left - frame.left - DEFAULT_PANEL_MARGIN;
+      const relativeTop = clamped.top - frame.top - DEFAULT_PANEL_MARGIN;
       return {
         anchor: "player",
         left: Math.max(0, Math.round(clamped.left)),
-        top: Math.max(0, Math.round(clamped.top))
+        top: Math.max(0, Math.round(clamped.top)),
+        xRatio: availableX > 0 ? Math.max(0, Math.min(1, relativeLeft / availableX)) : 0,
+        yRatio: availableY > 0 ? Math.max(0, Math.min(1, relativeTop / availableY)) : 0
+      };
+    }
+
+    localToPlayerPanelSize(width, height) {
+      const frame = this.getSafePanelFrameRect();
+      const maxWidth = Math.max(MIN_PANEL_WIDTH, frame.right - frame.left - DEFAULT_PANEL_MARGIN * 2);
+      const maxHeight = Math.max(MIN_PANEL_HEIGHT, frame.bottom - frame.top - DEFAULT_PANEL_MARGIN * 2);
+      const safeWidth = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Number(width) || MIN_PANEL_WIDTH));
+      const safeHeight = Math.max(MIN_PANEL_HEIGHT, Math.min(maxHeight, Number(height) || MIN_PANEL_HEIGHT));
+      return {
+        width: Math.round(safeWidth),
+        height: Math.round(safeHeight),
+        widthRatio: maxWidth > 0 ? Math.max(0, Math.min(1, safeWidth / maxWidth)) : 0,
+        heightRatio: maxHeight > 0 ? Math.max(0, Math.min(1, safeHeight / maxHeight)) : 0
       };
     }
 
@@ -2253,6 +2596,8 @@
       }
       this.root.style.left = positioned.left + "px";
       this.root.style.top = positioned.top + "px";
+      this.root.style.width = positioned.width + "px";
+      this.root.style.height = positioned.height + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
     }
@@ -2495,13 +2840,14 @@
       });
     }
 
-    normalizeSavedPanelPosition() {
+    normalizeSavedPanelPosition(options) {
       if (!this.root || this.root.style.display === "none") {
         return;
       }
       if (!this.persistLayout || !this.settings.panelPosition) {
         return;
       }
+      const shouldPersist = Boolean(options && options.persist);
       const rect = this.getElementLocalRect(this.root);
       const clamped = this.panelPositionToLocal(rect.width, rect.height);
       if (!clamped) {
@@ -2509,15 +2855,23 @@
       }
       this.root.style.left = clamped.left + "px";
       this.root.style.top = clamped.top + "px";
+      this.root.style.width = clamped.width + "px";
+      this.root.style.height = clamped.height + "px";
       this.root.style.right = "auto";
       this.root.style.bottom = "auto";
-      const nextPosition = this.localToPlayerPanelPosition(clamped.left, clamped.top, rect.width, rect.height);
+      const nextPosition = this.localToPlayerPanelPosition(clamped.left, clamped.top, clamped.width, clamped.height);
+      const savedXRatio = Number(this.settings.panelPosition.xRatio);
+      const savedYRatio = Number(this.settings.panelPosition.yRatio);
 
       const changed =
         this.settings.panelPosition.anchor !== "player" ||
         nextPosition.left !== Number(this.settings.panelPosition.left) ||
-        nextPosition.top !== Number(this.settings.panelPosition.top);
-      if (changed) {
+        nextPosition.top !== Number(this.settings.panelPosition.top) ||
+        !Number.isFinite(savedXRatio) ||
+        !Number.isFinite(savedYRatio) ||
+        Math.abs(nextPosition.xRatio - savedXRatio) > 0.001 ||
+        Math.abs(nextPosition.yRatio - savedYRatio) > 0.001;
+      if (changed && shouldPersist) {
         this.settings = {
           ...this.settings,
           panelPosition: nextPosition
@@ -2621,6 +2975,10 @@
       const nextTop = next.top;
       this.root.style.left = Math.round(nextLeft) + "px";
       this.root.style.top = Math.round(nextTop) + "px";
+      if (next.resized) {
+        this.root.style.width = next.width + "px";
+        this.root.style.height = next.height + "px";
+      }
       this.updatePanelFade();
     }
 
@@ -2760,7 +3118,7 @@
         startTop: rect.top,
         startWidth: rect.width,
         startHeight: rect.height,
-        frameBounds: this.getPanelFrameRect()
+        frameBounds: this.getSafePanelFrameRect()
       };
 
       const onMove = (moveEvent) => this.handleResizeMove(moveEvent);
@@ -2845,7 +3203,7 @@
         nextHeight = state.startHeight + deltaY;
       }
 
-      const panelFrame = state.frameBounds || this.getPanelFrameRect();
+      const panelFrame = state.frameBounds || this.getSafePanelFrameRect();
       const maxWidth = Math.max(MIN_PANEL_WIDTH, panelFrame.right - panelFrame.left - DEFAULT_PANEL_MARGIN * 2);
       const maxHeight = Math.max(MIN_PANEL_HEIGHT, panelFrame.bottom - panelFrame.top - DEFAULT_PANEL_MARGIN * 2);
       nextWidth = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, nextWidth));
@@ -2859,8 +3217,8 @@
 
       this.root.style.left = Math.round(nextLeft) + "px";
       this.root.style.top = Math.round(nextTop) + "px";
-      this.root.style.width = Math.round(nextWidth) + "px";
-      this.root.style.height = Math.round(nextHeight) + "px";
+      this.root.style.width = clamped.width + "px";
+      this.root.style.height = clamped.height + "px";
       this.applyFuturePreviewHeight();
       this.updatePanelFade();
     }
@@ -2896,10 +3254,10 @@
           Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
           Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
         ),
-        panelSize: {
-          width: Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
-          height: Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
-        }
+        panelSize: this.localToPlayerPanelSize(
+          Number.isFinite(width) ? width : MIN_PANEL_WIDTH,
+          Number.isFinite(height) ? height : MIN_PANEL_HEIGHT
+        )
       });
     }
 
@@ -3504,6 +3862,7 @@
         "textScale",
         "themeName",
         "customThemeColor",
+        "animatedThemeName",
         "fadeTowardVideoCenter",
         "caseFixEnabled",
         "futurePreviewEnabled"

@@ -1,5 +1,46 @@
 (function initCaptionText(scope) {
   const app = (scope.DialogueCaptions = scope.DialogueCaptions || {});
+  const CAPTION_CHROME_LABELS = new Set([
+    "afrikaans",
+    "arabic",
+    "auto-generated",
+    "bulgarian",
+    "cantonese",
+    "chinese",
+    "chinese simplified",
+    "chinese traditional",
+    "closed captions",
+    "croatian",
+    "czech",
+    "danish",
+    "dutch",
+    "english",
+    "filipino",
+    "finnish",
+    "french",
+    "german",
+    "greek",
+    "hebrew",
+    "hindi",
+    "hungarian",
+    "indonesian",
+    "italian",
+    "japanese",
+    "korean",
+    "malay",
+    "norwegian",
+    "polish",
+    "portuguese",
+    "romanian",
+    "russian",
+    "spanish",
+    "subtitles",
+    "swedish",
+    "thai",
+    "turkish",
+    "ukrainian",
+    "vietnamese"
+  ]);
 
   function normalizeText(input) {
     const raw = String(input || "")
@@ -210,12 +251,7 @@
       return "";
     }
     const lower = normalized.toLowerCase();
-    if (
-      lower === "cc" ||
-      lower === "subtitles" ||
-      lower === "closed captions" ||
-      lower === "auto-generated"
-    ) {
+    if (lower === "cc" || CAPTION_CHROME_LABELS.has(lower)) {
       return "";
     }
     const collapsed = collapseOverlaySpam(normalized);

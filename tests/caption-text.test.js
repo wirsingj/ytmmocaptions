@@ -12,6 +12,9 @@ exports.run = async function runCaptionTextTests(ctx) {
       "Hello there"
     );
     assert.equal(captionText.cleanCandidate("CC"), "");
+    assert.equal(captionText.cleanCandidate("Chinese"), "");
+    assert.equal(captionText.cleanCandidate("English"), "");
+    assert.equal(captionText.cleanCandidate("Chinese food is not what this caption is about."), "Chinese food is not what this caption is about.");
   });
 
   await runCase("caption text dedupes repeated overlay phrases", () => {

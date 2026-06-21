@@ -63,6 +63,7 @@ exports.run = async function runComplianceTests(ctx) {
       const pageContextIndex = js.findIndex((item) => item.includes("page-context.js"));
       const captionTextIndex = js.findIndex((item) => item.includes("caption-text.js"));
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
+      const sessionIndex = js.findIndex((item) => item.includes("caption-session.js"));
       const scrubIndex = js.findIndex((item) => item.includes("timeline-scrub.js"));
       const transcriptIndex = js.findIndex((item) => item.includes("transcript.js"));
       const timelineIndex = js.findIndex((item) => item.includes("caption-timeline.js"));
@@ -73,6 +74,7 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(pageContextIndex >= 0, fileName + " missing page-context.js");
       assert.ok(captionTextIndex >= 0, fileName + " missing caption-text.js");
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
+      assert.ok(sessionIndex >= 0, fileName + " missing caption-session.js");
       assert.ok(scrubIndex >= 0, fileName + " missing timeline-scrub.js");
       assert.ok(transcriptIndex >= 0, fileName + " missing transcript.js");
       assert.ok(timelineIndex >= 0, fileName + " missing caption-timeline.js");
@@ -81,7 +83,9 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(diagnosticsIndex < pageContextIndex, fileName + " loads diagnostics before page-context");
       assert.ok(captionTextIndex < contentIndex, fileName + " loads content-script before caption-text");
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
+      assert.ok(sessionIndex < contentIndex, fileName + " loads content-script before caption-session");
       assert.ok(bubbleIndex < scrubIndex, fileName + " loads timeline scrub before bubble-state");
+      assert.ok(sessionIndex < scrubIndex, fileName + " loads timeline scrub before caption-session");
       assert.ok(scrubIndex < contentIndex, fileName + " loads content-script before timeline scrub");
       assert.ok(transcriptIndex < timelineIndex, fileName + " loads caption timeline before transcript");
       assert.ok(timelineIndex < contentIndex, fileName + " loads content-script before caption timeline");
@@ -199,9 +203,12 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes('error: "blocked_request"'));
   });
 
-  await runCase("global keyboard is pointer-over-panel only", () => {
+  await runCase("extension does not own video navigation keyboard shortcuts", () => {
     const source = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
-    assert.ok(source.includes("return this.panel.isPointerInside();"));
+    assert.ok(!source.includes("bindKeyboardHandler"));
+    assert.ok(!source.includes("handleSpaceShortcut"));
+    assert.ok(!source.includes("timeline:space"));
+    assert.ok(!source.includes('addEventListener("keydown"'));
     assert.ok(!source.includes("globalKeyboardEnabled"));
   });
 
@@ -534,9 +541,13 @@ exports.run = async function runComplianceTests(ctx) {
 
   await runCase("reading glow cannot persist without an active timing range", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    const css = fs.readFileSync(path.join(ROOT_DIR, "styles", "panel.css"), "utf8");
     assert.ok(panelSource.includes("lastGlowWordEnd"));
     assert.ok(panelSource.includes("this.renderChunkText(textElement, chunk, Boolean(range))"));
     assert.ok(panelSource.includes("this.lastGlowWordEnd = nextGlowWordEnd"));
+    assert.ok(css.includes("margin: 0 -0.08em;"));
+    assert.ok(css.includes("padding: 0 0.16em;"));
+    assert.ok(css.includes("rgba(var(--dc-accent-rgb), 0.48)"));
   });
 
   await runCase("history reading mode treats upward scroll as explicit reading intent", () => {
@@ -620,6 +631,10 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("seekLeadSeconds: 0"));
     assert.ok(panelSource.includes("dc-theme-select"));
     assert.ok(panelSource.includes("dc-color-popover"));
+    assert.ok(panelSource.includes("ANIMATED_THEME_PRESETS"));
+    assert.ok(panelSource.includes("dc-animated-theme"));
+    assert.ok(panelSource.includes("dc-animated-popover"));
+    assert.ok(panelSource.includes("applyAnimatedThemePreset"));
     assert.ok(panelSource.includes("dc-rainbow-toggle"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
     assert.ok(panelSource.includes("toggleRainbowThemeMode"));
@@ -631,6 +646,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("Math.sin(radians)"));
     assert.ok(panelSource.includes("50 - Math.cos(radians)"));
     assert.ok(panelSource.includes("document.body.append(this.colorPickerPopover)"));
+    assert.ok(panelSource.includes("document.body.append(this.animatedThemePopover)"));
     assert.ok(!panelSource.includes('type = "color"'));
     assert.ok(panelSource.includes("getPersistenceSnapshot()"));
     assert.ok(!panelSource.includes('opacityWrap.textContent = "Blend"'));
@@ -638,6 +654,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("position: fixed;"));
     assert.ok(css.includes("z-index: 2147483646"));
     assert.ok(css.includes(".dc-color-wheel"));
+    assert.ok(css.includes(".dc-animated-theme"));
+    assert.ok(css.includes(".dc-animated-popover"));
+    assert.ok(css.includes(".dc-animated-option-swatch"));
     assert.ok(css.includes(".dc-rainbow-toggle"));
     assert.ok(css.includes(".dc-help-popover"));
     assert.ok(css.includes(".dc-btn-help"));
@@ -650,9 +669,11 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes("@media (prefers-reduced-motion: reduce)"));
   });
 
-  await runCase("README does not imply global keyboard shortcuts or Android targeting", () => {
+  await runCase("README leaves YouTube keyboard shortcuts with YouTube and avoids Android targeting", () => {
     const readme = fs.readFileSync(path.join(ROOT_DIR, "README.md"), "utf8");
-    assert.ok(readme.includes("Hover the panel and press `Space`"));
+    assert.ok(readme.includes("YouTube/player keyboard shortcuts remain owned by YouTube."));
+    assert.ok(!readme.includes("Hover the panel and press `Space`"));
+    assert.ok(!readme.includes("Shift+Space"));
     assert.ok(readme.includes("desktop Chrome and desktop Firefox only"));
     assert.ok(readme.includes("Timeline Scrub mode remains experimental and is hidden from the normal release UI."));
     assert.ok(!readme.includes("Optional Timeline Scrub mode turns"));
@@ -689,6 +710,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes("caseFixEnabled"));
     assert.ok(source.includes("fadeTowardVideoCenter"));
     assert.ok(source.includes("layoutLocked"));
+    assert.ok(source.includes("animatedThemeName"));
     assert.ok(!source.includes("rainbowThemeEnabled"));
     assert.ok(source.includes("workspacePresets"));
     assert.ok(source.includes("DEFAULT_WORKSPACE_PRESETS"));
@@ -700,7 +722,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(!privacy.includes("chunk size"));
     assert.ok(!privacy.includes("keyboard step"));
     assert.ok(!privacy.includes("auto-scroll"));
-    assert.ok(privacy.includes("panel theme preset and custom theme color"));
+    assert.ok(privacy.includes("panel theme preset, animated theme preset, and custom theme color"));
     assert.ok(privacy.includes("opacity"));
     assert.ok(privacy.includes("Fade"));
     assert.ok(privacy.includes("Case Fix"));
@@ -773,10 +795,12 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes('this.timelineTooltip.classList.toggle("is-hover"'));
     assert.ok(panelSource.includes("Math.pow(blend, 0.72)"));
     assert.ok(panelSource.includes("const fadeX = Math.max(0, Math.min(100"));
-    assert.ok(panelSource.includes("const centerAlpha = enabled ?"));
-    assert.ok(panelSource.includes('this.root.style.setProperty("--dc-edge-mask-alpha"'));
+    assert.ok(panelSource.includes("const centerAlpha = enabled"));
+    assert.ok(panelSource.includes('setAlpha("--dc-panel-alpha-inner", centerAlpha)'));
     assert.ok(panelSource.includes('setAlpha("--dc-panel-alpha-outer", 0.16 + eased * 0.84)'));
     assert.ok(panelSource.includes('setAlpha("--dc-card-alpha", 0.2 + eased * 0.8)'));
+    assert.ok(css.includes("rgba(var(--dc-bg-rgb), var(--dc-panel-alpha-inner))"));
+    assert.equal(css.includes("mask-image: radial-gradient"), false);
     assert.ok(scrubSource.includes("hoverXToTime"));
     assert.ok(scrubSource.includes("findChunkIndexAtTime"));
     assert.ok(css.includes(".dc-timeline-layer"));

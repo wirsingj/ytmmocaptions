@@ -61,12 +61,14 @@ exports.run = async function runSettingsStoreTests(ctx) {
       keyboardStepSeconds: 999,
       themeName: "forest",
       customThemeColor: "#AABBCC",
+      animatedThemeName: "CYBERPUNK",
       autoScroll: false
     });
     assert.equal(result.panelOpacity, 100);
     assert.equal(result.textScale, 100);
     assert.equal(result.themeName, "forest");
     assert.equal(result.customThemeColor, "#aabbcc");
+    assert.equal(result.animatedThemeName, "cyberpunk");
     assert.equal(Object.prototype.hasOwnProperty.call(result, "keyboardStepSeconds"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(result, "autoScroll"), false);
   });
@@ -75,7 +77,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     const { normalize } = makeStore();
     const result = normalize({
       panelPosition: { anchor: "player", left: -50, top: 20.4 },
-      panelSize: { width: 200, height: 150 },
+      panelSize: { width: 200, height: 150, widthRatio: 2, heightRatio: -1 },
       futurePreviewHeight: 999,
       futurePreviewEnabled: false,
       fadeTowardVideoCenter: false,
@@ -86,7 +88,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
       launcherPosition: { left: 12.6, top: -3 }
     });
     assert.deepEqual(result.panelPosition, { anchor: "player", left: 0, top: 20 });
-    assert.deepEqual(result.panelSize, { width: 280, height: 220 });
+    assert.deepEqual(result.panelSize, { width: 280, height: 220, widthRatio: 1, heightRatio: 0 });
     assert.equal(result.futurePreviewHeight, 360);
     assert.equal(result.futurePreviewEnabled, false);
     assert.equal(result.caseFixEnabled, true);
@@ -98,6 +100,21 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.deepEqual(result.launcherPosition, { left: 13, top: 0 });
   });
 
+  await runCase("settings normalization rejects unknown animated theme preset", () => {
+    const { normalize } = makeStore();
+    const result = normalize({ animatedThemeName: "laser-nope" });
+    assert.equal(result.animatedThemeName, null);
+  });
+
+  await runCase("settings normalization preserves optional panel size ratios", () => {
+    const { normalize } = makeStore();
+    const result = normalize({
+      panelSize: { width: 640, height: 360, widthRatio: 0.92, heightRatio: 0.88 }
+    });
+
+    assert.deepEqual(result.panelSize, { width: 640, height: 360, widthRatio: 0.92, heightRatio: 0.88 });
+  });
+
   await runCase("settings defaults to closed pill launch", () => {
     const { normalize } = makeStore();
     const result = normalize({});
@@ -106,6 +123,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.textScale, 120);
     assert.equal(result.themeName, "stone");
     assert.equal(result.customThemeColor, "#ded6c3");
+    assert.equal(result.animatedThemeName, null);
     assert.equal(result.futurePreviewHeight, 96);
     assert.equal(result.futurePreviewEnabled, true);
     assert.equal(result.caseFixEnabled, true);
@@ -121,8 +139,33 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(result.workspacePresets[1].themeName, "custom");
     assert.equal(result.workspacePresets[1].caseFixEnabled, false);
     assert.equal(result.workspacePresets[1].panelOpacity, 10);
+    assert.equal(result.workspacePresets[1].panelPosition.yRatio, 1);
     assert.equal(result.workspacePresets[2].themeName, "ocean");
     assert.equal(result.workspacePresets[2].textScale, 140);
+  });
+
+  await runCase("legacy seeded music preset migrates to bottom alignment", () => {
+    const { normalize } = makeStore();
+    const result = normalize({
+      workspacePresets: [
+        null,
+        {
+          panelOpacity: 10,
+          textScale: 175,
+          themeName: "custom",
+          customThemeColor: "#d62fbe",
+          panelPosition: { anchor: "player", left: 12, top: 12 },
+          panelSize: { width: 2400, height: 760 },
+          futurePreviewEnabled: true,
+          caseFixEnabled: false,
+          fadeTowardVideoCenter: false
+        },
+        null
+      ]
+    });
+
+    assert.equal(result.workspacePresets[1].panelPosition.xRatio, 0);
+    assert.equal(result.workspacePresets[1].panelPosition.yRatio, 1);
   });
 
   await runCase("settings normalization sanitizes theme preferences", () => {
@@ -312,9 +355,11 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(persisted.workspacePresets.length, 3);
     assert.equal(persisted.workspacePresets[0].panelOpacity, 76);
     assert.equal(persisted.workspacePresets[0].textScale, 155);
+    assert.equal(persisted.workspacePresets[0].animatedThemeName, null);
     assert.deepEqual(persisted.workspacePresets[0].panelPosition, { anchor: "player", left: 92, top: 48 });
     assert.deepEqual(persisted.workspacePresets[0].panelSize, { width: 610, height: 360 });
     assert.equal(persisted.workspacePresets[1].textScale, 175);
+    assert.equal(persisted.workspacePresets[1].animatedThemeName, "rainbow");
     assert.equal(persisted.workspacePresets[2].textScale, 140);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted.workspacePresets[0], "activeVideoId"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted.workspacePresets[0], "transcriptText"), false);
@@ -323,6 +368,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
     assert.equal(stored.layoutLocked, false);
     assert.equal(stored.activeWorkspacePreset, 1);
     assert.equal(stored.workspacePresets[0].textScale, 155);
+    assert.equal(stored.workspacePresets[0].animatedThemeName, null);
+    assert.equal(stored.workspacePresets[1].animatedThemeName, "rainbow");
     assert.equal(stored.workspacePresetBaseline.textScale, 120);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "activeVideoId"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(stored, "transcriptText"), false);

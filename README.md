@@ -41,14 +41,12 @@ Use the Firefox XPI from `build/firefox/` for AMO upload. For each release:
 - Bottom-left floating chat panel with scroll history.
 - Subtitle cues grouped into readable chunks.
 - Music/lyric-like captions split a little sooner so song lines do not become paragraph blobs.
-- Hover the panel and press `Space` to go to the next chunk.
-- Hover the panel and press `Shift+Space` to go to the previous chunk.
 - Clicking a chunk seeks the video.
-- Keyboard controls are safe by default and only run when the pointer is over the panel.
+- YouTube/player keyboard shortcuts remain owned by YouTube.
 - Future / Next Up previews can be turned on or off.
 - Case Fix can be turned off when all-caps captions are intentional, such as music videos.
 - Color, opacity, center fade, and panel open/closed state persist across YouTube videos using extension storage.
-- Custom color includes a temporary rainbow cycle mode for slow ambient hue rotation.
+- The custom color chip sits next to animated gradient presets, including Rainbow, Earth, Dusk, Cyber, and Aurora.
 - Layout Lock can also persist panel size/position, text size, Future / Next Up setting, Case Fix setting, and preview height.
 - With Layout Lock off, panel layout resets for each video/session.
 - Three seeded local workspace preset slots can save and apply temporary panel layout/readability snapshots without changing Lock or Reset behavior.
@@ -212,7 +210,7 @@ For AMO signing/upload, use:
 - Page-bridge work is additionally guarded inside the injected page script so snapshots, caption probes, timedtext captures, and bridge fetches stop after YouTube SPA navigation leaves a valid `/watch?v=...` route.
 - No personal data collection.
 - Only local UI preferences are stored via extension storage.
-- Keyboard shortcuts are not global in the release UI; they activate when the pointer is over the panel and are ignored while typing.
+- The extension does not register video navigation keyboard shortcuts; YouTube/player keyboard behavior remains owned by YouTube.
 - If transcript/subtitles are unavailable, the extension shows a clear in-panel message and exits safely.
 - Subtitle/caption data is processed locally for the current video only. The extension is a local accessibility/navigation aid and does not bulk download, export, or transmit captions to the developer or third parties.
 - Privacy details are in `PRIVACY.md`.

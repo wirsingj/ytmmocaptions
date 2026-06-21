@@ -43,9 +43,9 @@ Use this checklist before marketplace uploads or public demos. The extension is 
 
 ## Interaction
 
-- Hover the panel and press `Space`; playback should move forward about 8 seconds.
-- Hover the panel and press `Shift+Space`; playback should move backward about 8 seconds.
-- Confirm shortcuts do nothing while typing in inputs, textareas, selects, or editable content.
+- Press `Space` while the panel or YouTube player area is focused; YouTube should keep normal play/pause ownership.
+- Press `Shift+Space` while the panel or YouTube player area is focused; the extension should not skip captions or seek the video.
+- Confirm text inputs, sliders, buttons, checkboxes, and panel controls remain usable.
 - Click old and new caption bubbles repeatedly; the selected timestamp should be repeatable and no words should teleport between locked bubbles.
 - Scroll upward in the panel while playback continues and confirm the panel does not jump back down until Current, Latest, or the live edge is selected.
 - Click Current and confirm the active caption returns into view.

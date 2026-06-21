@@ -9,6 +9,7 @@
   const BRIDGE_FETCH_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_REQUEST";
   const BRIDGE_FETCH_RESPONSE_TYPE = "DIALOGUE_CAPTIONS_PAGE_FETCH_RESPONSE";
   const BRIDGE_CAPTION_PROBE_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_CAPTION_PROBE_REQUEST";
+  const BRIDGE_SNAPSHOT_REQUEST_TYPE = "DIALOGUE_CAPTIONS_PAGE_SNAPSHOT_REQUEST";
   const BRIDGE_TIMEDTEXT_CAPTURE_TYPE = "DIALOGUE_CAPTIONS_PAGE_TIMEDTEXT_CAPTURE";
   const BRIDGE_SCRIPT_ID = "dc-page-context-bridge";
   const BRIDGE_BOOT_MAX_ATTEMPTS = 4;
@@ -18,6 +19,7 @@
   let currentCaptureVideoId = "";
   let requestCounter = 0;
   const pendingRequests = new Map();
+  const pendingSnapshotRequests = [];
   const timedtextCaptures = [];
   const bridgeToken = createBridgeToken();
   let bridgeEnsureAttempts = 0;
@@ -49,10 +51,27 @@
     if (!isObject(nextSnapshot)) {
       return;
     }
+    const currentVideoId = getCurrentWatchVideoId();
+    const snapshotVideoId = typeof nextSnapshot.videoId === "string" ? nextSnapshot.videoId : "";
+    if (currentVideoId && snapshotVideoId && snapshotVideoId !== currentVideoId) {
+      return;
+    }
     snapshot = nextSnapshot;
+    while (pendingSnapshotRequests.length) {
+      const resolve = pendingSnapshotRequests.shift();
+      resolve(getSnapshot());
+    }
   }
 
   function getSnapshot() {
+    const currentVideoId = getCurrentWatchVideoId();
+    if (!currentVideoId) {
+      return null;
+    }
+    const snapshotVideoId = snapshot && typeof snapshot.videoId === "string" ? snapshot.videoId : "";
+    if (currentVideoId && snapshotVideoId && snapshotVideoId !== currentVideoId) {
+      return null;
+    }
     return snapshot;
   }
 
@@ -158,6 +177,7 @@
     if (!safeUrl || !isCurrentWatchPageWithVideo()) {
       return null;
     }
+    const requestVideoId = getCurrentWatchVideoId();
     const requestId = ++requestCounter;
     const safeInit = isObject(init) ? init : {};
     const timeout = Number.isFinite(timeoutMs) ? timeoutMs : 9000;
@@ -170,6 +190,10 @@
       pendingRequests.set(requestId, {
         resolve(payload) {
           scope.clearTimeout(timer);
+          if (requestVideoId && requestVideoId !== getCurrentWatchVideoId()) {
+            resolve(null);
+            return;
+          }
           resolve(payload);
         }
       });
@@ -272,6 +296,34 @@
     return true;
   }
 
+  function requestSnapshot(timeoutMs) {
+    if (!isCurrentWatchPageWithVideo()) {
+      return Promise.resolve(null);
+    }
+    const timeout = Number.isFinite(timeoutMs) ? Math.max(0, Number(timeoutMs)) : 500;
+    return new Promise((resolve) => {
+      const wrappedResolve = (nextSnapshot) => {
+        scope.clearTimeout(timer);
+        resolve(nextSnapshot);
+      };
+      const timer = scope.setTimeout(() => {
+        const index = pendingSnapshotRequests.indexOf(wrappedResolve);
+        if (index >= 0) {
+          pendingSnapshotRequests.splice(index, 1);
+        }
+        resolve(getSnapshot());
+      }, timeout);
+      pendingSnapshotRequests.push(wrappedResolve);
+      scope.postMessage(
+        {
+          type: BRIDGE_SNAPSHOT_REQUEST_TYPE,
+          bridgeToken: bridgeToken
+        },
+        scope.location.origin
+      );
+    });
+  }
+
   scope.addEventListener("message", onWindowMessage);
 
   app.pageContext = {
@@ -280,6 +332,7 @@
     BRIDGE_FETCH_REQUEST_TYPE,
     BRIDGE_FETCH_RESPONSE_TYPE,
     BRIDGE_CAPTION_PROBE_REQUEST_TYPE,
+    BRIDGE_SNAPSHOT_REQUEST_TYPE,
     BRIDGE_TIMEDTEXT_CAPTURE_TYPE,
     bridgeToken,
     ensureBridgeInjected,
@@ -288,6 +341,7 @@
     getTimedtextCaptures,
     isCurrentWatchPageWithVideo,
     pageFetch,
+    requestSnapshot,
     triggerCaptionProbe
   };
 })(window);

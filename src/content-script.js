@@ -5,13 +5,24 @@
   const settingsStore = app.settingsStore;
   const bubbleState = app.bubbleState;
   const captionText = app.captionText;
+  const CaptionSessionManager = app.CaptionSessionManager;
   const platform = app.platform;
   const pageContext = app.pageContext;
   const diagnostics = app.diagnostics || { record() {} };
   const captionTimeline = app.captionTimeline;
   const DialoguePanel = app.DialoguePanel;
 
-  if (!transcript || !captionTimeline || !chunker || !settingsStore || !bubbleState || !captionText || !platform || !DialoguePanel) {
+  if (
+    !transcript ||
+    !captionTimeline ||
+    !chunker ||
+    !settingsStore ||
+    !bubbleState ||
+    !captionText ||
+    !CaptionSessionManager ||
+    !platform ||
+    !DialoguePanel
+  ) {
     console.warn("[Dialogue Captions] Missing required modules.");
     return;
   }
@@ -22,20 +33,6 @@
   const TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS = 2400;
   const MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3;
   const MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS = 20;
-
-  function isTypingContext(target) {
-    const element = target instanceof Element ? target : document.activeElement;
-    if (!element) {
-      return false;
-    }
-    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
-      return true;
-    }
-    if (element.isContentEditable) {
-      return true;
-    }
-    return Boolean(element.closest("[contenteditable='true']"));
-  }
 
   class DialogueCaptionsApp {
     constructor(videoId) {
@@ -54,8 +51,10 @@
       this.boundVideo = null;
       this.syncRafId = 0;
       this.loadAbortController = null;
+      this.loadAbortSessionId = 0;
       this.destroyed = false;
-      this.suppressSpaceKeyUp = false;
+      this.captionSessions = new CaptionSessionManager();
+      this.captionSessionId = 0;
       this.timelineActionId = 0;
       this.timelineAction = null;
       this.timelineSyncForceScroll = false;
@@ -70,12 +69,15 @@
       this.liveLastFutureBackfillBucketIndex = -1;
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
+      this.liveCaptureStartedAt = 0;
       this.lastCaptionProbeAt = 0;
       this.captionsEnsured = false;
       this.captionEnsureStarted = false;
       this.captionWorkStarted = false;
       this.captionsWereOnBeforeExtension = null;
       this.captionsEnabledByExtension = false;
+      this.lastCaptionPreferenceKey = "";
+      this.openCaptionPreferenceKey = "";
       this.transcriptMode = "initializing";
       this.transcriptLoadAttempts = 0;
       this.transcriptLoadInFlight = false;
@@ -127,7 +129,6 @@
         return;
       }
 
-      this.bindKeyboardHandler();
       this.bindVideoSync();
       if (!this.settings.panelClosed) {
         await this.startCaptionWork();
@@ -137,6 +138,7 @@
     destroy() {
       this.destroyed = true;
       diagnostics.record("app:destroy", { liveCaptureEnabled: Boolean(this.liveCaptureEnabled) });
+      this.invalidateCaptionSession("destroy");
       this.persistPanelSnapshot();
       this.abortTranscriptLoad();
 
@@ -165,11 +167,40 @@
       if (!pageContext || typeof pageContext.ensureBridgeInjected !== "function") {
         return false;
       }
-      if (!transcript.isWatchPage(window.location.href) || !transcript.getVideoId(window.location.href)) {
+      if (!this.isCurrentVideoPage()) {
         return false;
       }
       pageContext.ensureBridgeInjected();
       return true;
+    }
+
+    beginCaptionSession(reason) {
+      this.stopTranscriptHeartbeat();
+      this.resetCaptionEnsureState();
+      this.captionSessionId = this.captionSessions.begin(reason || "caption-work");
+      return this.captionSessionId;
+    }
+
+    getActiveCaptionSessionId() {
+      return this.captionSessions.getCurrentId();
+    }
+
+    isActiveCaptionSession(sessionId) {
+      return (
+        this.captionSessions.isActive(sessionId) &&
+        !this.destroyed &&
+        !this.settings.panelClosed &&
+        this.isCurrentVideoPage()
+      );
+    }
+
+    invalidateCaptionSession(reason) {
+      this.captionSessions.invalidate(reason || "invalidate");
+      this.captionSessionId = this.captionSessions.getCurrentId();
+    }
+
+    isCurrentVideoPage() {
+      return transcript.isWatchPage(window.location.href) && transcript.getVideoId(window.location.href) === this.videoId;
     }
 
     async waitForVideoElement(timeoutMs) {
@@ -189,6 +220,15 @@
     getInlineCaptionTrackCount() {
       try {
         const response = window.ytInitialPlayerResponse;
+        const responseVideoId =
+          response &&
+          response.videoDetails &&
+          typeof response.videoDetails.videoId === "string"
+            ? response.videoDetails.videoId
+            : "";
+        if (responseVideoId && responseVideoId !== this.videoId) {
+          return 0;
+        }
         const tracks =
           response &&
           response.captions &&
@@ -209,7 +249,7 @@
           return 0;
         }
         const tracklist = player.getOption("captions", "tracklist");
-        return Array.isArray(tracklist) ? tracklist.length : 0;
+        return Array.isArray(tracklist) ? tracklist.filter((track) => this.isTrackForCurrentVideo(track)).length : 0;
       } catch {
         return 0;
       }
@@ -227,120 +267,6 @@
         await new Promise((resolve) => window.setTimeout(resolve, 120));
       }
       return false;
-    }
-
-    bindKeyboardHandler() {
-      const SPACE_KEYS = new Set([" ", "Spacebar", "Space"]);
-      const suppressedEvents = new WeakSet();
-      const actionHandledKeydowns = new WeakSet();
-      let lastShortcutAt = 0;
-
-      const isSpaceEvent = (event) => {
-        if (!event) {
-          return false;
-        }
-        if (event.code === "Space") {
-          return true;
-        }
-        return SPACE_KEYS.has(String(event.key || ""));
-      };
-
-      function suppressEvent(event) {
-        if (!event || suppressedEvents.has(event)) {
-          return;
-        }
-        suppressedEvents.add(event);
-        event.preventDefault();
-        event.stopPropagation();
-        if (typeof event.stopImmediatePropagation === "function") {
-          event.stopImmediatePropagation();
-        }
-      }
-
-      const canHandleSpace = (event) => {
-        if (!isSpaceEvent(event)) {
-          return false;
-        }
-        if (event.repeat) {
-          return false;
-        }
-        if (event.ctrlKey || event.altKey || event.metaKey) {
-          return false;
-        }
-        const liveVideo = this.refreshVideoReference();
-        if (!liveVideo || !this.panel) {
-          return false;
-        }
-        if (isTypingContext(event.target)) {
-          return false;
-        }
-        if (!this.canRunShortcutSeek(liveVideo)) {
-          return false;
-        }
-        return this.panel.isPointerInside();
-      };
-
-      const onKeyDown = (event) => {
-        if (actionHandledKeydowns.has(event)) {
-          return;
-        }
-        if (!canHandleSpace(event)) {
-          return;
-        }
-        actionHandledKeydowns.add(event);
-        suppressEvent(event);
-        const nowMs = Date.now();
-        if (nowMs - lastShortcutAt < 85) {
-          this.suppressSpaceKeyUp = true;
-          return;
-        }
-        lastShortcutAt = nowMs;
-        this.suppressSpaceKeyUp = true;
-        this.handleSpaceShortcut(event.shiftKey);
-      };
-
-      const onKeyUp = (event) => {
-        if (!isSpaceEvent(event)) {
-          return;
-        }
-        if (!this.suppressSpaceKeyUp && !canHandleSpace(event)) {
-          return;
-        }
-        suppressEvent(event);
-        this.suppressSpaceKeyUp = false;
-      };
-
-      const onKeyPress = (event) => {
-        if (!canHandleSpace(event) && !this.suppressSpaceKeyUp) {
-          return;
-        }
-        suppressEvent(event);
-      };
-
-      const registerKeyListeners = (target, options) => {
-        if (!target || typeof target.addEventListener !== "function") {
-          return;
-        }
-        target.addEventListener("keydown", onKeyDown, options);
-        target.addEventListener("keyup", onKeyUp, options);
-        target.addEventListener("keypress", onKeyPress, options);
-        this.cleanupFns.push(() => target.removeEventListener("keydown", onKeyDown, options));
-        this.cleanupFns.push(() => target.removeEventListener("keyup", onKeyUp, options));
-        this.cleanupFns.push(() => target.removeEventListener("keypress", onKeyPress, options));
-      };
-
-      const targets = [window, document, document.documentElement];
-      const baseOptions = { capture: true, passive: false };
-      const isFirefox = /firefox/i.test(String(navigator && navigator.userAgent ? navigator.userAgent : ""));
-      for (let index = 0; index < targets.length; index += 1) {
-        const target = targets[index];
-        registerKeyListeners(target, baseOptions);
-
-        if (isFirefox) {
-          const systemOptions = { capture: true, passive: false, mozSystemGroup: true };
-          registerKeyListeners(target, systemOptions);
-        }
-      }
     }
 
     bindVideoSync() {
@@ -452,7 +378,7 @@
       return bubbleState.trimChunkAgainstPrevious(previousText, chunk, {
         normalizeText: (value) => this.normalizeLiveCaptionText(value),
         normalizeToken: (value) => this.normalizeCaptionToken(value),
-        fallbackDurationSeconds: this.getKeyboardStepSeconds()
+        fallbackDurationSeconds: this.getLiveWindowSizeSeconds()
       });
     }
 
@@ -517,6 +443,180 @@
       return this.collapseOverlaySpamIfNeeded(this.normalizeLiveCaptionText(selected.join(" ")));
     }
 
+    isSubtitleButtonAvailable() {
+      const subtitleButton = document.querySelector(".ytp-subtitles-button");
+      if (!(subtitleButton instanceof HTMLElement)) {
+        return false;
+      }
+      const disabled = String(subtitleButton.getAttribute("aria-disabled") || "").toLowerCase() === "true";
+      return !disabled && !subtitleButton.disabled && this.isNodeVisible(subtitleButton);
+    }
+
+    hasLiveCaptionContext() {
+      if (this.getInlineCaptionTrackCount() > 0 || this.getPlayerCaptionTrackCount() > 0) {
+        return true;
+      }
+      if (this.isSubtitleButtonAvailable()) {
+        return true;
+      }
+      return Boolean(this.video && this.video.textTracks && this.video.textTracks.length);
+    }
+
+    getPreferredLanguageCodes() {
+      const rawLanguages = [];
+      const selectedCaptionTrack = this.getSelectedCaptionTrack();
+      const selectedLanguage = this.getTrackLanguageCode(selectedCaptionTrack);
+      if (selectedLanguage) {
+        rawLanguages.push(selectedLanguage);
+      }
+      if (Array.isArray(navigator.languages)) {
+        rawLanguages.push(...navigator.languages);
+      }
+      rawLanguages.push(navigator.language, navigator.userLanguage, "en");
+
+      const languages = [];
+      const used = new Set();
+      for (const rawLanguage of rawLanguages) {
+        const language = String(rawLanguage || "").trim().toLowerCase();
+        if (!language || used.has(language)) {
+          continue;
+        }
+        used.add(language);
+        languages.push(language);
+        const baseLanguage = language.split("-")[0];
+        if (baseLanguage && !used.has(baseLanguage)) {
+          used.add(baseLanguage);
+          languages.push(baseLanguage);
+        }
+      }
+      return languages;
+    }
+
+    getSelectedCaptionTrack() {
+      try {
+        const player = document.getElementById("movie_player");
+        if (!player || typeof player.getOption !== "function") {
+          return null;
+        }
+        const track = player.getOption("captions", "track");
+        return track && typeof track === "object" && this.isTrackForCurrentVideo(track) ? track : null;
+      } catch {
+        return null;
+      }
+    }
+
+    getTrackVideoId(track) {
+      if (!track || typeof track.baseUrl !== "string" || !track.baseUrl) {
+        return "";
+      }
+      try {
+        return transcript.getVideoId(track.baseUrl);
+      } catch {
+        return "";
+      }
+    }
+
+    isTrackForCurrentVideo(track) {
+      const trackVideoId = this.getTrackVideoId(track);
+      return !trackVideoId || trackVideoId === this.videoId;
+    }
+
+    getTrackLanguageCode(track) {
+      if (track && typeof track.baseUrl === "string" && track.baseUrl) {
+        try {
+          const translatedLanguage = new URL(track.baseUrl).searchParams.get("tlang");
+          if (translatedLanguage) {
+            return translatedLanguage.toLowerCase();
+          }
+        } catch {
+          // Ignore malformed track URLs and fall back to metadata.
+        }
+      }
+      const vssId = track && typeof track.vssId === "string" ? track.vssId.toLowerCase() : "";
+      if (vssId) {
+        const normalizedVssId = vssId.replace(/^a?\./, "");
+        if (normalizedVssId) {
+          return normalizedVssId;
+        }
+      }
+      const languageCode =
+        track && typeof track.languageCode === "string"
+          ? track.languageCode
+          : track && typeof track.langCode === "string"
+            ? track.langCode
+            : track && typeof track.language === "string"
+              ? track.language
+              : "";
+      if (languageCode) {
+        return languageCode.toLowerCase();
+      }
+      if (track && typeof track.baseUrl === "string" && track.baseUrl) {
+        try {
+          return (new URL(track.baseUrl).searchParams.get("lang") || "").toLowerCase();
+        } catch {
+          return "";
+        }
+      }
+      return "";
+    }
+
+    languageMatchesPreference(languageCode, preference) {
+      const language = String(languageCode || "").toLowerCase();
+      const preferred = String(preference || "").toLowerCase();
+      if (!language || !preferred) {
+        return false;
+      }
+      return language === preferred || language.startsWith(preferred + "-") || preferred.startsWith(language + "-");
+    }
+
+    isPreferredLanguageTrack(track, preference) {
+      return this.languageMatchesPreference(this.getTrackLanguageCode(track), preference);
+    }
+
+    isManualCaptionTrack(track) {
+      return String(track && track.kind ? track.kind : "").toLowerCase() !== "asr";
+    }
+
+    isTranslatedCaptionTrack(track) {
+      if (!track || typeof track.baseUrl !== "string" || !track.baseUrl) {
+        return false;
+      }
+      try {
+        return new URL(track.baseUrl).searchParams.has("tlang");
+      } catch {
+        return false;
+      }
+    }
+
+    getPreferredCaptionTracks(tracklist) {
+      const tracks = Array.isArray(tracklist) ? tracklist.filter((track) => this.isTrackForCurrentVideo(track)) : [];
+      const ordered = [];
+      const used = new Set();
+
+      const pushWhere = (predicate) => {
+        for (const track of tracks) {
+          if (!track || used.has(track)) {
+            continue;
+          }
+          if (!predicate(track)) {
+            continue;
+          }
+          used.add(track);
+          ordered.push(track);
+        }
+      };
+
+      for (const preference of this.getPreferredLanguageCodes()) {
+        pushWhere((track) => this.isPreferredLanguageTrack(track, preference) && this.isManualCaptionTrack(track));
+        pushWhere((track) => this.isPreferredLanguageTrack(track, preference));
+      }
+      pushWhere((track) => this.isManualCaptionTrack(track) && !this.isTranslatedCaptionTrack(track));
+      pushWhere((track) => !this.isTranslatedCaptionTrack(track));
+      pushWhere(() => true);
+
+      return ordered;
+    }
+
     readTextTrackSnapshotAtCurrentTime() {
       if (!this.video || !this.video.textTracks || !this.video.textTracks.length) {
         return null;
@@ -525,13 +625,14 @@
       if (!Number.isFinite(now)) {
         return null;
       }
-      const fragments = [];
-      let earliestStart = Number.POSITIVE_INFINITY;
-      let latestEnd = 0;
-      let tokens = [];
+      const tracks = this.getPreferredCaptionTracks(Array.from(this.video.textTracks));
 
-      for (let index = 0; index < this.video.textTracks.length; index += 1) {
-        const track = this.video.textTracks[index];
+      for (let index = 0; index < tracks.length; index += 1) {
+        const track = tracks[index];
+        const fragments = [];
+        let earliestStart = Number.POSITIVE_INFINITY;
+        let latestEnd = 0;
+        let tokens = [];
         try {
           if (track && track.mode === "disabled") {
             track.mode = "hidden";
@@ -562,17 +663,18 @@
             tokens = tokens.concat(this.createCueTokensFromText(text, start, end));
           }
         }
+        const merged = this.normalizeLiveCaptionText(fragments.join(" "));
+        if (!merged) {
+          continue;
+        }
+        return {
+          text: merged,
+          startTime: Number.isFinite(earliestStart) ? earliestStart : Number.NaN,
+          endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : Number.NaN,
+          tokens: tokens
+        };
       }
-      const merged = this.normalizeLiveCaptionText(fragments.join(" "));
-      if (!merged) {
-        return null;
-      }
-      return {
-        text: merged,
-        startTime: Number.isFinite(earliestStart) ? earliestStart : Number.NaN,
-        endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : Number.NaN,
-        tokens: tokens
-      };
+      return null;
     }
 
     createCueTokensFromText(text, start, end) {
@@ -605,10 +707,11 @@
       const step = this.getLiveWindowSeconds();
       const bucketStart = bucketIndex * step;
       const bucketEnd = bucketStart + step;
-      const collected = [];
+      const tracks = this.getPreferredCaptionTracks(Array.from(this.video.textTracks));
 
-      for (let trackIndex = 0; trackIndex < this.video.textTracks.length; trackIndex += 1) {
-        const track = this.video.textTracks[trackIndex];
+      for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
+        const track = tracks[trackIndex];
+        const collected = [];
         try {
           if (track && track.mode === "disabled") {
             track.mode = "hidden";
@@ -642,36 +745,38 @@
             tokens: this.createCueTokensFromText(text, start, end)
           });
         }
+
+        if (!collected.length) {
+          continue;
+        }
+
+        collected.sort((left, right) => left.start - right.start);
+        let merged = "";
+        let latestEnd = 0;
+        let tokens = [];
+        for (let index = 0; index < collected.length; index += 1) {
+          merged = this.mergeLiveCaptionText(merged, collected[index].text);
+          latestEnd = Math.max(latestEnd, Number(collected[index].end || 0));
+          tokens = tokens.concat(collected[index].tokens || []);
+        }
+        const normalized = this.normalizeLiveCaptionText(merged);
+        if (!normalized) {
+          continue;
+        }
+
+        return {
+          text: normalized,
+          startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart,
+          endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : bucketEnd,
+          tokens: tokens
+        };
       }
 
-      if (!collected.length) {
-        return null;
-      }
-
-      collected.sort((left, right) => left.start - right.start);
-      let merged = "";
-      let latestEnd = 0;
-      let tokens = [];
-      for (let index = 0; index < collected.length; index += 1) {
-        merged = this.mergeLiveCaptionText(merged, collected[index].text);
-        latestEnd = Math.max(latestEnd, Number(collected[index].end || 0));
-        tokens = tokens.concat(collected[index].tokens || []);
-      }
-      const normalized = this.normalizeLiveCaptionText(merged);
-      if (!normalized) {
-        return null;
-      }
-
-      return {
-        text: normalized,
-        startTime: Number.isFinite(collected[0].start) ? collected[0].start : bucketStart,
-        endTime: Number.isFinite(latestEnd) && latestEnd > 0 ? latestEnd : bucketEnd,
-        tokens: tokens
-      };
+      return null;
     }
 
     getLiveWindowSeconds() {
-      return this.getKeyboardStepSeconds();
+      return this.getLiveWindowSizeSeconds();
     }
 
     getLiveOverlayAnchorOffsetSeconds() {
@@ -725,39 +830,6 @@
       }
       this.liveLastObservedTime = currentTime;
       this.liveOverlayUtterance = null;
-    }
-
-    isYouTubeAdPlaybackActive() {
-      const player = document.getElementById("movie_player");
-      if (player && player.classList) {
-        const adClasses = ["ad-showing", "ad-interrupting", "ytp-ad-player-overlay"];
-        for (let index = 0; index < adClasses.length; index += 1) {
-          if (player.classList.contains(adClasses[index])) {
-            return true;
-          }
-        }
-      }
-      return Boolean(
-        document.querySelector(
-          ".ytp-ad-module, .ytp-ad-player-overlay, .ytp-ad-skip-button, .ytp-ad-preview-container"
-        )
-      );
-    }
-
-    canRunShortcutSeek(video) {
-      const targetVideo = video || this.refreshVideoReference();
-      if (!targetVideo || this.destroyed) {
-        return false;
-      }
-      if (this.isYouTubeAdPlaybackActive()) {
-        return false;
-      }
-      const readyState = Number(targetVideo.readyState || 0);
-      const duration = Number(targetVideo.duration);
-      if (readyState < 1 || !Number.isFinite(duration) || duration <= 0) {
-        return false;
-      }
-      return true;
     }
 
     suppressLiveCaptureForSeek(targetTime) {
@@ -1055,7 +1127,13 @@
     }
 
     captureLiveCaptionLine() {
-      if (!this.liveCaptureEnabled || !this.video || this.settings.panelClosed) {
+      if (
+        !this.liveCaptureEnabled ||
+        !this.video ||
+        this.settings.panelClosed ||
+        !this.isCurrentVideoPage() ||
+        this.hasOpenCaptionPreferenceChanged()
+      ) {
         return;
       }
 
@@ -1121,6 +1199,10 @@
         if (!overlaySuppressed) {
           usedOverlayOnlyPath = true;
           text = this.readVisibleCaptionText();
+          if (text && !this.hasLiveCaptionContext()) {
+            diagnostics.record("captions:overlay-only-ignored", { reason: "missing_caption_context" });
+            text = "";
+          }
           const canonical = this.toCaptionCanonical(text);
           const previousUtterance = this.liveOverlayUtterance;
           let targetBucketIndex = currentBucketIndex;
@@ -1187,28 +1269,13 @@
     }
 
     pickPreferredTrack(tracklist) {
-      const tracks = Array.isArray(tracklist) ? tracklist : [];
-      if (!tracks.length) {
-        return null;
-      }
-      const englishManual = tracks.find((track) => {
-        const languageCode = String(track && track.languageCode ? track.languageCode : "").toLowerCase();
-        const kind = String(track && track.kind ? track.kind : "").toLowerCase();
-        return languageCode.startsWith("en") && kind !== "asr";
-      });
-      if (englishManual) {
-        return englishManual;
-      }
-      const manual = tracks.find((track) => {
-        const kind = String(track && track.kind ? track.kind : "").toLowerCase();
-        return kind !== "asr";
-      });
-      return manual || tracks[0];
+      return this.getPreferredCaptionTracks(tracklist)[0] || null;
     }
 
     probeCaptionsNow() {
       const now = Date.now();
       this.lastCaptionProbeAt = now;
+      this.captureInitialSubtitleState();
 
       if (pageContext && typeof pageContext.triggerCaptionProbe === "function") {
         pageContext.triggerCaptionProbe();
@@ -1228,22 +1295,12 @@
       }
 
       try {
-        if (typeof player.getOption === "function" && typeof player.setOption === "function") {
-          const tracklist = player.getOption("captions", "tracklist");
-          const preferred = this.pickPreferredTrack(tracklist);
-          if (preferred) {
-            player.setOption("captions", "track", preferred);
-          }
-          player.setOption("captions", "reload", true);
-        }
-      } catch {
-        // Ignore caption option failures.
-      }
-
-      try {
         if (typeof player.isSubtitlesOn === "function" && typeof player.toggleSubtitles === "function") {
           if (!player.isSubtitlesOn()) {
             player.toggleSubtitles();
+            if (this.captionsWereOnBeforeExtension === false) {
+              this.captionsEnabledByExtension = true;
+            }
           }
         }
       } catch {
@@ -1315,24 +1372,33 @@
       return false;
     }
 
-    restoreSubtitlesIfExtensionEnabled() {
-      if (!this.captionsEnabledByExtension || this.captionsWereOnBeforeExtension !== false) {
+    captureInitialSubtitleState() {
+      if (this.captionsWereOnBeforeExtension !== null) {
         return;
       }
-      if (this.isSubtitlesEnabled()) {
+      this.captionsWereOnBeforeExtension = this.isSubtitlesEnabled();
+    }
+
+    resetCaptionEnsureState() {
+      this.captionsEnsured = false;
+      this.captionEnsureStarted = false;
+    }
+
+    restoreSubtitlesIfExtensionEnabled() {
+      const subtitlesWereOff = this.captionsWereOnBeforeExtension === false;
+      if (this.captionsEnabledByExtension && subtitlesWereOff && this.isSubtitlesEnabled()) {
         this.setSubtitlesEnabled(false);
       }
       this.captionsEnabledByExtension = false;
-      this.captionsEnsured = false;
+      this.captionsWereOnBeforeExtension = null;
+      this.resetCaptionEnsureState();
     }
 
     ensureCaptionsEnabledOnce() {
       if (this.destroyed || this.settings.panelClosed) {
         return;
       }
-      if (this.captionsWereOnBeforeExtension === null) {
-        this.captionsWereOnBeforeExtension = this.isSubtitlesEnabled();
-      }
+      this.captureInitialSubtitleState();
       if (this.isSubtitlesEnabled()) {
         this.captionsEnsured = true;
         return;
@@ -1344,7 +1410,9 @@
       this.probeCaptionsNow();
 
       if (!this.isSubtitlesEnabled()) {
-        this.clickSubtitlesButtonFallback();
+        if (this.clickSubtitlesButtonFallback() && this.captionsWereOnBeforeExtension === false) {
+          this.captionsEnabledByExtension = true;
+        }
       }
 
       if (this.isSubtitlesEnabled()) {
@@ -1353,7 +1421,8 @@
       }
     }
 
-    startCaptionEnsureLoop() {
+    startCaptionEnsureLoop(sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
       if (this.captionEnsureStarted) {
         return;
       }
@@ -1361,7 +1430,7 @@
       const delaysMs = [0, 350, 800, 1500, 2600, 4200, 6200];
       for (let index = 0; index < delaysMs.length; index += 1) {
         const timerId = window.setTimeout(() => {
-          if (this.destroyed || this.captionsEnsured) {
+          if (!this.isActiveCaptionSession(captionSessionId) || this.captionsEnsured) {
             return;
           }
           this.ensureCaptionsEnabledOnce();
@@ -1381,36 +1450,103 @@
       this.probeCaptionsNow();
     }
 
+    async refreshCaptionSnapshot() {
+      this.ensurePageBridgeForWatchPage();
+      if (!pageContext || typeof pageContext.requestSnapshot !== "function") {
+        return null;
+      }
+      try {
+        return await pageContext.requestSnapshot(650);
+      } catch {
+        return null;
+      }
+    }
+
+    getCaptionPreferenceKeyFromSnapshot(snapshot) {
+      const selectedTrack = snapshot && snapshot.selectedCaptionTrack ? snapshot.selectedCaptionTrack : null;
+      const selectedLanguage = this.getTrackLanguageCode(selectedTrack);
+      if (selectedLanguage) {
+        return "selected:" + selectedLanguage;
+      }
+      const preferredLanguages = this.getPreferredLanguageCodes();
+      return preferredLanguages[0] ? "preferred:" + preferredLanguages[0] : "";
+    }
+
+    getCurrentCaptionPreferenceKey() {
+      return this.getCaptionPreferenceKeyFromSnapshot(
+        pageContext && typeof pageContext.getSnapshot === "function" ? pageContext.getSnapshot() : null
+      );
+    }
+
+    hasOpenCaptionPreferenceChanged() {
+      const currentPreferenceKey = this.getCurrentCaptionPreferenceKey();
+      return Boolean(
+        this.openCaptionPreferenceKey &&
+          currentPreferenceKey &&
+          currentPreferenceKey !== this.openCaptionPreferenceKey
+      );
+    }
+
     async startCaptionWork() {
       if (this.destroyed || this.settings.panelClosed) {
         return;
       }
       if (this.captionWorkStarted) {
-        this.ensureCaptionsEnabledOnce();
-        if (!this.liveCaptureEnabled) {
-          this.enableLiveCaptureMode();
+        const snapshot = await this.refreshCaptionSnapshot();
+        const nextPreferenceKey = this.getCaptionPreferenceKeyFromSnapshot(snapshot);
+        const shouldReloadForPreference =
+          !this.hasTranscriptActivity() ||
+          !this.lastCaptionPreferenceKey ||
+          (nextPreferenceKey && nextPreferenceKey !== this.lastCaptionPreferenceKey);
+        if (shouldReloadForPreference) {
+          const captionSessionId = this.beginCaptionSession("caption-work-reload");
+          this.clearCaptionStateForUnavailableVideo();
+          this.transcriptLastActivityAt = 0;
+          this.openCaptionPreferenceKey = nextPreferenceKey;
+          this.ensureCaptionsEnabledOnce();
+          this.startCaptionEnsureLoop(captionSessionId);
+          if (!this.liveCaptureEnabled) {
+            this.enableLiveCaptureMode();
+          } else {
+            this.startLiveCapturePolling();
+          }
+          this.syncActiveChunk(true);
+          if (this.panel) {
+            this.panel.setStatus("Loading subtitles...");
+          }
+          await this.loadTranscript(captionSessionId);
+          this.syncActiveChunk(true);
+          if (!this.hasTranscriptActivity()) {
+            this.scheduleTranscriptHeartbeatCheck("caption-work-resume", TRANSCRIPT_HEARTBEAT_GRACE_MS, captionSessionId);
+          }
+          return;
         } else {
-          this.startLiveCapturePolling();
+          const captionSessionId = this.beginCaptionSession("caption-work-reuse");
+          this.openCaptionPreferenceKey = nextPreferenceKey || this.lastCaptionPreferenceKey;
+          if (this.liveCaptureEnabled) {
+            this.ensureCaptionsEnabledOnce();
+            this.startCaptionEnsureLoop(captionSessionId);
+            this.startLiveCapturePolling();
+          }
+          this.syncActiveChunk(true);
+          return;
         }
-        this.syncActiveChunk(true);
-        if (!this.hasTranscriptActivity()) {
-          this.scheduleTranscriptHeartbeatCheck("caption-work-resume", TRANSCRIPT_HEARTBEAT_GRACE_MS);
-        }
-        return;
       }
 
+      const captionSessionId = this.beginCaptionSession("caption-work-start");
       this.captionWorkStarted = true;
       this.transcriptLastActivityAt = 0;
       this.transcriptRecoveryAttempts = 0;
       this.transcriptReadinessDeferrals = 0;
-      this.ensurePageBridgeForWatchPage();
+      const snapshot = await this.refreshCaptionSnapshot();
+      this.openCaptionPreferenceKey = this.getCaptionPreferenceKeyFromSnapshot(snapshot);
       if (this.panel) {
         this.panel.setStatus("Loading subtitles...");
       }
-      this.scheduleTranscriptHeartbeatCheck("caption-work-start", TRANSCRIPT_HEARTBEAT_GRACE_MS);
-      this.startCaptionEnsureLoop();
+      this.scheduleTranscriptHeartbeatCheck("caption-work-start", TRANSCRIPT_HEARTBEAT_GRACE_MS, captionSessionId);
+      this.startCaptionEnsureLoop(captionSessionId);
       this.enableLiveCaptureMode();
-      await this.loadTranscript();
+      await this.loadTranscript(captionSessionId);
       this.syncActiveChunk(true);
     }
 
@@ -1421,6 +1557,7 @@
       }
       this.transcriptMode = "live overlay fallback mode";
       this.liveCaptureEnabled = true;
+      this.liveCaptureStartedAt = Date.now();
       this.cues = [];
       this.revealedChunkCount = 0;
       this.liveCaptureSuppressedUntil = 0;
@@ -1464,6 +1601,7 @@
       this.futurePreviewSignature = "";
       this.liveOverlayAnchorOffsetSeconds = 2.5;
       this.liveOverlayUtterance = null;
+      this.liveCaptureStartedAt = 0;
       this.liveBubbles = [];
       this.liveBucketToBubble = new Map();
       this.liveDisplayBubbleCache = new Map();
@@ -1485,6 +1623,35 @@
       if (this.liveCapturePollId) {
         window.clearInterval(this.liveCapturePollId);
         this.liveCapturePollId = 0;
+      }
+    }
+
+    clearCaptionStateForUnavailableVideo() {
+      this.cues = [];
+      this.allChunks = [];
+      this.chunks = [];
+      this.revealedChunkCount = 0;
+      this.activeIndex = -1;
+      this.liveFuturePreviewChunks = [];
+      this.transcriptPreviewChunks = [];
+      this.futurePreviewSignature = "";
+      this.liveOverlayUtterance = null;
+      this.liveBubbles = [];
+      this.liveBucketToBubble = new Map();
+      this.liveDisplayBubbleCache = new Map();
+      if (!this.panel) {
+        return;
+      }
+      this.panel.setChunks([]);
+      if (typeof this.panel.setFutureChunks === "function") {
+        this.panel.setFutureChunks([]);
+      }
+      if (typeof this.panel.setTimelineData === "function") {
+        this.panel.setTimelineData([], Number.NaN);
+      }
+      this.panel.setActiveIndex(-1);
+      if (typeof this.panel.setPlaybackTime === "function") {
+        this.panel.setPlaybackTime(0, { forceGlowReset: true });
       }
     }
 
@@ -1757,7 +1924,11 @@
     abortTranscriptLoad() {
       if (this.loadAbortController) {
         this.loadAbortController.abort();
+        if (this.loadAbortSessionId) {
+          this.captionSessions.releaseAbortController(this.loadAbortSessionId, this.loadAbortController);
+        }
         this.loadAbortController = null;
+        this.loadAbortSessionId = 0;
       }
     }
 
@@ -1777,23 +1948,38 @@
       }
       this.lastTranscriptUpgradeAt = now;
       this.transcriptUpgradeAttempts += 1;
-      this.tryUpgradeLiveCaptureToTranscript();
+      this.tryUpgradeLiveCaptureToTranscript(this.getActiveCaptionSessionId());
     }
 
-    async tryUpgradeLiveCaptureToTranscript() {
-      if (this.transcriptUpgradeInFlight || this.destroyed || this.settings.panelClosed || !this.liveCaptureEnabled) {
+    async tryUpgradeLiveCaptureToTranscript(sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (
+        this.transcriptUpgradeInFlight ||
+        !this.isActiveCaptionSession(captionSessionId) ||
+        !this.liveCaptureEnabled ||
+        !this.isCurrentVideoPage()
+      ) {
         return;
       }
       this.transcriptUpgradeInFlight = true;
       this.ensurePageBridgeForWatchPage();
       this.probeCaptionsNow();
-      const controller = new AbortController();
+      const controller = this.captionSessions.createAbortController(captionSessionId);
+      if (!controller) {
+        this.transcriptUpgradeInFlight = false;
+        return;
+      }
       const signal = controller.signal;
       const timeoutId = window.setTimeout(() => controller.abort(), 11000);
 
       try {
         await this.waitForCaptionContextReady(1600);
-        if (signal.aborted || this.destroyed || this.settings.panelClosed || !this.liveCaptureEnabled) {
+        if (
+          signal.aborted ||
+          !this.isActiveCaptionSession(captionSessionId) ||
+          !this.liveCaptureEnabled ||
+          !this.isCurrentVideoPage()
+        ) {
           return;
         }
         const response = await captionTimeline.acquireFullTimeline(window.location.href, signal, {
@@ -1805,36 +1991,40 @@
           response.videoId !== this.videoId ||
           !Array.isArray(response.cues) ||
           !response.cues.length ||
-          this.destroyed ||
-          this.settings.panelClosed
+          !this.isActiveCaptionSession(captionSessionId) ||
+          !this.isCurrentVideoPage()
         ) {
           return;
         }
-
-        this.disableLiveCaptureMode();
-        this.transcriptMode = response.mode || "direct transcript mode";
-        this.cues = response.cues;
-        this.revealedChunkCount = 0;
-        this.rebuildChunks();
-        this.transcriptPreviewChunks = this.allChunks.slice();
-        this.noteTranscriptActivity("transcript-upgrade");
-        this.syncActiveChunk(true);
-        if (this.panel) {
-          this.panel.setStatus("Full caption timeline loaded. Next up previews are available.", true);
-        }
+        this.applyFullTranscriptResponse(response, captionSessionId, {
+          activityReason: "transcript-upgrade",
+          preserveOpenCaptionPreference: true,
+          statusMessage: "Full caption timeline loaded. Next up previews are available.",
+          syncAfterApply: true
+        });
       } catch (error) {
         if (!error || error.name !== "AbortError") {
           // Keep live overlay mode quiet; failed upgrades are expected on some videos.
         }
       } finally {
         window.clearTimeout(timeoutId);
+        this.captionSessions.releaseAbortController(captionSessionId, controller);
         this.transcriptUpgradeInFlight = false;
       }
     }
 
-    async loadTranscript() {
+    async loadTranscript(sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (!this.isActiveCaptionSession(captionSessionId)) {
+        return;
+      }
       this.abortTranscriptLoad();
-      this.loadAbortController = new AbortController();
+      this.loadAbortController = this.captionSessions.createAbortController(captionSessionId);
+      if (!this.loadAbortController) {
+        return;
+      }
+      this.loadAbortSessionId = captionSessionId;
+      const controller = this.loadAbortController;
       const loadId = this.transcriptLoadNonce + 1;
       this.transcriptLoadNonce = loadId;
       this.transcriptLoadInFlight = true;
@@ -1842,9 +2032,9 @@
       this.transcriptLoadAttempts += 1;
 
       const url = window.location.href;
-      const signal = this.loadAbortController.signal;
+      const signal = controller.signal;
       const transcriptTimeoutMs = 10000;
-      if (signal.aborted || this.destroyed) {
+      if (signal.aborted || !this.isActiveCaptionSession(captionSessionId)) {
         if (loadId === this.transcriptLoadNonce) {
           this.transcriptLoadInFlight = false;
         }
@@ -1852,7 +2042,7 @@
       }
       this.maybeProbeCaptions();
       await this.waitForCaptionContextReady(2400);
-      if (signal.aborted || this.destroyed) {
+      if (signal.aborted || !this.isActiveCaptionSession(captionSessionId)) {
         if (loadId === this.transcriptLoadNonce) {
           this.transcriptLoadInFlight = false;
         }
@@ -1878,16 +2068,24 @@
         if (loadId === this.transcriptLoadNonce) {
           this.transcriptLoadInFlight = false;
         }
+        if (this.loadAbortController === controller && this.loadAbortSessionId === captionSessionId) {
+          this.captionSessions.releaseAbortController(captionSessionId, controller);
+          this.loadAbortController = null;
+          this.loadAbortSessionId = 0;
+        }
       }
 
       if (!response || !response.ok) {
+        if (!this.isActiveCaptionSession(captionSessionId)) {
+          return;
+        }
         const reason = String(response && response.reason ? response.reason : "");
         const isLikelyReloadRace =
           reason.includes("No caption tracks") || reason.includes("No subtitle cues");
-        if (isLikelyReloadRace && this.transcriptLoadAttempts <= 1 && !signal.aborted && !this.destroyed) {
+        if (isLikelyReloadRace && this.transcriptLoadAttempts <= 1 && !signal.aborted && this.isActiveCaptionSession(captionSessionId)) {
           await new Promise((resolve) => window.setTimeout(resolve, 950));
-          if (!signal.aborted && !this.destroyed) {
-            return this.loadTranscript();
+          if (!signal.aborted && this.isActiveCaptionSession(captionSessionId)) {
+            return this.loadTranscript(captionSessionId);
           }
         }
         const shouldEnableLiveCapture =
@@ -1905,64 +2103,91 @@
           });
         }
         if (this.panel) {
-          if (!this.cues.length) {
-            this.panel.setChunks([]);
-            if (typeof this.panel.setFutureChunks === "function") {
-              this.futurePreviewSignature = "";
-              this.panel.setFutureChunks([]);
-            }
-            if (typeof this.panel.setTimelineData === "function") {
-              this.panel.setTimelineData([], Number.NaN);
-            }
-            this.panel.setActiveIndex(-1);
-            if (typeof this.panel.setPlaybackTime === "function") {
-              this.panel.setPlaybackTime(0, { forceGlowReset: true });
-            }
+          if (!this.cues.length || !this.hasLiveCaptionContext()) {
+            this.clearCaptionStateForUnavailableVideo();
           }
           this.panel.setStatus(
             shouldEnableLiveCapture
-              ? "Turn on YouTube CC if needed. Click any chat bubble to seek, or hover here and use Space / Shift+Space."
+              ? "Turn on YouTube CC if needed. Click any chat bubble to seek."
               : (response && response.reason) || "Subtitles are unavailable."
           );
         }
         return;
       }
 
-      if (response.videoId !== this.videoId) {
+      if (!this.canApplyFullTranscriptResponse(response, captionSessionId)) {
         return;
       }
 
+      this.applyFullTranscriptResponse(response, captionSessionId, {
+        activityReason: "full-transcript",
+        recordLoadedDiagnostic: true,
+        useLoadedStatusMessage: true
+      });
+    }
+
+    canApplyFullTranscriptResponse(response, sessionId) {
+      return Boolean(
+        response &&
+          response.ok &&
+          response.videoId === this.videoId &&
+          Array.isArray(response.cues) &&
+          response.cues.length &&
+          this.isActiveCaptionSession(sessionId) &&
+          this.isCurrentVideoPage()
+      );
+    }
+
+    getTranscriptLoadedStatusMessage(response) {
+      return (
+        "Loaded " +
+        this.chunks.length +
+        " chunks (" +
+        (response.mode || response.sourceType || "caption timeline") +
+        "). Click any chat bubble to seek."
+      );
+    }
+
+    applyFullTranscriptResponse(response, sessionId, options) {
+      const opts = options || {};
+      if (!this.canApplyFullTranscriptResponse(response, sessionId)) {
+        return false;
+      }
+      const currentPreferenceKey = this.getCurrentCaptionPreferenceKey();
+      if (opts.preserveOpenCaptionPreference && this.hasOpenCaptionPreferenceChanged()) {
+        return false;
+      }
       this.disableLiveCaptureMode();
       this.transcriptMode = response.mode || "direct transcript mode";
+      this.lastCaptionPreferenceKey = opts.preserveOpenCaptionPreference
+        ? currentPreferenceKey || this.openCaptionPreferenceKey || this.getCurrentCaptionPreferenceKey()
+        : currentPreferenceKey;
       this.cues = response.cues;
       this.revealedChunkCount = 0;
       this.rebuildChunks();
       this.transcriptPreviewChunks = this.allChunks.slice();
-      this.noteTranscriptActivity("full-transcript");
-      diagnostics.record("captions:transcript-loaded", {
-        cueCount: response.cues.length,
-        mode: response.mode || response.sourceType || "direct transcript mode",
-        futureCueCount: response.futureCueCount || 0
-      });
-      if (this.panel) {
-        const stepSeconds = this.getKeyboardStepSeconds();
-        this.panel.setStatus(
-          "Loaded " +
-            this.chunks.length +
-            " chunks (" +
-            (response.mode || response.sourceType || "caption timeline") +
-            "). Hover panel + Space=+" +
-            stepSeconds +
-            "s, Shift+Space=-" +
-            stepSeconds +
-            "s.",
-          true
-        );
+      this.noteTranscriptActivity(opts.activityReason || "full-transcript");
+      if (opts.recordLoadedDiagnostic) {
+        diagnostics.record("captions:transcript-loaded", {
+          cueCount: response.cues.length,
+          mode: response.mode || response.sourceType || "direct transcript mode",
+          futureCueCount: response.futureCueCount || 0
+        });
       }
+      if (opts.syncAfterApply) {
+        this.syncActiveChunk(true);
+      }
+      const statusMessage = opts.useLoadedStatusMessage
+        ? this.getTranscriptLoadedStatusMessage(response)
+        : opts.statusMessage;
+      if (this.panel && statusMessage) {
+        this.panel.setStatus(statusMessage, true);
+      }
+      return true;
     }
 
     buildFixedWindowChunksFromCues(cues) {
-      const stepSeconds = this.getKeyboardStepSeconds();
+      const stepSeconds = this.getLiveWindowSizeSeconds();
       const source = Array.isArray(cues) ? cues.slice() : [];
       source.sort((left, right) => Number(left.start || 0) - Number(right.start || 0));
 
@@ -2506,6 +2731,7 @@
       }
 
       if (changedPanelClosed && isClosed) {
+        this.invalidateCaptionSession("panel-close");
         this.abortTranscriptLoad();
         this.stopLiveCapturePolling();
         this.stopTranscriptHeartbeat();
@@ -2547,7 +2773,7 @@
       return this.persistSettings({ ...this.settings, ...snapshot }, snapshot);
     }
 
-    getKeyboardStepSeconds() {
+    getLiveWindowSizeSeconds() {
       return 8;
     }
 
@@ -2699,8 +2925,9 @@
       );
     }
 
-    scheduleTranscriptHeartbeatCheck(reason, delayMs) {
-      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+    scheduleTranscriptHeartbeatCheck(reason, delayMs, sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (!this.isActiveCaptionSession(captionSessionId) || this.hasTranscriptActivity()) {
         this.stopTranscriptHeartbeat();
         return;
       }
@@ -2716,7 +2943,7 @@
       // scheduled only while the open panel is still empty.
       this.transcriptHeartbeatTimerId = window.setTimeout(() => {
         this.transcriptHeartbeatTimerId = 0;
-        this.checkTranscriptHeartbeat(reason || "timer");
+        this.checkTranscriptHeartbeat(reason || "timer", captionSessionId);
       }, delay);
     }
 
@@ -2733,8 +2960,9 @@
       return Boolean(video.currentSrc || video.src || Number.isFinite(duration) || duration === Number.POSITIVE_INFINITY);
     }
 
-    checkTranscriptHeartbeat(reason) {
-      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+    checkTranscriptHeartbeat(reason, sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (!this.isActiveCaptionSession(captionSessionId) || this.hasTranscriptActivity()) {
         this.stopTranscriptHeartbeat();
         return;
       }
@@ -2748,15 +2976,16 @@
           });
           return;
         }
-        this.scheduleTranscriptHeartbeatCheck("video-not-ready", TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS);
+        this.scheduleTranscriptHeartbeatCheck("video-not-ready", TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS, captionSessionId);
         return;
       }
       this.transcriptReadinessDeferrals = 0;
-      this.recoverTranscriptActivity(reason || "heartbeat");
+      this.recoverTranscriptActivity(reason || "heartbeat", captionSessionId);
     }
 
-    recoverTranscriptActivity(reason) {
-      if (this.destroyed || this.settings.panelClosed || this.hasTranscriptActivity()) {
+    recoverTranscriptActivity(reason, sessionId) {
+      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
+      if (!this.isActiveCaptionSession(captionSessionId) || this.hasTranscriptActivity()) {
         return;
       }
       if (this.isTranscriptHeartbeatExhausted()) {
@@ -2775,7 +3004,7 @@
       });
 
       this.ensurePageBridgeForWatchPage();
-      this.startCaptionEnsureLoop();
+      this.startCaptionEnsureLoop(captionSessionId);
       this.ensureCaptionsEnabledOnce();
       this.probeCaptionsNow();
 
@@ -2789,9 +3018,9 @@
       }
 
       if (!this.transcriptLoadInFlight) {
-        this.loadTranscript();
+        this.loadTranscript(captionSessionId);
       }
-      this.scheduleTranscriptHeartbeatCheck("post-recovery", TRANSCRIPT_HEARTBEAT_RECHECK_MS);
+      this.scheduleTranscriptHeartbeatCheck("post-recovery", TRANSCRIPT_HEARTBEAT_RECHECK_MS, captionSessionId);
     }
 
     nudgeCaptionWork(reason) {
@@ -2813,131 +3042,7 @@
       if (this.liveCaptureEnabled) {
         this.startLiveCapturePolling();
       }
-      this.scheduleTranscriptHeartbeatCheck(reason || "nudge", TRANSCRIPT_HEARTBEAT_GRACE_MS);
-    }
-
-    isChunkIndexAlignedWithTime(chunks, index, time) {
-      if (!Array.isArray(chunks) || index < 0 || index >= chunks.length) {
-        return false;
-      }
-      const now = Number(time);
-      if (!Number.isFinite(now)) {
-        return false;
-      }
-      const chunk = chunks[index];
-      const chunkStart = this.getChunkActiveStart(chunk);
-      const chunkEnd = Math.max(chunkStart + 0.25, Number(chunk && chunk.end ? chunk.end : chunkStart + 0.25));
-      const nextStart =
-        index < chunks.length - 1
-          ? Math.max(chunkStart + 0.001, this.getChunkActiveStart(chunks[index + 1]))
-          : Number.POSITIVE_INFINITY;
-      const effectiveEnd = Math.max(chunkEnd, nextStart === Number.POSITIVE_INFINITY ? chunkEnd : nextStart);
-      const leadTolerance = 0.08;
-      const trailTolerance = 0.75;
-      return now >= chunkStart - leadTolerance && now <= effectiveEnd + trailTolerance;
-    }
-
-    findShortcutFocusIndex(chunks, targetTime, isBackward) {
-      if (!Array.isArray(chunks) || !chunks.length) {
-        return -1;
-      }
-      const target = Number(targetTime);
-      if (!Number.isFinite(target)) {
-        return -1;
-      }
-      const active = this.findPlaybackActiveIndex(chunks, target);
-      if (active >= 0) {
-        return active;
-      }
-      const floorIndex = chunker.findChunkIndexAtTime(chunks, target);
-      if (isBackward) {
-        return floorIndex;
-      }
-      const nextIndex = floorIndex < 0 ? 0 : floorIndex + 1;
-      if (nextIndex >= 0 && nextIndex < chunks.length) {
-        const nextStart = this.getChunkSeekStart(chunks[nextIndex]);
-        if (Number.isFinite(nextStart) && nextStart <= target + 1.2) {
-          return nextIndex;
-        }
-      }
-      return floorIndex;
-    }
-
-    handleSpaceShortcut(isBackward) {
-      const video = this.refreshVideoReference();
-      if (!this.canRunShortcutSeek(video)) {
-        return;
-      }
-
-      const stepSeconds = this.getKeyboardStepSeconds();
-      const now = Number(video.currentTime || 0);
-      const duration = Number(video.duration);
-      const upperBound = Number.isFinite(duration) ? Math.max(0, duration) : Number.POSITIVE_INFINITY;
-      const sourceChunks = Array.isArray(this.allChunks) ? this.allChunks : [];
-      const timeIndex =
-        sourceChunks.length > 0 ? chunker.findChunkIndexAtTime(sourceChunks, now) : -1;
-      const visibleActiveIndex = Number.isInteger(this.activeIndex) ? this.activeIndex : -1;
-      const currentIndex =
-        this.isChunkIndexAlignedWithTime(sourceChunks, visibleActiveIndex, now)
-          ? visibleActiveIndex
-          : timeIndex;
-      const canUseChunkNavigation =
-        sourceChunks.length > 0 && this.isChunkIndexAlignedWithTime(sourceChunks, currentIndex, now);
-      const rawTarget = isBackward
-        ? Math.max(0, now - stepSeconds)
-        : now + stepSeconds;
-      let target = rawTarget;
-      let flashIndex = -1;
-      let flashAt = Number.NaN;
-
-      if (canUseChunkNavigation) {
-        const focusIndex = this.findShortcutFocusIndex(sourceChunks, rawTarget, isBackward);
-        if (focusIndex >= 0) {
-          const anchoredStart = this.getChunkSeekStart(sourceChunks[focusIndex]);
-          if (isBackward && Number.isFinite(anchoredStart) && anchoredStart <= now - 0.2) {
-            target = anchoredStart;
-            flashIndex = focusIndex;
-            flashAt = anchoredStart;
-          } else if (!isBackward && this.isChunkIndexAlignedWithTime(sourceChunks, focusIndex, rawTarget)) {
-            flashIndex = focusIndex;
-            flashAt = Number.isFinite(anchoredStart) ? anchoredStart : rawTarget;
-          }
-        }
-      }
-
-      target = Math.max(0, Math.min(upperBound, target));
-      if (flashIndex >= 0) {
-        const action = this.beginTimelineAction({
-          source: isBackward ? "rewind" : "forward",
-          targetTime: target,
-          index: flashIndex,
-          seekStart: flashAt,
-          forceGlowReset: true,
-          forceScroll: true
-        });
-        this.applyTimelineActionFocus(action);
-      } else {
-        this.beginTimelineAction({
-          source: isBackward ? "rewind" : "forward",
-          targetTime: target,
-          index: -1,
-          forceGlowReset: true,
-          forceScroll: true
-        });
-      }
-      const wasPaused = video.paused;
-      video.currentTime = target;
-      diagnostics.record("timeline:space", {
-        backward: Boolean(isBackward),
-        from: now,
-        to: target,
-        focused: flashIndex >= 0
-      });
-      this.commitTimelineSync(true);
-      this.requestTimelineSync(true);
-      window.setTimeout(() => this.commitTimelineSync(true), 80);
-      window.setTimeout(() => this.enforcePlaybackState(wasPaused), 0);
-      window.setTimeout(() => this.enforcePlaybackState(wasPaused), 80);
+      this.scheduleTranscriptHeartbeatCheck(reason || "nudge", TRANSCRIPT_HEARTBEAT_GRACE_MS, this.getActiveCaptionSessionId());
     }
 
     markBubbleFlashOnStart(index, seekStart, source) {

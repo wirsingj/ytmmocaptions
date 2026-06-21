@@ -11,6 +11,7 @@
       textScale: 120,
       themeName: "stone",
       customThemeColor: "#ded6c3",
+      animatedThemeName: null,
       panelPosition: null,
       panelSize: null,
       futurePreviewEnabled: true,
@@ -22,7 +23,8 @@
       textScale: 175,
       themeName: "custom",
       customThemeColor: "#d62fbe",
-      panelPosition: Object.freeze({ anchor: "player", left: 12, top: 12 }),
+      animatedThemeName: "rainbow",
+      panelPosition: Object.freeze({ anchor: "player", left: 12, top: 12, xRatio: 0, yRatio: 1 }),
       panelSize: Object.freeze({ width: 2400, height: 760 }),
       futurePreviewEnabled: true,
       caseFixEnabled: false,
@@ -33,6 +35,7 @@
       textScale: 140,
       themeName: "ocean",
       customThemeColor: "#a7cde3",
+      animatedThemeName: null,
       panelPosition: Object.freeze({ anchor: "player", left: 220, top: 64 }),
       panelSize: Object.freeze({ width: 820, height: 460 }),
       futurePreviewEnabled: true,
@@ -47,6 +50,7 @@
     textScale: 120,
     themeName: "stone",
     customThemeColor: "#ded6c3",
+    animatedThemeName: null,
     panelPosition: null,
     panelSize: null,
     futurePreviewHeight: 96,
@@ -108,7 +112,21 @@
     if (value.anchor === "player") {
       normalized.anchor = "player";
     }
+    const xRatio = Number(value.xRatio);
+    const yRatio = Number(value.yRatio);
+    if (Number.isFinite(xRatio)) {
+      normalized.xRatio = Math.max(0, Math.min(1, xRatio));
+    }
+    if (Number.isFinite(yRatio)) {
+      normalized.yRatio = Math.max(0, Math.min(1, yRatio));
+    }
     return normalized;
+  }
+
+  function normalizeAnimatedThemeName(value) {
+    const name = String(value || "").toLowerCase();
+    const allowed = ["rainbow", "earth", "dusk", "cyberpunk", "aurora"];
+    return allowed.includes(name) ? name : null;
   }
 
   function normalizePanelSize(value) {
@@ -120,10 +138,19 @@
     if (!Number.isFinite(width) || !Number.isFinite(height)) {
       return null;
     }
-    return {
+    const normalized = {
       width: Math.max(280, Math.round(width)),
       height: Math.max(220, Math.round(height))
     };
+    const widthRatio = Number(value.widthRatio);
+    const heightRatio = Number(value.heightRatio);
+    if (Number.isFinite(widthRatio)) {
+      normalized.widthRatio = Math.max(0, Math.min(1, widthRatio));
+    }
+    if (Number.isFinite(heightRatio)) {
+      normalized.heightRatio = Math.max(0, Math.min(1, heightRatio));
+    }
+    return normalized;
   }
 
   function normalizeFuturePreviewHeight(value) {
@@ -190,6 +217,7 @@
       textScale: normalizeTextScale(value.textScale),
       themeName: normalizeThemeName(value.themeName),
       customThemeColor: normalizeCustomThemeColor(value.customThemeColor),
+      animatedThemeName: normalizeAnimatedThemeName(value.animatedThemeName),
       panelPosition: normalizePanelPosition(value.panelPosition),
       panelSize: normalizePanelSize(value.panelSize),
       futurePreviewEnabled: typeof value.futurePreviewEnabled === "boolean" ? value.futurePreviewEnabled : DEFAULTS.futurePreviewEnabled,
@@ -198,11 +226,40 @@
     };
   }
 
+  function isLegacyBuiltInMusicWorkspaceSnapshot(snapshot) {
+    const position = snapshot && snapshot.panelPosition;
+    const size = snapshot && snapshot.panelSize;
+    return Boolean(
+      snapshot &&
+        snapshot.panelOpacity === 10 &&
+        snapshot.textScale === 175 &&
+        snapshot.themeName === "custom" &&
+        snapshot.customThemeColor === "#d62fbe" &&
+        !snapshot.animatedThemeName &&
+        snapshot.futurePreviewEnabled === true &&
+        snapshot.caseFixEnabled === false &&
+        snapshot.fadeTowardVideoCenter === false &&
+        position &&
+        position.anchor === "player" &&
+        position.left === 12 &&
+        position.top === 12 &&
+        !Number.isFinite(Number(position.yRatio)) &&
+        size &&
+        size.width === 2400 &&
+        size.height === 760
+    );
+  }
+
   function normalizeWorkspacePresets(value) {
     const source = Array.isArray(value) ? value : [];
     const presets = [];
     for (let index = 0; index < WORKSPACE_PRESET_COUNT; index += 1) {
-      presets.push(normalizeWorkspaceSnapshot(source[index]) || normalizeWorkspaceSnapshot(DEFAULT_WORKSPACE_PRESETS[index]));
+      const normalized = normalizeWorkspaceSnapshot(source[index]);
+      presets.push(
+        index === 1 && isLegacyBuiltInMusicWorkspaceSnapshot(normalized)
+          ? normalizeWorkspaceSnapshot(DEFAULT_WORKSPACE_PRESETS[index])
+          : normalized || normalizeWorkspaceSnapshot(DEFAULT_WORKSPACE_PRESETS[index])
+      );
     }
     return presets;
   }
@@ -217,6 +274,7 @@
       textScale: normalizeTextScale(source.textScale),
       themeName: normalizeThemeName(source.themeName),
       customThemeColor: normalizeCustomThemeColor(source.customThemeColor),
+      animatedThemeName: normalizeAnimatedThemeName(source.animatedThemeName),
       panelPosition: normalizePanelPosition(source.panelPosition),
       panelSize: normalizePanelSize(source.panelSize),
       futurePreviewHeight: normalizeFuturePreviewHeight(source.futurePreviewHeight),
@@ -246,6 +304,7 @@
       panelOpacity: normalized.panelOpacity,
       themeName: normalized.themeName,
       customThemeColor: normalized.customThemeColor,
+      animatedThemeName: normalized.animatedThemeName,
       fadeTowardVideoCenter: normalized.fadeTowardVideoCenter,
       layoutLocked: normalized.layoutLocked,
       // Presets are explicit local loadouts, so their saved slots survive even when Layout Lock is off.
