@@ -307,6 +307,8 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(chrome.includes("chromewebstore.googleapis.com/v2/"));
     assert.ok(chrome.includes(":fetchStatus"));
     assert.ok(chrome.includes("waitForUploadReady"));
+    assert.ok(chrome.includes("String(value).trim()"));
+    assert.ok(chrome.includes("trimmed.slice(1, -1).trim()"));
     assert.ok(!chrome.includes("console.log(accessToken"));
     assert.ok(!chrome.includes("CHROME_CLIENT_SECRET\";"));
     assert.ok(firefox.includes('if ($Mode -eq "upload")'));

@@ -9,10 +9,19 @@ function readArg(name, fallback = "") {
 
 function requireEnv(name) {
   const value = process.env[name];
-  if (!value) {
+  if (value == null) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
-  return value;
+  const trimmed = String(value).trim();
+  const normalized =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ? trimmed.slice(1, -1).trim()
+      : trimmed;
+  if (!normalized) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return normalized;
 }
 
 async function readJsonResponse(response) {
