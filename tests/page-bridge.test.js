@@ -313,6 +313,40 @@ exports.run = async function runPageBridgeTests(ctx) {
     assert.equal(response.payload.ok, true);
   });
 
+  await runCase("page bridge reload does not double-wrap timedtext fetch", async () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
+    bridge.reloadWithToken("fresh-token-after-reload");
+
+    const posts = await bridge.fetchTimedtext();
+    const captures = posts.filter((message) => message.type === "DIALOGUE_CAPTIONS_PAGE_TIMEDTEXT_CAPTURE");
+
+    assert.equal(bridge.cloneReads, 1);
+    assert.equal(captures.length, 1);
+    assert.equal(captures[0].bridgeToken, "fresh-token-after-reload");
+  });
+
+  await runCase("page bridge evicts old reload tokens from the accepted token window", async () => {
+    const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
+    const originalToken = bridge.bridgeToken;
+    for (let index = 0; index < 9; index += 1) {
+      bridge.reloadWithToken("fresh-token-" + index);
+    }
+
+    const staleResponse = await bridge.request(
+      "https://www.youtube.com/api/timedtext?v=abc123",
+      { method: "GET" },
+      originalToken
+    );
+    const freshResponse = await bridge.request(
+      "https://www.youtube.com/api/timedtext?v=abc123",
+      { method: "GET" },
+      "fresh-token-8"
+    );
+
+    assert.equal(staleResponse, undefined);
+    assert.equal(freshResponse.payload.ok, true);
+  });
+
   await runCase("page bridge does not post recurring snapshots off watch pages", () => {
     const bridge = loadPageBridge("https://www.youtube.com/watch?v=abc123");
     bridge.setUrl("https://www.youtube.com/results?search_query=cats");

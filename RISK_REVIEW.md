@@ -1,8 +1,10 @@
 # Risk Review
 
-Current branch reviewed: `1.1.5-work`.
+Current branch reviewed: `1.1.6-work`.
 
 Scope: architecture risk review only. No code changes are proposed here as implemented changes.
+
+2026-06-29 audit update: the earlier recommendation to add explicit caption session identity has largely been implemented through `src/caption-session.js`, `CaptionSessionManager`, session ids on transcript load/upgrade/heartbeat/ensure paths, and focused stale-session tests. The remaining risk has shifted from "missing session id" to "large coordinator modules and duplicated ownership boundaries."
 
 ## Ranked Failure Classes
 
@@ -131,287 +133,86 @@ Impact: Medium. Usually recoverable via Reset/reload, but can look like broken U
 
 Mitigation difficulty: Medium. Requires clearer product policy for global vs tab-local settings and possibly storage schema changes.
 
-## Highest-Value Target
+## Current Highest-Value Targets
 
-Selected target: lifecycle/session complexity in `src/content-script.js`.
+### 1. Reduce coordinator load in `src/content-script.js`
 
-Reason for selection:
-
-- It has the largest blast radius.
-- It intersects both other risks: YouTube bridge/transcript async and UI/settings state.
-- The recent hardening work added many guards in this area, which reduced known bugs but also shows that future bugs are likely to appear where session boundaries remain implicit.
-- Mitigation can be incremental and testable without adding features.
-
-## Focused Investigation: Lifecycle/Session Complexity
-
-### Findings
-
-#### Finding 1: `DialogueCaptionsApp` is the implicit owner of several independent sessions
-
-Evidence:
-
-- `src/content-script.js` constructor initializes state for video identity, panel, transcript load, live capture, native caption restore, heartbeat, seek focus, timeline sync, and live bubble caches.
-- `startCaptionWork()` controls first-open, reopen, preference reload, live fallback start, transcript load, heartbeat scheduling, and status updates.
-- `loadTranscript()` controls transcript session creation, aborting previous loads, retry policy, live fallback enablement, and final application of full transcript state.
-- `tryUpgradeLiveCaptureToTranscript()` is a second full-transcript acquisition path with its own abort controller and application logic.
-- `recoverTranscriptActivity()` can start/continue live capture and call `loadTranscript()`.
-
-Consequence:
-
-- The code relies on each method remembering every relevant guard and reset. There is no one object representing "the active caption acquisition session" or "the active live capture session."
-
-#### Finding 2: There are multiple transcript acquisition entry points with overlapping responsibilities
-
-Evidence:
-
-- `startCaptionWork()` calls `loadTranscript()`.
-- `recoverTranscriptActivity()` calls `loadTranscript()` if `!this.transcriptLoadInFlight`.
-- `tryUpgradeLiveCaptureToTranscript()` calls `captionTimeline.acquireFullTimeline()` directly instead of going through `loadTranscript()`.
-- `loadTranscript()` itself can recursively call `this.loadTranscript()` after a reload-race delay.
-
-Existing protection:
-
-- `loadTranscript()` aborts the previous `loadAbortController`.
-- `transcriptLoadInFlight` prevents heartbeat from starting another `loadTranscript()`.
-- `tryUpgradeLiveCaptureToTranscript()` uses `transcriptUpgradeInFlight`.
+The original lifecycle/session risk has improved. `CaptionSessionManager` exists, content-script paths pass session ids through transcript load, live upgrade, heartbeat, and caption ensure paths, and tests cover session invalidation and abort behavior.
 
 Remaining concern:
 
-- The full transcript "apply success" logic exists in both `loadTranscript()` and `tryUpgradeLiveCaptureToTranscript()`, with similar but not identical guard structure.
-- The upgrade path is not governed by `transcriptLoadNonce`.
+- `DialogueCaptionsApp` is still the central owner of route state, video binding, transcript acquisition, live fallback, heartbeat, native CC state, panel sync, timeline actions, and settings persistence.
+- The next useful move is not "add sessions"; it is to extract clearer boundaries around caption acquisition, native CC ownership, and timeline/seek focus while preserving behavior.
 
-#### Finding 3: Close/open is a lifecycle boundary, but not an ownership boundary
+Useful first slice:
 
-Evidence:
+- Extract a small caption acquisition boundary or helper methods around `loadTranscript()`, `tryUpgradeLiveCaptureToTranscript()`, `canApplyFullTranscriptResponse()`, and `applyFullTranscriptResponse()`.
+- Keep product behavior unchanged.
+- Add or preserve stale-session tests.
 
-- Closing the panel stops polling and restores native CC, but does not destroy `DialogueCaptionsApp`.
-- Reopening calls `startCaptionWork()` with `captionWorkStarted === true`.
-- Reopen can reuse existing transcript state or clear/reload based on `lastCaptionPreferenceKey`, `openCaptionPreferenceKey`, and `hasTranscriptActivity()`.
+### 2. Add a settings ownership table
 
-Existing protection:
+Current docs explain Layout Lock and workspace presets, but `settings-store.js` still has many fields whose ownership is easy to blur.
 
-- Reopen refreshes page snapshot with `pageContext.requestSnapshot(650)`.
-- Preference changes clear stale state and reload.
-- If unchanged, full transcript state can be reused for speed.
+Concrete target:
 
-Remaining concern:
+- Document fields as global readability, layout-locked workspace, workspace preset snapshot, runtime-only, or never stored.
+- Use that table before adding any new UI preference.
 
-- Reuse safety depends on the current preference key being the complete set of conditions that make old transcript state valid.
-- Future settings such as dynamic transcript source preference, translation mode, or per-video display filters could require inclusion in the reuse key.
+### 3. Replace highest-value source-inspection tests with behavior tests
 
-#### Finding 4: Heartbeat recovery can revive several systems at once
+Source-inspection tests are useful and have caught architectural regressions, but they are brittle during refactors.
 
-Evidence:
+Concrete target:
 
-- `recoverTranscriptActivity()` calls `ensurePageBridgeForWatchPage()`, `startCaptionEnsureLoop()`, `ensureCaptionsEnabledOnce()`, `probeCaptionsNow()`, `enableLiveCaptureMode()` or `startLiveCapturePolling()`, `captureLiveCaptionLine()`, and possibly `loadTranscript()`.
-- Heartbeat is intentionally one-shot/rebounded rather than unbounded polling.
+- For route/session, settings ownership, and bridge security invariants, keep the source checks until behavior harnesses exist.
+- When touching a brittle source check, ask whether a VM-level behavior test can replace it.
 
-Existing protection:
+### 4. Add a minimal real-browser smoke before releases
 
-- Max recovery attempts and readiness deferrals.
-- Does not reinitialize live mode if live capture already exists.
-- Stops when transcript activity exists.
+Optional Playwright diagnostics exist, but they are not release-gated.
 
-Remaining concern:
+Concrete target:
 
-- It is an emergency recovery path with broad side effects. Future edits may use it to paper over unrelated readiness bugs and increase state coupling.
+- Keep full e2e optional.
+- Add or document a minimal manual/pre-release smoke: build extension, open one captioned URL, confirm panel/bubbles, navigate to a second URL, confirm stale text does not carry over.
+- Decide later whether this belongs in CI, a nightly job, or manual release checklist.
 
-#### Finding 5: Native YouTube CC state is coupled to caption acquisition lifecycle
+### 5. Review local diagnostic artifact hygiene
 
-Evidence:
+Ignored local artifacts under `tests/artifacts/` can become large and pollute broad searches. Current audit found local ignored artifacts around 122 MB.
 
-- `ensureCaptionsEnabledOnce()` captures initial subtitle state and may call page bridge probe, player toggle, or button fallback.
-- `restoreSubtitlesIfExtensionEnabled()` runs on panel close and destroy.
-- `startCaptionEnsureLoop()` schedules multiple delayed ensure attempts.
+Concrete target:
 
-Existing protection:
+- Keep `tests/artifacts/` ignored.
+- Prefer `rg --glob '!tests/artifacts/**'` for broad text audits when local diagnostics exist.
+- Consider adding a cleanup note to the diagnostic script or maintainer guide.
 
-- Extension records whether captions were off before it enabled them.
-- Restore resets ensure flags on close.
-- Recent tests check that probing does not change selected caption language.
+## Current Short-Term Backlog
 
-Remaining concern:
+1. Clarify settings ownership and persistence buckets in `ARCHITECTURE.md` or `settings-store.js`.
+2. Extract one caption acquisition boundary from `src/content-script.js`.
+3. Add behavior coverage for a stale async race that is currently source-asserted.
+4. Add a minimal release smoke checklist or command.
+5. Review page bridge comments/invariants before any bridge feature work.
 
-- This state is not isolated from transcript/live session state. Future caption-probe paths must update restore bookkeeping correctly.
+## What Not To Do
 
-### Likely Failure Scenarios
+- Do not rewrite `content-script.js` wholesale.
+- Do not promote generic video support by only adding manifest permissions.
+- Do not persist transcript text, active bubble, playback position, or viewing history.
+- Do not make optional e2e a mandatory PR gate until flake characteristics are understood.
+- Do not set YouTube selected caption track from the extension unless product/review requirements change.
+- Do not make YAIML a build contract; it is loose project memory for humans and agents.
 
-1. Route changes during transcript retry.
+## Audit Confidence
 
-- A transcript load fails with "No caption tracks", schedules the 950 ms retry, then YouTube route changes.
-- Current guard checks `signal.aborted`, `destroyed`, and later `isCurrentVideoPage()`, but future changes to retry handling could accidentally call back into `loadTranscript()` on a stale app.
-- Failure symptom: old app restarts live fallback or clears panel state during/after new video app startup.
+High confidence in source/test/document structure findings.
 
-2. Live upgrade and normal load overlap.
+Medium confidence in runtime YouTube behavior findings, because no live browser/manual QA was performed in this review.
 
-- Live fallback is active. Heartbeat or reopen starts `loadTranscript()` while `tryUpgradeLiveCaptureToTranscript()` is also in flight.
-- Both can acquire full timelines and both have logic to disable live mode and apply cues.
-- Existing guards reduce this, but the upgrade path has separate session identity from normal load.
-- Failure symptom: duplicate status transitions, live state cleared at unexpected time, or newer transcript state overwritten by older upgrade response.
-
-3. Close/reopen while caption ensure timers are active.
-
-- User closes panel after initial open while delayed `startCaptionEnsureLoop()` timers still exist.
-- Timers check `destroyed` and `captionsEnsured`, while `ensureCaptionsEnabledOnce()` checks `panelClosed`.
-- Future edits to the timer callback or ensure path could bypass closed-panel semantics.
-- Failure symptom: native YouTube CC toggles after panel is closed.
-
-4. Future feature adds a new setting that affects transcript contents but not reuse key.
-
-- Example classes: translation mode, transcript source priority, dynamic language selection, custom filtering.
-- Reopen path reuses transcript state because selected YouTube caption language did not change.
-- Failure symptom: panel shows transcript built under old settings until route reload/full reload.
-
-5. Same-video route nudges become too aggressive.
-
-- YouTube emits frequent same-video events.
-- `nudgeCaptionWork()` currently only acts when the open panel is empty and no heartbeat is pending.
-- A future change could start caption work repeatedly or reset recovery counters incorrectly.
-- Failure symptom: redundant probes, native CC toggles, or repeated transcript loads.
-
-### Recommended Mitigations
-
-#### Mitigation 1: Introduce an explicit caption work session id
-
-Goal:
-
-- Centralize ownership of work started by `startCaptionWork()`, `loadTranscript()`, heartbeat recovery, and live upgrade.
-
-Shape:
-
-- Add a monotonic `captionSessionId`.
-- Increment on route app creation, panel open after close, preference reload, and explicit clear/reload.
-- Pass the id into transcript load, live upgrade, heartbeat callbacks, and caption ensure loop.
-- Before applying any result, check the id.
-
-Why this is highest leverage:
-
-- It turns many local stale checks into one shared invariant.
-- It does not require a broad refactor.
-- It can coexist with existing `destroyed`, `isCurrentVideoPage()`, and `transcriptLoadNonce` guards.
-
-#### Mitigation 2: Extract transcript result application into one method
-
-Goal:
-
-- Avoid drift between `loadTranscript()` success path and `tryUpgradeLiveCaptureToTranscript()` success path.
-
-Shape:
-
-- Introduce a method like `applyFullTranscriptResponse(response, source, sessionId)`.
-- It verifies current video, session id, panel state, preference key, cue array, and destroyed state.
-- It owns `disableLiveCaptureMode()`, cue assignment, chunk rebuild, preview assignment, activity note, sync, and status.
-
-Why:
-
-- Full transcript application is a critical state transition and should not be duplicated.
-
-#### Mitigation 3: Separate native CC ensure/restore into a small session object
-
-Goal:
-
-- Make it harder for future probes to mutate native CC state without restore bookkeeping.
-
-Shape:
-
-- Keep API small: `beginPanelOpen()`, `ensureOnce()`, `startRetryLoop(sessionId)`, `restoreIfNeeded()`, `reset()`.
-- Internally own `captionsWereOnBeforeExtension`, `captionsEnabledByExtension`, `captionsEnsured`, `captionEnsureStarted`.
-
-Why:
-
-- Native CC side effects are user-visible and "dangerous" because they alter YouTube state outside the panel.
-
-#### Mitigation 4: Define a transcript reuse key function
-
-Goal:
-
-- Prevent future feature state from being forgotten in reopen reuse decisions.
-
-Shape:
-
-- Replace ad hoc preference key use with a named method such as `getTranscriptValidityKey()`.
-- Include selected caption preference now.
-- Document that any future setting affecting transcript contents must be included.
-
-Why:
-
-- The current key is correct for today's language-centered behavior but not necessarily for future transcript-affecting options.
-
-### Rough Implementation Plan
-
-This is intentionally incremental and should not be done as a broad rewrite.
-
-1. Add session id plumbing.
-
-- Add `captionSessionId = 0` to `DialogueCaptionsApp`.
-- Add `beginCaptionSession(reason)` and `isActiveCaptionSession(sessionId)`.
-- Increment on first `startCaptionWork()`, preference reload, close/open reload, and route-created app startup.
-- Do not increment for same-session fast reuse.
-
-2. Guard async callbacks with session id.
-
-- Pass session id into `loadTranscript(sessionId)`.
-- Pass session id into retry delay and timeout result application.
-- Pass session id into `tryUpgradeLiveCaptureToTranscript(sessionId)`.
-- Pass session id into heartbeat scheduling/recovery.
-- Pass session id into caption ensure loop timers if practical.
-
-3. Extract full transcript application.
-
-- Move shared success-state transition out of `loadTranscript()` and `tryUpgradeLiveCaptureToTranscript()`.
-- Preserve current status messages by passing source/context options.
-
-4. Introduce `getTranscriptValidityKey()`.
-
-- Initially return current caption preference key.
-- Use it for `lastCaptionPreferenceKey` / `openCaptionPreferenceKey` comparisons or rename those fields to validity-key names.
-
-5. Optionally extract native CC session.
-
-- Do this only after tests are in place for session id and transcript application.
-- Keep behavior identical.
-
-### Rough Test Plan
-
-Add behavior-oriented tests before implementation where possible.
-
-1. Stale retry cannot restart old work.
-
-- Simulate `loadTranscript()` failure with likely reload-race reason.
-- Before retry fires, invalidate session or route.
-- Assert no second effective transcript application, no live reinitialization, and no panel mutation.
-
-2. Live upgrade result loses to newer transcript load.
-
-- Start live upgrade acquisition.
-- Start a newer caption session/load before upgrade resolves.
-- Resolve old upgrade.
-- Assert old response is ignored.
-
-3. Normal transcript result loses to newer preference reload.
-
-- Start transcript load under preference A.
-- Change/open session to preference B.
-- Resolve A.
-- Assert A is ignored and state remains empty/loading/B.
-
-4. Close cancels caption ensure side effects.
-
-- Start caption ensure retry loop.
-- Close panel before delayed ensure fires.
-- Run timers.
-- Assert native CC toggle path is not called.
-
-5. Shared full transcript application path.
-
-- Test that normal load success and live upgrade success both pass through the same validity checks.
-- Avoid source-string-only assertion if possible; use instrumentation/mocks.
-
-6. Transcript reuse key contract.
-
-- Unit test that reopen reuse depends on `getTranscriptValidityKey()`.
-- Add a comment/test fixture that future transcript-affecting settings must alter this key.
+Low confidence in store API behavior, because workflows/scripts were inspected but not exercised against Chrome Web Store or AMO.
 
 ## Summary
 
-The current architecture has meaningful stale-state protections, and recent work reduced known route/language/video transition risks. The remaining highest-risk class is not a single missing guard; it is implicit session ownership inside `src/content-script.js`. The next architecture-hardening pass should make caption work session identity explicit and centralize full transcript application. That would reduce future bugs without changing product behavior or requiring a broad refactor.
+The project has stronger stale-session defenses than the earlier risk review implied. The main remaining risks are now scale and coupling: `content-script.js` and `ui-panel.js` remain large stateful modules, YouTube remains an external moving target, release/store behavior is not exercised against real services in tests, and real browser smoke remains optional. The best next work is incremental boundary extraction plus higher-value behavior tests, not a broad rewrite.

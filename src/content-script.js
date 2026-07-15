@@ -6,6 +6,8 @@
   const bubbleState = app.bubbleState;
   const captionText = app.captionText;
   const CaptionSessionManager = app.CaptionSessionManager;
+  const CaptionAcquisition = app.CaptionAcquisition;
+  const NativeCaptionController = app.NativeCaptionController;
   const platform = app.platform;
   const pageContext = app.pageContext;
   const diagnostics = app.diagnostics || { record() {} };
@@ -20,6 +22,8 @@
     !bubbleState ||
     !captionText ||
     !CaptionSessionManager ||
+    !CaptionAcquisition ||
+    !NativeCaptionController ||
     !platform ||
     !DialoguePanel
   ) {
@@ -33,6 +37,7 @@
   const TRANSCRIPT_HEARTBEAT_VIDEO_WAIT_MS = 2400;
   const MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3;
   const MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS = 20;
+  const MAX_LIVE_BUBBLE_ENTITIES = 2400;
 
   class DialogueCaptionsApp {
     constructor(videoId) {
@@ -55,6 +60,14 @@
       this.destroyed = false;
       this.captionSessions = new CaptionSessionManager();
       this.captionSessionId = 0;
+      this.captionAcquisition = new CaptionAcquisition(this, {
+        captionTimeline: captionTimeline,
+        diagnostics: diagnostics,
+        timers: scope
+      });
+      this.nativeCaptions = new NativeCaptionController(this, {
+        pageContext: pageContext
+      });
       this.timelineActionId = 0;
       this.timelineAction = null;
       this.timelineSyncForceScroll = false;
@@ -71,11 +84,7 @@
       this.liveOverlayUtterance = null;
       this.liveCaptureStartedAt = 0;
       this.lastCaptionProbeAt = 0;
-      this.captionsEnsured = false;
-      this.captionEnsureStarted = false;
       this.captionWorkStarted = false;
-      this.captionsWereOnBeforeExtension = null;
-      this.captionsEnabledByExtension = false;
       this.lastCaptionPreferenceKey = "";
       this.openCaptionPreferenceKey = "";
       this.transcriptMode = "initializing";
@@ -1298,9 +1307,7 @@
         if (typeof player.isSubtitlesOn === "function" && typeof player.toggleSubtitles === "function") {
           if (!player.isSubtitlesOn()) {
             player.toggleSubtitles();
-            if (this.captionsWereOnBeforeExtension === false) {
-              this.captionsEnabledByExtension = true;
-            }
+            this.nativeCaptions.markEnabledByExtensionIfInitiallyOff();
           }
         }
       } catch {
@@ -1373,64 +1380,31 @@
     }
 
     captureInitialSubtitleState() {
-      if (this.captionsWereOnBeforeExtension !== null) {
-        return;
-      }
-      this.captionsWereOnBeforeExtension = this.isSubtitlesEnabled();
+      this.nativeCaptions.captureInitialState();
     }
 
     resetCaptionEnsureState() {
-      this.captionsEnsured = false;
-      this.captionEnsureStarted = false;
+      this.nativeCaptions.resetEnsureState();
     }
 
     restoreSubtitlesIfExtensionEnabled() {
-      const subtitlesWereOff = this.captionsWereOnBeforeExtension === false;
-      if (this.captionsEnabledByExtension && subtitlesWereOff && this.isSubtitlesEnabled()) {
-        this.setSubtitlesEnabled(false);
-      }
-      this.captionsEnabledByExtension = false;
-      this.captionsWereOnBeforeExtension = null;
-      this.resetCaptionEnsureState();
+      this.nativeCaptions.restoreIfExtensionEnabled();
     }
 
     ensureCaptionsEnabledOnce() {
-      if (this.destroyed || this.settings.panelClosed) {
-        return;
-      }
-      this.captureInitialSubtitleState();
-      if (this.isSubtitlesEnabled()) {
-        this.captionsEnsured = true;
-        return;
-      }
-
-      if (pageContext && typeof pageContext.triggerCaptionProbe === "function") {
-        pageContext.triggerCaptionProbe();
-      }
-      this.probeCaptionsNow();
-
-      if (!this.isSubtitlesEnabled()) {
-        if (this.clickSubtitlesButtonFallback() && this.captionsWereOnBeforeExtension === false) {
-          this.captionsEnabledByExtension = true;
-        }
-      }
-
-      if (this.isSubtitlesEnabled()) {
-        this.captionsEnsured = true;
-        this.captionsEnabledByExtension = this.captionsWereOnBeforeExtension === false;
-      }
+      this.nativeCaptions.ensureOnce();
     }
 
     startCaptionEnsureLoop(sessionId) {
       const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
-      if (this.captionEnsureStarted) {
+      if (this.nativeCaptions.isEnsureStarted()) {
         return;
       }
-      this.captionEnsureStarted = true;
+      this.nativeCaptions.markEnsureStarted();
       const delaysMs = [0, 350, 800, 1500, 2600, 4200, 6200];
       for (let index = 0; index < delaysMs.length; index += 1) {
         const timerId = window.setTimeout(() => {
-          if (!this.isActiveCaptionSession(captionSessionId) || this.captionsEnsured) {
+          if (!this.isActiveCaptionSession(captionSessionId) || this.nativeCaptions.isEnsured()) {
             return;
           }
           this.ensureCaptionsEnabledOnce();
@@ -1922,14 +1896,7 @@
     }
 
     abortTranscriptLoad() {
-      if (this.loadAbortController) {
-        this.loadAbortController.abort();
-        if (this.loadAbortSessionId) {
-          this.captionSessions.releaseAbortController(this.loadAbortSessionId, this.loadAbortController);
-        }
-        this.loadAbortController = null;
-        this.loadAbortSessionId = 0;
-      }
+      this.captionAcquisition.abortLoad();
     }
 
     maybeUpgradeLiveCaptureToTranscript() {
@@ -1952,178 +1919,11 @@
     }
 
     async tryUpgradeLiveCaptureToTranscript(sessionId) {
-      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
-      if (
-        this.transcriptUpgradeInFlight ||
-        !this.isActiveCaptionSession(captionSessionId) ||
-        !this.liveCaptureEnabled ||
-        !this.isCurrentVideoPage()
-      ) {
-        return;
-      }
-      this.transcriptUpgradeInFlight = true;
-      this.ensurePageBridgeForWatchPage();
-      this.probeCaptionsNow();
-      const controller = this.captionSessions.createAbortController(captionSessionId);
-      if (!controller) {
-        this.transcriptUpgradeInFlight = false;
-        return;
-      }
-      const signal = controller.signal;
-      const timeoutId = window.setTimeout(() => controller.abort(), 11000);
-
-      try {
-        await this.waitForCaptionContextReady(1600);
-        if (
-          signal.aborted ||
-          !this.isActiveCaptionSession(captionSessionId) ||
-          !this.liveCaptureEnabled ||
-          !this.isCurrentVideoPage()
-        ) {
-          return;
-        }
-        const response = await captionTimeline.acquireFullTimeline(window.location.href, signal, {
-          videoElement: this.video
-        });
-        if (
-          !response ||
-          !response.ok ||
-          response.videoId !== this.videoId ||
-          !Array.isArray(response.cues) ||
-          !response.cues.length ||
-          !this.isActiveCaptionSession(captionSessionId) ||
-          !this.isCurrentVideoPage()
-        ) {
-          return;
-        }
-        this.applyFullTranscriptResponse(response, captionSessionId, {
-          activityReason: "transcript-upgrade",
-          preserveOpenCaptionPreference: true,
-          statusMessage: "Full caption timeline loaded. Next up previews are available.",
-          syncAfterApply: true
-        });
-      } catch (error) {
-        if (!error || error.name !== "AbortError") {
-          // Keep live overlay mode quiet; failed upgrades are expected on some videos.
-        }
-      } finally {
-        window.clearTimeout(timeoutId);
-        this.captionSessions.releaseAbortController(captionSessionId, controller);
-        this.transcriptUpgradeInFlight = false;
-      }
+      return this.captionAcquisition.tryUpgradeLiveCaptureToTranscript(sessionId);
     }
 
     async loadTranscript(sessionId) {
-      const captionSessionId = Number(sessionId || this.getActiveCaptionSessionId());
-      if (!this.isActiveCaptionSession(captionSessionId)) {
-        return;
-      }
-      this.abortTranscriptLoad();
-      this.loadAbortController = this.captionSessions.createAbortController(captionSessionId);
-      if (!this.loadAbortController) {
-        return;
-      }
-      this.loadAbortSessionId = captionSessionId;
-      const controller = this.loadAbortController;
-      const loadId = this.transcriptLoadNonce + 1;
-      this.transcriptLoadNonce = loadId;
-      this.transcriptLoadInFlight = true;
-      this.transcriptMode = "loading";
-      this.transcriptLoadAttempts += 1;
-
-      const url = window.location.href;
-      const signal = controller.signal;
-      const transcriptTimeoutMs = 10000;
-      if (signal.aborted || !this.isActiveCaptionSession(captionSessionId)) {
-        if (loadId === this.transcriptLoadNonce) {
-          this.transcriptLoadInFlight = false;
-        }
-        return;
-      }
-      this.maybeProbeCaptions();
-      await this.waitForCaptionContextReady(2400);
-      if (signal.aborted || !this.isActiveCaptionSession(captionSessionId)) {
-        if (loadId === this.transcriptLoadNonce) {
-          this.transcriptLoadInFlight = false;
-        }
-        return;
-      }
-      let response = null;
-      let timeoutId = 0;
-      try {
-        response = await Promise.race([
-          captionTimeline.acquireFullTimeline(url, signal, {
-            videoElement: this.video
-          }),
-          new Promise((resolve) => {
-            timeoutId = window.setTimeout(() => {
-              resolve({ ok: false, reason: "Transcript loading timed out." });
-            }, transcriptTimeoutMs);
-          })
-        ]);
-      } finally {
-        if (timeoutId) {
-          window.clearTimeout(timeoutId);
-        }
-        if (loadId === this.transcriptLoadNonce) {
-          this.transcriptLoadInFlight = false;
-        }
-        if (this.loadAbortController === controller && this.loadAbortSessionId === captionSessionId) {
-          this.captionSessions.releaseAbortController(captionSessionId, controller);
-          this.loadAbortController = null;
-          this.loadAbortSessionId = 0;
-        }
-      }
-
-      if (!response || !response.ok) {
-        if (!this.isActiveCaptionSession(captionSessionId)) {
-          return;
-        }
-        const reason = String(response && response.reason ? response.reason : "");
-        const isLikelyReloadRace =
-          reason.includes("No caption tracks") || reason.includes("No subtitle cues");
-        if (isLikelyReloadRace && this.transcriptLoadAttempts <= 1 && !signal.aborted && this.isActiveCaptionSession(captionSessionId)) {
-          await new Promise((resolve) => window.setTimeout(resolve, 950));
-          if (!signal.aborted && this.isActiveCaptionSession(captionSessionId)) {
-            return this.loadTranscript(captionSessionId);
-          }
-        }
-        const shouldEnableLiveCapture =
-          reason.includes("No subtitle cues") ||
-          reason.includes("No caption tracks") ||
-          reason.includes("Transcript loading failed") ||
-          reason.includes("timed out");
-
-        if (shouldEnableLiveCapture) {
-          this.enableLiveCaptureMode();
-          this.transcriptMode = "live overlay fallback mode";
-          diagnostics.record("captions:transcript-failed", {
-            attempts: this.transcriptLoadAttempts,
-            reason: reason
-          });
-        }
-        if (this.panel) {
-          if (!this.cues.length || !this.hasLiveCaptionContext()) {
-            this.clearCaptionStateForUnavailableVideo();
-          }
-          this.panel.setStatus(
-            shouldEnableLiveCapture
-              ? "Turn on YouTube CC if needed. Click any chat bubble to seek."
-              : (response && response.reason) || "Subtitles are unavailable."
-          );
-        }
-        return;
-      }
-
-      if (!this.canApplyFullTranscriptResponse(response, captionSessionId)) {
-        return;
-      }
-
-      this.applyFullTranscriptResponse(response, captionSessionId, {
-        activityReason: "full-transcript",
-        recordLoadedDiagnostic: true,
-        useLoadedStatusMessage: true
-      });
+      return this.captionAcquisition.loadTranscript(sessionId);
     }
 
     canApplyFullTranscriptResponse(response, sessionId) {
@@ -2522,6 +2322,43 @@
       }
     }
 
+    pruneLiveBubbleMemory() {
+      if (!Array.isArray(this.liveBubbles) || this.liveBubbles.length <= MAX_LIVE_BUBBLE_ENTITIES) {
+        return;
+      }
+      const excessCount = this.liveBubbles.length - MAX_LIVE_BUBBLE_ENTITIES;
+      let removeCount = 0;
+      while (removeCount < excessCount) {
+        const candidate = this.liveBubbles[removeCount];
+        if (!candidate || !candidate.locked) {
+          break;
+        }
+        removeCount += 1;
+      }
+      if (removeCount <= 0) {
+        return;
+      }
+      const removed = this.liveBubbles.splice(0, removeCount);
+      if (!this.liveDisplayBubbleCache || !(this.liveDisplayBubbleCache instanceof Map)) {
+        this.liveDisplayBubbleCache = new Map();
+      }
+      for (let index = 0; index < removed.length; index += 1) {
+        const bubble = removed[index];
+        if (bubble && bubble.uid) {
+          this.liveDisplayBubbleCache.delete(bubble.uid);
+        }
+      }
+      this.liveBucketToBubble = new Map();
+      for (let index = 0; index < this.liveBubbles.length; index += 1) {
+        const bubble = this.liveBubbles[index];
+        bubble.id = index;
+        const buckets = Array.isArray(bubble.bucketIndexes) ? bubble.bucketIndexes : [];
+        for (let bucketOffset = 0; bucketOffset < buckets.length; bucketOffset += 1) {
+          this.liveBucketToBubble.set(buckets[bucketOffset], bubble);
+        }
+      }
+    }
+
     syncLiveBubblesFromBuckets(chunks) {
       const source = Array.isArray(chunks) ? chunks : [];
       if (!this.liveBucketToBubble || !(this.liveBucketToBubble instanceof Map)) {
@@ -2584,6 +2421,7 @@
       if (Number.isFinite(this.liveMaxBucketIndexSeen)) {
         this.sealFinishedLiveBubbles(this.liveMaxBucketIndexSeen);
       }
+      this.pruneLiveBubbleMemory();
 
       for (let index = 0; index < this.liveBubbles.length; index += 1) {
         this.liveBubbles[index].id = index;

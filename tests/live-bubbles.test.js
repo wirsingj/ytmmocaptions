@@ -6,6 +6,8 @@ const ROOT_DIR = path.resolve(__dirname, "..");
 exports.run = async function runLiveBubbleTests(ctx) {
   const { assert, runCase } = ctx;
   const source = fs.readFileSync(path.join(ROOT_DIR, "src", "content-script.js"), "utf8");
+  const acquisitionSource = fs.readFileSync(path.join(ROOT_DIR, "src", "caption-acquisition.js"), "utf8");
+  const nativeCaptionsSource = fs.readFileSync(path.join(ROOT_DIR, "src", "native-captions.js"), "utf8");
 
   await runCase("live bubble thresholds prevent paragraph-sized unlocked bubbles", () => {
     assert.ok(source.includes("CONVERSATIONAL_CHUNKING.live"));
@@ -70,6 +72,18 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("bubble.immutable = true"));
     assert.ok(source.includes("this.sealFinishedLiveBubbles(this.liveMaxBucketIndexSeen)"));
     assert.ok(source.includes("activeBubble.locked || this.shouldStartNewLiveBubble(activeBubble, nextChunk)"));
+  });
+
+  await runCase("live fallback prunes old locked bubble cache for long sessions", () => {
+    const pruneStart = source.indexOf("    pruneLiveBubbleMemory()");
+    const pruneBody = source.slice(pruneStart, source.indexOf("    syncLiveBubblesFromBuckets(chunks)", pruneStart));
+
+    assert.ok(source.includes("MAX_LIVE_BUBBLE_ENTITIES = 2400"));
+    assert.ok(pruneBody.includes("this.liveBubbles.length <= MAX_LIVE_BUBBLE_ENTITIES"));
+    assert.ok(pruneBody.includes("if (!candidate || !candidate.locked)"));
+    assert.ok(pruneBody.includes("this.liveDisplayBubbleCache.delete(bubble.uid)"));
+    assert.ok(pruneBody.includes("this.liveBucketToBubble = new Map();"));
+    assert.ok(source.includes("this.pruneLiveBubbleMemory();"));
   });
 
   await runCase("overlay text is deduped and merged instead of duplicated", () => {
@@ -141,14 +155,15 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("captureInitialSubtitleState()"));
     assert.ok(source.includes("resetCaptionEnsureState()"));
     assert.ok(probeBody.includes("this.captureInitialSubtitleState();"));
-    assert.ok(probeBody.includes("this.captionsEnabledByExtension = true;"));
-    assert.ok(ensureBody.includes("this.captureInitialSubtitleState();"));
-    assert.ok(ensureBody.includes("this.captionsEnabledByExtension = true;"));
-    assert.ok(restoreBody.includes("const subtitlesWereOff = this.captionsWereOnBeforeExtension === false;"));
-    assert.ok(restoreBody.includes("this.captionsEnabledByExtension && subtitlesWereOff && this.isSubtitlesEnabled()"));
-    assert.ok(restoreBody.includes("this.setSubtitlesEnabled(false);"));
-    assert.ok(restoreBody.includes("this.captionsWereOnBeforeExtension = null;"));
-    assert.ok(restoreBody.includes("this.resetCaptionEnsureState();"));
+    assert.ok(probeBody.includes("this.nativeCaptions.markEnabledByExtensionIfInitiallyOff();"));
+    assert.ok(ensureBody.includes("this.nativeCaptions.ensureOnce();"));
+    assert.ok(nativeCaptionsSource.includes("this.captureInitialState();"));
+    assert.ok(restoreBody.includes("this.nativeCaptions.restoreIfExtensionEnabled();"));
+    assert.ok(nativeCaptionsSource.includes("const subtitlesWereOff = this.captionsWereOnBeforeExtension === false;"));
+    assert.ok(nativeCaptionsSource.includes("this.captionsEnabledByExtension && subtitlesWereOff && this.owner.isSubtitlesEnabled()"));
+    assert.ok(nativeCaptionsSource.includes("this.owner.setSubtitlesEnabled(false);"));
+    assert.ok(nativeCaptionsSource.includes("this.captionsWereOnBeforeExtension = null;"));
+    assert.ok(nativeCaptionsSource.includes("this.resetEnsureState();"));
     const sessionStart = source.indexOf("    beginCaptionSession(reason)");
     const sessionBody = source.slice(sessionStart, source.indexOf("    getActiveCaptionSessionId()", sessionStart));
     assert.ok(sessionBody.includes("this.stopTranscriptHeartbeat();"));
@@ -258,22 +273,23 @@ exports.run = async function runLiveBubbleTests(ctx) {
     const bridgeBody = source.slice(bridgeStart, source.indexOf("    async waitForVideoElement", bridgeStart));
     const captureStart = source.indexOf("    captureLiveCaptionLine()");
     const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
-    const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript(sessionId)");
-    const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript(sessionId)", upgradeStart));
-    const loadStart = source.indexOf("    async loadTranscript(sessionId)");
-    const loadBody = source.slice(loadStart, source.indexOf("    estimateTokenTimings", loadStart));
+    const upgradeStart = acquisitionSource.indexOf("    async tryUpgradeLiveCaptureToTranscript(sessionId)");
+    const upgradeBody = acquisitionSource.slice(upgradeStart, acquisitionSource.indexOf("    async loadTranscript(sessionId)", upgradeStart));
+    const loadStart = acquisitionSource.indexOf("    async loadTranscript(sessionId)");
+    const loadBody = acquisitionSource.slice(loadStart, acquisitionSource.indexOf("    async handleTranscriptFailure", loadStart));
     const applyStart = source.indexOf("    canApplyFullTranscriptResponse(response, sessionId)");
     const applyBody = source.slice(applyStart, source.indexOf("    getTranscriptLoadedStatusMessage(response)", applyStart));
 
     assert.ok(source.includes("isCurrentVideoPage()"));
+    assert.ok(source.includes("this.captionAcquisition.loadTranscript(sessionId)"));
     assert.ok(source.includes("isActiveCaptionSession(sessionId)"));
     assert.ok(bridgeBody.includes("if (!this.isCurrentVideoPage())"));
     assert.ok(captureBody.includes("!this.isCurrentVideoPage()"));
-    assert.ok(upgradeBody.includes("!this.isCurrentVideoPage()"));
-    assert.ok(upgradeBody.includes("!this.isActiveCaptionSession(captionSessionId)"));
-    assert.ok(loadBody.includes("signal.aborted || !this.isActiveCaptionSession(captionSessionId)"));
-    assert.ok(loadBody.includes("if (!this.isActiveCaptionSession(captionSessionId))"));
-    assert.ok(loadBody.includes("this.canApplyFullTranscriptResponse(response, captionSessionId)"));
+    assert.ok(upgradeBody.includes("!owner.isCurrentVideoPage()"));
+    assert.ok(upgradeBody.includes("!owner.isActiveCaptionSession(captionSessionId)"));
+    assert.ok(loadBody.includes("signal.aborted || !owner.isActiveCaptionSession(captionSessionId)"));
+    assert.ok(loadBody.includes("if (!owner.isActiveCaptionSession(captionSessionId))"));
+    assert.ok(loadBody.includes("owner.canApplyFullTranscriptResponse(response, captionSessionId)"));
     assert.ok(applyBody.includes("response.videoId === this.videoId"));
     assert.ok(applyBody.includes("this.isActiveCaptionSession(sessionId)"));
     assert.ok(applyBody.includes("this.isCurrentVideoPage()"));
@@ -282,8 +298,8 @@ exports.run = async function runLiveBubbleTests(ctx) {
   await runCase("open live capture freezes to the caption preference from panel open", () => {
     const captureStart = source.indexOf("    captureLiveCaptionLine()");
     const captureBody = source.slice(captureStart, source.indexOf("    pickPreferredTrack(tracklist)", captureStart));
-    const upgradeStart = source.indexOf("    async tryUpgradeLiveCaptureToTranscript(sessionId)");
-    const upgradeBody = source.slice(upgradeStart, source.indexOf("    async loadTranscript(sessionId)", upgradeStart));
+    const upgradeStart = acquisitionSource.indexOf("    async tryUpgradeLiveCaptureToTranscript(sessionId)");
+    const upgradeBody = acquisitionSource.slice(upgradeStart, acquisitionSource.indexOf("    async loadTranscript(sessionId)", upgradeStart));
     const applyStart = source.indexOf("    applyFullTranscriptResponse(response, sessionId, options)");
     const applyBody = source.slice(applyStart, source.indexOf("    buildFixedWindowChunksFromCues(cues)", applyStart));
 
@@ -433,7 +449,7 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("tryUpgradeLiveCaptureToTranscript(sessionId)"));
     assert.ok(source.includes("this.tryUpgradeLiveCaptureToTranscript(this.getActiveCaptionSessionId());"));
     assert.ok(source.includes("this.transcriptUpgradeAttempts >= 8"));
-    assert.ok(source.includes("Full caption timeline loaded. Next up previews are available."));
+    assert.ok(acquisitionSource.includes("Full caption timeline loaded. Next up previews are available."));
     assert.ok(source.includes("this.disableLiveCaptureMode();"));
   });
 
@@ -442,12 +458,12 @@ exports.run = async function runLiveBubbleTests(ctx) {
   });
 
   await runCase("unavailable transcript clears stale current future and timeline state", () => {
-    const failureStart = source.indexOf("if (!response || !response.ok)");
-    const failureBody = source.slice(failureStart, source.indexOf("if (response.videoId !== this.videoId)", failureStart));
+    const failureStart = acquisitionSource.indexOf("    async handleTranscriptFailure(response, captionSessionId, signal)");
+    const failureBody = acquisitionSource.slice(failureStart, acquisitionSource.indexOf("  app.CaptionAcquisition", failureStart));
     const clearStart = source.indexOf("    clearCaptionStateForUnavailableVideo()");
     const clearBody = source.slice(clearStart, source.indexOf("    requestTimelineSync", clearStart));
-    assert.ok(failureBody.includes("this.clearCaptionStateForUnavailableVideo();"));
-    assert.ok(failureBody.includes("!this.cues.length || !this.hasLiveCaptionContext()"));
+    assert.ok(failureBody.includes("owner.clearCaptionStateForUnavailableVideo();"));
+    assert.ok(failureBody.includes("!owner.cues.length || !owner.hasLiveCaptionContext()"));
     assert.ok(clearBody.includes("this.cues = [];"));
     assert.ok(clearBody.includes("this.panel.setChunks([]);"));
     assert.ok(clearBody.includes("this.panel.setFutureChunks([]);"));

@@ -34,6 +34,8 @@
         "scripts/chunker.js",
         "scripts/bubble-state.js",
         "scripts/caption-session.js",
+        "scripts/caption-acquisition.js",
+        "scripts/native-captions.js",
         "scripts/timeline-scrub.js",
         "scripts/transcript.js",
         "scripts/caption-timeline.js",

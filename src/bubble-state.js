@@ -156,14 +156,41 @@
     return Math.max(0, start + (end - start) * ratio);
   }
 
+  function trimTokensForLeadingOverlap(tokens, removedTokens) {
+    const source = Array.isArray(tokens) ? tokens : [];
+    const count = Math.max(0, Number.isFinite(Number(removedTokens)) ? Math.floor(Number(removedTokens)) : 0);
+    return count > 0 ? source.slice(count) : source.slice();
+  }
+
+  function getFirstTokenStart(tokens) {
+    const source = Array.isArray(tokens) ? tokens : [];
+    for (let index = 0; index < source.length; index += 1) {
+      const start = asNumber(source[index] && source[index].start, NaN);
+      if (Number.isFinite(start) && start >= 0) {
+        return start;
+      }
+    }
+    return NaN;
+  }
+
   function trimChunkAgainstPrevious(previousText, chunk, options) {
     const source = chunk && typeof chunk === "object" ? chunk : {};
     const info = trimLeadingOverlap(previousText, source.text, options);
-    return {
+    const result = {
       ...source,
       text: info.text,
       seekStart: adjustSeekStartForTrim(source, info, options && options.fallbackDurationSeconds)
     };
+    if (Array.isArray(source.tokens)) {
+      result.tokens = trimTokensForLeadingOverlap(source.tokens, info.removedTokens);
+      if (info.removedTokens > 0) {
+        const firstTokenStart = getFirstTokenStart(result.tokens);
+        if (Number.isFinite(firstTokenStart)) {
+          result.seekStart = Math.max(0, firstTokenStart);
+        }
+      }
+    }
+    return result;
   }
 
   function markFlashOnStart(chunk, seekStart, source) {
@@ -327,7 +354,7 @@
     if (activeTokenIndex < 0) {
       return null;
     }
-    const firstWord = getWordIndexForToken(words, tokens[activeTokenIndex], activeTokenIndex);
+    const firstWord = getWordIndexForTokenSequence(words, tokens, activeTokenIndex);
     const windowWords =
       Number.isFinite(opts.windowWords) && opts.windowWords > 0
         ? Math.max(3, Math.min(6, Math.round(opts.windowWords)))
@@ -343,6 +370,58 @@
       lastWord,
       progress: clamp(activeTokenIndex / Math.max(1, tokens.length - 1), 0, 0.999)
     };
+  }
+
+  function getWordIndexForTokenSequence(words, tokens, activeTokenIndex) {
+    const wordCount = Array.isArray(words) ? words.length : 0;
+    const tokenCount = Array.isArray(tokens) ? tokens.length : 0;
+    if (!wordCount || !tokenCount) {
+      return 0;
+    }
+
+    const targetIndex = Math.max(0, Math.min(tokenCount - 1, Math.floor(Number(activeTokenIndex) || 0)));
+    const normalizedWords = words.map((word) => normalizeWordText(word && word.text));
+    let cursor = 0;
+    let lastMatchedWord = -1;
+
+    for (let tokenIndex = 0; tokenIndex <= targetIndex; tokenIndex += 1) {
+      const token = tokens[tokenIndex];
+      const normalizedToken = normalizeWordText(token && token.text);
+      if (!normalizedToken) {
+        continue;
+      }
+
+      const found = findNextWordIndex(normalizedWords, normalizedToken, cursor);
+      if (found >= 0) {
+        lastMatchedWord = found;
+        cursor = Math.min(wordCount, found + 1);
+        if (tokenIndex === targetIndex) {
+          return found;
+        }
+      }
+    }
+
+    if (lastMatchedWord >= 0) {
+      return Math.max(0, Math.min(wordCount - 1, lastMatchedWord));
+    }
+    return getWordIndexForToken(words, tokens[targetIndex], getProportionalWordFallback(wordCount, tokenCount, targetIndex));
+  }
+
+  function findNextWordIndex(normalizedWords, normalizedToken, startIndex) {
+    const start = Math.max(0, Math.min(normalizedWords.length - 1, Number(startIndex) || 0));
+    for (let index = start; index < normalizedWords.length; index += 1) {
+      if (normalizedWords[index] === normalizedToken) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  function getProportionalWordFallback(wordCount, tokenCount, tokenIndex) {
+    const words = Math.max(1, Number(wordCount) || 1);
+    const tokens = Math.max(1, Number(tokenCount) || 1);
+    const index = Math.max(0, Number(tokenIndex) || 0);
+    return Math.max(0, Math.min(words - 1, Math.round((index / tokens) * words)));
   }
 
   function getWordIndexForToken(words, token, fallbackIndex) {

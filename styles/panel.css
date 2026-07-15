@@ -559,36 +559,6 @@
   display: none;
 }
 
-.dc-rainbow-toggle {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  width: 24px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.9);
-  background:
-    linear-gradient(90deg, rgba(232, 90, 98, 0.8), rgba(226, 176, 88, 0.78), rgba(101, 187, 116, 0.76), rgba(88, 155, 219, 0.78), rgba(183, 112, 218, 0.78));
-  box-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.38),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.22);
-  font-size: 9px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.dc-rainbow-toggle:hover,
-.dc-rainbow-toggle:focus-visible,
-.dc-rainbow-toggle.is-active {
-  border-color: rgba(255, 255, 255, 0.54);
-  box-shadow:
-    0 0 8px rgba(var(--dc-accent-rgb), 0.22),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.24);
-  outline: none;
-}
-
 .dc-help-popover {
   position: fixed;
   top: 0;

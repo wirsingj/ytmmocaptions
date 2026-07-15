@@ -1,6 +1,19 @@
+---
+yaiml: 0.2
+role: architecture
+title: YTMMOCC Architecture Notes
+purpose: Durable system shape, ownership boundaries, invariants, intended architecture, and retired approaches for YTMMOCC.
+belongs-here: current architecture, intended architecture, module boundaries, data flow, invariants, architecture debt, danger zones, retired designs.
+not-here: current priorities, command reference, complete file inventory, release step-by-step procedure.
+durability: durable; update when architecture changes materially.
+read-with: State of the Union; YTMMOCC Maintainer Guide; YAIML Usage.
+update-when: boundaries, responsibilities, invariants, target architecture, or architectural debt change.
+agent-guidance: Distinguish current, intended, transitional, uncertain, and obsolete architecture. Do not treat accidental implementation as design.
+---
+
 # YTMMOCC Architecture Notes
 
-YTMMOCC is an MMO-style dialogue layer for YouTube captions and transcripts. The 1.1.3 release is intentionally YouTube-only; generic HTML5 caption support is source-only experimental work and is not included in Chrome or Firefox runtime packages. The product should feel like a calm chat log over the video, not a dashboard, transcript exporter, analytics product, AI transcription tool, or replacement video player.
+YTMMOCC is an MMO-style dialogue layer for YouTube captions and transcripts. The current release line is intentionally YouTube-only; generic HTML5 caption support is source-only experimental work and is not included in Chrome or Firefox runtime packages. The product should feel like a calm chat log over the video, not a dashboard, transcript exporter, analytics product, AI transcription tool, or replacement video player.
 
 ## Product North Star
 
@@ -31,6 +44,8 @@ Future Twitch, Vimeo, JWPlayer, Brightcove, or CDN player adapters should plug i
 
 Generic non-YouTube panels use the same UI component but stay anchored to their owning `<video>` element. They do not persist per-page positions by default, because multiple videos may exist on a single page.
 
+1.1.6 posture: keep `src/universal-captions.js` quarantined as a source-only adapter prototype. Do not promote it into Chrome/Firefox manifests in this release line.
+
 ## Timing Model
 
 The preferred data flow is:
@@ -40,6 +55,8 @@ The preferred data flow is:
 3. Cue-level tokens with timestamps are normalized into one shared timeline shape.
 4. Conversational chunking groups that timeline into bubble records.
 5. Renderer consumes bubble records and token timing.
+
+Successful transcript acquisitions carry `sourceMeta` with a stable key, provider, priority, and source type. This is transitional adapter scaffolding: it documents the current YouTube fallback priority without promoting generic non-YouTube sources into release manifests.
 
 Overlay DOM text is a fallback only. It can help when full transcript data is unavailable, but it is inherently later and less precise than YouTube's caption timing.
 
@@ -71,6 +88,20 @@ Current model:
 - Layout Lock on: the same workspace follows the user across YouTube videos. This includes panel position, panel size, text size, Future / Next Up state, Case Fix state, future preview height, launcher position, and open/closed state.
 - Workspace presets: three seeded local snapshot slots act as temporary loadouts layered over the current Lock model. Slot 1 starts as the shipped default workspace, slot 2 starts as a music/demo mode, and slot 3 starts as a podcast mode. A preset stores panel position, panel size, text size, opacity, Fade, theme/custom color, animated theme preset, Future / Next Up, and Case Fix. It does not store video identity, transcript content, current timestamp, active bubble, Lock state, pinned defaults, transient animation frame state, or viewing history. Applying a preset does not mutate the saved preset; disabling it restores the pre-preset baseline where practical.
 - Reset: returns the panel workspace shape to defaults for the current session: text size, panel position, panel size, future preview height, center fade geometry, Timeline mode, launcher position, and open panel state. It intentionally preserves theme, custom color, opacity, Fade enabled/disabled, Future / Next Up enabled/disabled, and Case Fix enabled/disabled.
+
+Settings ownership buckets:
+
+| Bucket | Fields / Examples | Persistence Rule |
+| --- | --- | --- |
+| Global readability | `themeName`, `customThemeColor`, `animatedThemeName`, `panelOpacity`, `fadeTowardVideoCenter`, `videoCenterFade*`, `panelClosed` when Lock is off | Persist globally because these are reader preferences, not video data. |
+| Layout-locked workspace | `panelPosition`, `panelSize`, `launcherPosition`, `textScale`, `futurePreviewHeight`, `futurePreviewEnabled`, `caseFixEnabled`, `timelineModeEnabled`, `panelClosed` when Lock is on | Persist only while Layout Lock is enabled. |
+| Workspace preset snapshot | panel position/size, launcher position, text size, opacity, theme/custom/animated theme, Future / Next Up, Case Fix, center fade | Stored inside `workspacePresets` and applied as temporary local loadouts. |
+| Runtime-only caption/view state | transcript cues, chunks, active bubble, playback position, revealed history, hover state, seek focus, live capture buffers | Never write to extension storage. Recreate from the current video/session. |
+| Never stored identity/diagnostic data | video id, current timestamp, transcript text, selected words, page bridge tokens, timedtext captures | Keep in memory only; do not persist or add to presets. |
+
+Before adding a new preference, pick one bucket and update this table if the ownership is not obvious.
+
+Cross-tab behavior is intentionally simple. Settings are global extension storage, not per-tab. `savePatch()` reads the current stored value before applying a patch, so sequential non-overlapping tab updates usually merge. If two tabs write the same global field, the later stored write wins; there is no conflict prompt, tab ownership token, or per-tab workspace layer.
 
 Pinned defaults are deferred. They would create a second persistence layer between "default workspace" and "locked workspace," and the current product model does not yet justify that added complexity. Revisit only if usage shows users want a personal baseline that is different from both the shipped default and the locked cross-video workspace.
 

@@ -47,7 +47,10 @@
   }
 
   function normalizeTimeline(response, pageUrl) {
-    const sourceType = response && response.mode ? response.mode : "unknown";
+    const sourceMeta =
+      response && response.sourceMeta && typeof response.sourceMeta === "object" ? { ...response.sourceMeta } : null;
+    const sourceType =
+      sourceMeta && sourceMeta.sourceType ? sourceMeta.sourceType : response && response.mode ? response.mode : "unknown";
     const sourceCues = Array.isArray(response && response.cues) ? response.cues : [];
     const cues = sourceCues
       .map((cue, index) => normalizeCue(cue, index, sourceType))
@@ -59,7 +62,8 @@
       completeness: cues.length > 1 ? "full-or-extended" : "partial",
       acquiredAt: nowMs(),
       videoId: response && response.videoId ? response.videoId : transcript.getVideoId(pageUrl),
-      browser: getBrowserName()
+      browser: getBrowserName(),
+      sourceMeta
     };
   }
 
@@ -133,6 +137,9 @@
     const futureCueCount = countFutureCues(timeline.cues, currentTime);
     attempts.push({
       source: timeline.sourceType,
+      sourceKey: timeline.sourceMeta && timeline.sourceMeta.key ? timeline.sourceMeta.key : "",
+      sourcePriority:
+        timeline.sourceMeta && Number.isFinite(timeline.sourceMeta.priority) ? timeline.sourceMeta.priority : 0,
       stage: "accepted",
       cueCount: timeline.cues.length,
       futureCueCount,
@@ -142,6 +149,7 @@
     diagnostics.record("timeline:acquired", {
       browser,
       sourceType: timeline.sourceType,
+      sourceKey: timeline.sourceMeta && timeline.sourceMeta.key ? timeline.sourceMeta.key : "",
       cueCount: timeline.cues.length,
       futureCueCount
     });
@@ -152,6 +160,7 @@
       cues: timeline.cues,
       timeline,
       sourceType: timeline.sourceType,
+      sourceMeta: timeline.sourceMeta,
       completeness: timeline.completeness,
       futureCueCount,
       attempts,

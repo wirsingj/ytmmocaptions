@@ -3,13 +3,13 @@ exports.run = async function runSettingsStoreTests(ctx) {
 
   function makeStore(overrides, storedSettings, options) {
     const saved = {};
-    let currentStored = storedSettings || null;
+    const sharedStorage = options && options.sharedStorage ? options.sharedStorage : { currentStored: storedSettings || null };
     let pendingStorageSet = null;
     let releaseRequested = false;
     const platform = {
       async storageGet() {
-        return currentStored
-          ? { "dialogueCaptions.settings.v1": currentStored }
+        return sharedStorage.currentStored
+          ? { "dialogueCaptions.settings.v1": sharedStorage.currentStored }
           : {};
       },
       async storageSet(values) {
@@ -23,7 +23,7 @@ exports.run = async function runSettingsStoreTests(ctx) {
         }
         Object.assign(saved, values);
         if (values && values["dialogueCaptions.settings.v1"]) {
-          currentStored = values["dialogueCaptions.settings.v1"];
+          sharedStorage.currentStored = values["dialogueCaptions.settings.v1"];
         }
       }
     };
@@ -49,7 +49,8 @@ exports.run = async function runSettingsStoreTests(ctx) {
       },
       normalize(input) {
         return store.normalizeSettings({ ...(overrides || {}), ...(input || {}) });
-      }
+      },
+      sharedStorage
     };
   }
 
@@ -547,6 +548,55 @@ exports.run = async function runSettingsStoreTests(ctx) {
     await flushPromise;
     const saved = await savePromise;
     assert.equal(saved.panelOpacity, 64);
+  });
+
+  await runCase("separate tab stores merge current non-overlapping patches through shared storage", async () => {
+    const sharedStorage = {
+      currentStored: {
+        panelOpacity: 42,
+        themeName: "stone",
+        customThemeColor: "#ded6c3",
+        layoutLocked: false,
+        panelClosed: true
+      }
+    };
+    const tabA = makeStore(null, null, { sharedStorage });
+    const tabB = makeStore(null, null, { sharedStorage });
+
+    await tabA.store.savePatch({
+      themeName: "custom",
+      customThemeColor: "#2255aa"
+    });
+    await tabB.store.savePatch({
+      panelClosed: false,
+      panelPosition: { anchor: "player", left: 200, top: 90 }
+    });
+
+    assert.equal(sharedStorage.currentStored.themeName, "custom");
+    assert.equal(sharedStorage.currentStored.customThemeColor, "#2255aa");
+    assert.equal(sharedStorage.currentStored.panelClosed, false);
+    assert.equal(Object.prototype.hasOwnProperty.call(sharedStorage.currentStored, "panelPosition"), false);
+  });
+
+  await runCase("separate tab stores use last writer for overlapping global settings", async () => {
+    const sharedStorage = {
+      currentStored: {
+        panelOpacity: 42,
+        themeName: "stone",
+        customThemeColor: "#ded6c3",
+        layoutLocked: false,
+        panelClosed: true
+      }
+    };
+    const tabA = makeStore(null, null, { sharedStorage });
+    const tabB = makeStore(null, null, { sharedStorage });
+
+    await tabA.store.savePatch({ panelOpacity: 70 });
+    await tabB.store.savePatch({ panelOpacity: 85 });
+
+    assert.equal(sharedStorage.currentStored.panelOpacity, 85);
+    const loaded = await tabA.store.load();
+    assert.equal(loaded.panelOpacity, 85);
   });
 
   await runCase("settings load migrates legacy preferences and drops transient video state", async () => {

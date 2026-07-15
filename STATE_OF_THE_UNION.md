@@ -1,8 +1,21 @@
+---
+yaiml: 0.2
+role: sot
+title: State of the Union
+purpose: Current engineering state, direction, risks, divergence, useful lessons, and near-term priorities for YTMMOCC.
+belongs-here: current product identity, implemented capabilities, active work, audit findings, known debt, testing state, priorities, corrected directions.
+not-here: durable architecture, command reference, complete history, release step-by-step procedure.
+durability: volatile; synthesize and prune aggressively.
+read-with: YTMMOCC Architecture Notes; YTMMOCC Maintainer Guide; YAIML Usage.
+update-when: current state, verified behavior, active risks, priorities, or material engineering lessons change.
+agent-guidance: Verify implementation claims against code/tests. Preserve human direction. Mark uncertainty and conflicts. Remove stale statements instead of layering contradictions.
+---
+
 # State of the Union
 
-Current branch reviewed: `1.1.5-work`.
+Current branch reviewed: `1.1.6-work`.
 
-Current package version in manifests and `package.json`: `1.1.4`.
+Current package version in manifests and `package.json`: `1.1.5`.
 
 This document describes the current codebase state as observed in source, tests, and project metadata. It is intended for architecture review, risk assessment, audit planning, feature planning, and bug hunting.
 
@@ -21,7 +34,7 @@ Major implemented features:
 - Timedtext, YouTube transcript APIs, DOM transcript, text-track, and intercepted timedtext fallbacks.
 - Live caption fallback when a full timeline is unavailable.
 - Chat bubble grouping, locked bubble immutability, reading glow, future preview, and click-to-seek.
-- Compact panel UI with theme selection, custom color, rainbow preview, opacity, text scale, center fade, Case Fix, Next/Future toggle, Lock, Reset, help, close launcher, drag/resize, and workspace preset slots.
+- Compact panel UI with theme selection, custom static color, animated color sweep presets, opacity, text scale, center fade, Case Fix, Next/Future toggle, Lock, Reset, help, close launcher, drag/resize, and workspace preset slots.
 - YouTube route handling and panel teardown/recreate on video id changes.
 - Read-only page-world bridge for YouTube internals, selected caption track snapshots, timedtext capture, and constrained fetches.
 - Settings stored through extension storage only.
@@ -31,7 +44,7 @@ Major features in progress or deferred:
 
 - Generic non-YouTube caption support is source-only and adapter-based (`src/universal-captions.js`), not shipped in release manifests.
 - Timeline Scrub exists in `src/ui-panel.js` and `src/timeline-scrub.js`, but README says it remains experimental and hidden from normal release UI.
-- Dynamic/richer color animation beyond the current temporary rainbow preview is not implemented as first-class persisted user slots.
+- Dynamic/richer color animation beyond the shipped animated theme presets is not implemented as first-class user-authored animation slots.
 - Pinned defaults are explicitly deferred in `ARCHITECTURE.md`.
 - Mobile support is not targeted; manifests and docs target desktop Chrome/Firefox.
 
@@ -42,7 +55,30 @@ Known limitations and tradeoffs:
 - Most tests are VM/unit/source-inspection tests. Optional Playwright diagnostics exist, but they are not part of the normal release gate.
 - Live fallback uses overlay/text-track state and is inherently less precise than full timedtext timelines.
 - Some tests assert source substrings, which catches architectural invariants but can be brittle during refactors.
-- Version metadata still says `1.1.4` while current branch work is for `1.1.5`.
+- Version metadata says `1.1.5` while current branch work is for `1.1.6`.
+
+2026-06-29 audit notes:
+
+- YAIML-style project memory is now present as loose human/agent guidance through `yaiml.yml`, `AGENTS.md`, `MAINTAINER_GUIDE.md`, and `docs/YAIML.md`; it is not a build input or release gate.
+- The Chrome/Firefox release flow now prepares a release PR and lets store publishing derive the version from a published GitHub Release tag.
+- The radial static color picker no longer carries the old rainbow shortcut; animated color sweep presets live in the separate animated theme menu.
+- Reading glow token alignment has been tightened so chunk-local highlighting is less likely to jump backward during playback.
+- Caption session identity is now implemented; the next architecture risk is coordinator size and boundary extraction, not missing stale-session ids.
+- Local ignored diagnostic artifacts under `tests/artifacts/` were observed around 122 MB during audit, so broad source searches should exclude that path when present.
+
+2026-07-04 SoT audit-target pass:
+
+- Added `src/caption-acquisition.js` as a transcript acquisition boundary for full transcript loads, live fallback upgrades, timeout/retry handling, stale-session checks, and live fallback failure status.
+- Added behavior tests for stale caption acquisition races, bridge reload/token behavior, DOM transcript route changes, cross-tab settings behavior, and layout placement preservation.
+- Added a minimal release smoke section to `QA_CHECKLIST.md` and a focused `docs/RELEASE_1.1.6_CHECKLIST.md`.
+- Kept generic captions quarantined for 1.1.6 as source-only adapter work.
+- Added a conservative live fallback memory cap for old locked live-bubble cache entries during long sessions.
+
+2026-07-11 SoT continuation:
+
+- Added `src/native-captions.js` so native YouTube CC ensure/restore ownership no longer lives as loose state inside `DialogueCaptionsApp`.
+- Added explicit transcript source metadata in `src/transcript.js`; successful acquisition paths now report stable source keys, provider, priority, and source type through `caption-timeline.js`.
+- Added focused coverage for native caption ownership and source metadata. Latest observed test run: `239/239` passing.
 
 ## Architecture Overview
 
@@ -261,7 +297,7 @@ Owned state:
 - Playback/active index.
 - Layout/drag/resize state.
 - Launcher drag state.
-- Color picker and rainbow preview state.
+- Color picker and animated theme preview state.
 - Timeline layer visibility and hover state.
 
 Inbound dependencies:
@@ -283,7 +319,7 @@ Important implementation details:
 - Panel and launcher are anchored to player-local coordinates where possible.
 - Fullscreen/resize handling calls layout refresh routines instead of treating passive resize as user layout intent.
 - `persistLayout` and `layoutLocked` control whether geometry is saved.
-- Rainbow theme is currently a temporary animation/preview driven by RAF; it is not a persisted dynamic color program.
+- Animated color sweep presets are chosen from a separate animated theme menu. Rainbow is one named preset, not a static color-wheel shortcut.
 
 ### Settings Store
 
@@ -487,7 +523,7 @@ Sequence:
 | Live future chunks | `liveFuturePreviewChunks` | constructor empty | live text-track future reads | live disable, clear unavailable | none |
 | Live bubble records | `liveBubbles`, `liveBucketToBubble`, `liveDisplayBubbleCache` | constructor | live capture | disable live, clear unavailable, destroy | none |
 | Caption language preference | `lastCaptionPreferenceKey`, `openCaptionPreferenceKey` | constructor empty | snapshot refresh, transcript load, reopen | app destroy, video route recreate | none |
-| Native CC restore state | `captionsWereOnBeforeExtension`, `captionsEnabledByExtension`, `captionsEnsured`, `captionEnsureStarted` | constructor | caption ensure/probe/restore | close, destroy, restore | none |
+| Native CC restore state | `NativeCaptionController` in `src/native-captions.js` | `DialogueCaptionsApp` constructor | caption ensure/probe/restore | close, destroy, restore | none |
 | Transcript loading state | `loadAbortController`, `transcriptLoadNonce`, `transcriptLoadInFlight`, attempts | constructor | `loadTranscript()` | abort, finally, destroy | none |
 | Transcript heartbeat state | timer id, recovery counters | constructor | heartbeat scheduling/recovery | stop heartbeat, destroy | none |
 | Page bridge snapshot | `page-context.js` `snapshot` | bridge message | `setSnapshot()` | video mismatch returns null; overwritten by next snapshot | page memory only |
@@ -498,7 +534,7 @@ Sequence:
 | Panel geometry | `DialoguePanel.settings.panelPosition/panelSize`, DOM style | mount/default layout | drag/resize/layout lock/passive refresh | reset/destroy | only when layout locked |
 | Launcher geometry | `launcherPosition`, DOM style | mount/default position | launcher drag, layout refresh | reset/destroy | only when layout locked |
 | Fullscreen/layout state | UI-panel local measurements | event/listener callbacks | fullscreenchange/resize/scroll/observer | destroy | ratios if layout locked |
-| Rainbow preview | `DialoguePanel` RAF/color fields | rainbow button | RAF tick/stop/settings | stop rainbow/destroy | final static color only if committed |
+| Animated color sweep | `DialoguePanel` RAF/color fields | animated theme preset menu | RAF tick/stop/settings | stop animated cycle/destroy | preset name only |
 | Workspace presets | settings store and panel | defaults/load | capture/apply/toggle-off | reset active baseline, storage clear | extension storage |
 | Generic video registry | `universal-captions.js` registry | source-only scan/attach | DOM mutation/video eligibility | app destroy/removed video | source-only, not release runtime |
 
@@ -625,7 +661,7 @@ Missing/weak areas:
 
 Async boundaries:
 
-- `requestAnimationFrame` for sync/render/rainbow.
+- `requestAnimationFrame` for sync/render/animated color sweep.
 - `fullscreenchange`.
 - scroll/resize.
 - ResizeObserver/MutationObserver-style layout reactions.
@@ -676,7 +712,7 @@ Missing/weak areas:
 
 Test runner: `tests/run-tests.js`.
 
-Current full suite count from latest run: `210/210` passing.
+Current full suite count from latest run: `239/239` passing.
 
 Major suites:
 
@@ -689,9 +725,11 @@ Major suites:
 - `tests/page-context.test.js`: bridge token behavior, video-scoped snapshots/captures/fetch responses.
 - `tests/page-bridge.test.js`: bridge request allowlist, token reload, stale track filtering, selected-track read-only behavior.
 - `tests/transcript.test.js`: timedtext parsing, selected/browser language preference, stale metadata filtering, panel/transcript API fallbacks, token timing.
-- `tests/live-bubbles.test.js`: live bubble behavior, route/state guards, native CC restore, preference freeze, fallback upgrades.
-- `tests/settings-store.test.js`: normalization, persistence model, layout lock semantics, migration.
-- `tests/ui-panel.test.js`: workspace presets, rainbow preview, layout/fullscreen-style geometry, virtualized history.
+- `tests/live-bubbles.test.js`: live bubble behavior, route/state guards, native CC restore, preference freeze, fallback upgrades, live memory cap source guard.
+- `tests/settings-store.test.js`: normalization, persistence model, layout lock semantics, migration, cross-tab shared-storage behavior.
+- `tests/caption-acquisition.test.js`: full transcript acquisition, stale-session race behavior, and live fallback failure handling.
+- `tests/native-captions.test.js`: native YouTube CC initial-state capture, ensure/probe behavior, and restore ownership.
+- `tests/ui-panel.test.js`: workspace presets, animated theme presets, layout/fullscreen-style geometry, virtualized history, layout placement preservation.
 - `tests/timeline-scrub.test.js`: timeline scrub math.
 - `tests/universal-captions.test.js`: source-only generic adapter behavior.
 
@@ -767,6 +805,7 @@ Transcript loading:
 
 - Why it exists: it integrates routing, video binding, transcript loading, live fallback, native CC control, chunking, seeking, panel sync, and settings.
 - Risk: changes in one lifecycle can accidentally affect another; hard to reason about all invariants.
+- Current status: transcript acquisition and native CC ensure/restore now have extracted ownership modules, but route/live/panel coordination remains large.
 - Difficulty: medium-high. Extracting state machines/services is possible but must be done incrementally with tests.
 
 2. YouTube internals and page DOM coupling.
@@ -803,7 +842,7 @@ Transcript loading:
 
 7. Versioning branch/package mismatch.
 
-- Why it exists: current work is on `1.1.5-work` while manifests/package remain `1.1.4`.
+- Why it exists: current work is on `1.1.6-work` while manifests/package remain `1.1.5`.
 - Risk: stale artifact names during manual testing and release prep confusion.
 - Difficulty: low. Use existing `version:bump`/release verification process at release time.
 
@@ -821,10 +860,10 @@ Transcript loading:
 - Risk: latent complexity in panel code.
 - Difficulty: low if left hidden; medium if promoted.
 
-10. Rainbow color is preview-only dynamic behavior.
+10. Animated theme model has presets but no user-authored animation slots.
 
-- Why it exists: current implementation is a temporary RAF preview.
-- Risk: future dynamic color presets will need a real persistence/model layer.
+- Why it exists: current implementation supports shipped color sweep presets and static custom color.
+- Risk: future user-authored animations will need a clearer persistence/model layer than preset name plus RAF preview color.
 - Difficulty: low-medium.
 
 ## Future Feature Readiness
@@ -844,8 +883,8 @@ Multiple simultaneous players:
 More transcript sources:
 
 - Readiness: medium-high.
-- Evidence: `transcript.js` already has multiple acquisition strategies and URL allowlists. `caption-timeline.js` normalizes results.
-- Needed: explicit source interface and priority model to reduce monolithic fallback complexity.
+- Evidence: `transcript.js` already has multiple acquisition strategies, URL allowlists, and explicit `sourceMeta` keys/priorities. `caption-timeline.js` normalizes results and carries source metadata forward.
+- Needed: split the monolithic fallback implementation into swappable source adapters once a new source is ready to ship.
 
 More complex UI modes:
 
@@ -885,52 +924,42 @@ Mobile support:
 
 If another engineer had 8 hours, focus here:
 
-1. Build a lifecycle state diagram for `DialogueCaptionsApp` and split responsibilities.
+1. Extract one caption acquisition boundary from `DialogueCaptionsApp`. Status: addressed for 1.1.6.
 
-- Why: `src/content-script.js` owns too many states.
-- Concrete target: separate transcript acquisition session, live capture session, native CC session, and route/app lifecycle into smaller objects or explicit state machine.
+- Result: `src/caption-acquisition.js` now owns transcript load/upgrade acquisition mechanics while `DialogueCaptionsApp` keeps state application and UI policy.
 
-2. Add behavior-level tests for route and stale async races.
+2. Add behavior-level tests for remaining stale async races. Status: addressed for current known races.
 
-- Why: current protections are partly source-inspection tests.
-- Concrete target: VM or browser tests that simulate old snapshot/fetch/transcript responses arriving after URL changes and verify panel state is unchanged.
+- Result: added behavior coverage for stale caption acquisition, DOM transcript route mismatch, bridge token reload, and cross-tab settings behavior.
 
-3. Add a minimal release-gate browser smoke test.
+3. Add a minimal pre-release browser smoke test. Status: documented.
 
-- Why: YouTube/player behavior is the largest external risk.
-- Concrete target: one Chrome and one Firefox diagnostic against controlled URLs, checking panel mount, no stale caption carryover, fullscreen launcher position, and language non-mutation.
+- Result: `QA_CHECKLIST.md` now has a Minimal Release Smoke section.
 
-4. Audit `src/ui-panel.js` layout persistence boundaries.
+4. Audit `src/ui-panel.js` layout persistence boundaries. Status: addressed.
 
-- Why: fullscreen and Lock behavior are user-visible and easy to regress.
-- Concrete target: all calls to `updateSettings()` involving `panelPosition`, `panelSize`, `launcherPosition`, `panelClosed`, and `timelineModeEnabled`.
+- Result: layout placement keys are named as `LAYOUT_PLACEMENT_KEYS` and covered by behavior/source tests.
 
-5. Audit cross-tab settings behavior.
+5. Audit cross-tab settings behavior. Status: documented and tested.
 
-- Why: settings are global, while apps are per-tab.
-- Concrete target: simulate two stores/tabs saving panelClosed/layout/theme changes and define intended conflict behavior.
+- Result: settings tests now cover shared-storage non-overlapping patch merge and last-writer-wins overlap behavior; architecture documents the policy.
 
-6. Review page bridge security and compatibility.
+6. Review page bridge security and compatibility. Status: strengthened.
 
-- Why: bridge injects page script and wraps fetch/XHR.
-- Concrete target: `src/page-bridge.js` allowlist, token retention, reload behavior, wrapper idempotency, and interaction with other page scripts.
+- Result: tests now cover reload idempotency for timedtext fetch wrapping and old token eviction from the accepted token window.
 
-7. Strengthen DOM transcript fallback validation.
+7. Strengthen DOM transcript fallback validation. Status: strengthened.
 
-- Why: DOM transcript is YouTube UI-dependent.
-- Concrete target: ensure transcript DOM entries are current-video scoped where possible and cannot reuse stale opened transcript panels.
+- Result: DOM transcript fallback now rejects known current-video mismatches before/after DOM reads.
 
-8. Review live fallback memory/performance.
+8. Review live fallback memory/performance. Status: capped.
 
-- Why: long videos and live capture can accumulate bubbles/caches.
-- Concrete target: `liveBubbles`, `liveDisplayBubbleCache`, future preview chunks, render windows, and cleanup under long playback.
+- Result: old locked live bubbles and display-cache entries are pruned after a high cap, with lookup maps rebuilt.
 
-9. Decide whether generic captions should remain quarantined.
+9. Decide whether generic captions should remain quarantined. Status: decided for 1.1.6.
 
-- Why: `src/universal-captions.js` is tested but not shipped.
-- Concrete target: either keep it intentionally source-only with docs/tests, or create a branch for promoting adapter architecture.
+- Result: keep `src/universal-captions.js` source-only for 1.1.6.
 
-10. Create a release-version checklist for 1.1.5.
+10. Create a release-version checklist for 1.1.6. Status: added.
 
-- Why: current artifacts still name `v1.1.4`.
-- Concrete target: run version bump, release verification, and ensure generated archives and docs match the intended release version.
+- Result: added `docs/RELEASE_1.1.6_CHECKLIST.md`; the actual version bump remains a release-prep action.

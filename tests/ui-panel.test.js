@@ -210,7 +210,7 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.settings.customThemeColor, "#ff8a5b");
     assert.equal(changes.length, 1);
 
-    panel.toggleRainbowThemeMode();
+    panel.updateSettings({ themeName: "custom", animatedThemeName: null });
     assert.equal(panel.isRainbowThemeEnabled(), false);
     assert.equal(panel.settings.animatedThemeName, null);
     assert.equal(changes.length, 2);
@@ -240,7 +240,7 @@ exports.run = async function runUiPanelTests(ctx) {
       })
     });
 
-    panel.toggleRainbowThemeMode();
+    panel.applyAnimatedThemePreset("rainbow");
     panel.applyRainbowThemeColor("#77aa44");
     panel.toggleWorkspacePreset(1);
 
@@ -520,6 +520,20 @@ exports.run = async function runUiPanelTests(ctx) {
     assert.equal(panel.futureRenderLimit, 80);
     assert.equal(panel.currentWindowEnd - panel.currentWindowStart + 1, 220);
     assert.equal(renderCount, 1);
+  });
+
+  await runCase("layout placement preservation is gated to explicit placement keys", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+
+    assert.equal(panel.shouldPreservePanelPlacement({ textScale: 140 }), true);
+    assert.equal(panel.shouldPreservePanelPlacement({ panelOpacity: 70 }), true);
+    assert.equal(panel.shouldPreservePanelPlacement({ futurePreviewHeight: 140 }), true);
+    assert.equal(panel.shouldPreservePanelPlacement({ panelClosed: false }), false);
+    assert.equal(panel.shouldPreservePanelPlacement({ panelPosition: { left: 20, top: 30 } }), false);
+    assert.equal(panel.shouldPreservePanelPlacement({ panelSize: { width: 500, height: 320 } }), false);
+    assert.equal(panel.shouldPreservePanelPlacement({ launcherPosition: { left: 8, top: 12 } }), false);
+    assert.equal(panel.shouldPreservePanelPlacement({ timelineModeEnabled: true }), false);
   });
 
   await runCase("setActiveIndex ensures visible even when active index is unchanged", () => {

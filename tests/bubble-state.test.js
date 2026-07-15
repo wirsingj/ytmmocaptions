@@ -53,6 +53,36 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.ok(trimmed.seekStart < chunk.end);
   });
 
+  await runCase("trimmed overlap drops stale token timings before live chunks merge", () => {
+    const bubbleState = loadBubbleState();
+    const chunk = {
+      start: 10,
+      end: 15,
+      seekStart: 10,
+      text: "one two three four five",
+      tokens: [
+        { text: "one", start: 10, end: 11 },
+        { text: "two", start: 11, end: 12 },
+        { text: "three", start: 12, end: 13 },
+        { text: "four", start: 13, end: 14 },
+        { text: "five", start: 14, end: 15 }
+      ]
+    };
+    const trimmed = bubbleState.trimChunkAgainstPrevious(
+      "zero one two three",
+      chunk,
+      {
+        normalizeText: (value) => String(value || "").trim(),
+        normalizeToken: (value) => String(value || "").toLowerCase(),
+        fallbackDurationSeconds: 4
+      }
+    );
+
+    assert.equal(trimmed.text, "four five");
+    assert.deepEqual(trimmed.tokens.map((token) => token.text), ["four", "five"]);
+    assert.equal(trimmed.seekStart, 13);
+  });
+
   await runCase("trim overlap handles empty and non-overlap edges", () => {
     const bubbleState = loadBubbleState();
     const options = {
@@ -284,5 +314,35 @@ exports.run = async function runBubbleStateTests(ctx) {
 
     assert.equal(range.firstWord, 2);
     assert.equal(range.lastWord, 4);
+  });
+
+  await runCase("token reading glow walks repeated words forward without snapping back", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 8,
+      seekStart: 0,
+      text: "we can test and we can ship and we can learn",
+      tokens: [
+        { text: "we", start: 0, end: 0.6 },
+        { text: "can", start: 0.6, end: 1.2 },
+        { text: "test", start: 1.2, end: 1.8 },
+        { text: "and", start: 1.8, end: 2.4 },
+        { text: "we", start: 2.4, end: 3.0 },
+        { text: "can", start: 3.0, end: 3.6 },
+        { text: "ship", start: 3.6, end: 4.2 },
+        { text: "and", start: 4.2, end: 4.8 },
+        { text: "we", start: 4.8, end: 5.4 },
+        { text: "can", start: 5.4, end: 6.0 },
+        { text: "learn", start: 6.0, end: 6.6 }
+      ]
+    };
+    const middle = bubbleState.getReadingGlowRange(bubble, 3.1, { leadSeconds: 0, windowWords: 3 });
+    const late = bubbleState.getReadingGlowRange(bubble, 5.0, { leadSeconds: 0, windowWords: 3 });
+
+    assert.equal(middle.firstWord, 4);
+    assert.equal(middle.lastWord, 6);
+    assert.equal(late.firstWord, 7);
+    assert.equal(late.lastWord, 9);
   });
 };

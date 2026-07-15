@@ -82,6 +82,13 @@ ytmmocaptions/
   store-assets/
     amo-listing-draft.md
     screenshot-panel-over-video.png
+  docs/
+    YAIML.md
+  AGENTS.md
+  MAINTAINER_GUIDE.md
+  STATE_OF_THE_UNION.md
+  ARCHITECTURE.md
+  yaiml.yml
   manifest.chrome.json
   manifest.firefox.json
   manifest.json
@@ -92,6 +99,17 @@ ytmmocaptions/
     chrome/      (generated)
     firefox/     (generated)
 ```
+
+## Project Memory
+
+This repo includes loose YAIML-style project memory for coding-agent continuity. These files are human-readable guidance, not build inputs or release gates:
+
+- `yaiml.yml` declares the document family.
+- `STATE_OF_THE_UNION.md` is the SOT role: current engineering state and direction.
+- `ARCHITECTURE.md` is durable architecture and design intent.
+- `MAINTAINER_GUIDE.md` is setup, commands, release, diagnostics, and recovery procedure.
+- `AGENTS.md` gives future coding agents the cold-start rules.
+- `docs/YAIML.md` records the local YAIML standard used by this repo.
 
 ## Build
 
