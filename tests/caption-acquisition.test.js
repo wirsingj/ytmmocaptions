@@ -170,6 +170,86 @@ exports.run = async function runCaptionAcquisitionTests(ctx) {
     assert.equal(owner.applied.length, 0);
   });
 
+  await runCase("caption acquisition applies successful live fallback upgrades", async () => {
+    const response = {
+      ok: true,
+      videoId: "video123",
+      cues: [{ start: 4, end: 6, text: "Future line" }]
+    };
+    let bridgeEnsured = 0;
+    let probes = 0;
+    const CaptionAcquisition = loadAcquisitionModule({
+      async acquireFullTimeline(url, signal, options) {
+        assert.equal(url, "https://www.youtube.com/watch?v=video123");
+        assert.equal(signal.aborted, false);
+        assert.equal(options.videoElement.id, "video");
+        return response;
+      }
+    });
+    const owner = createOwner({
+      ensurePageBridgeForWatchPage() {
+        bridgeEnsured += 1;
+      },
+      probeCaptionsNow() {
+        probes += 1;
+      }
+    });
+    const acquisition = new CaptionAcquisition(owner, {
+      diagnostics: { record() {} },
+      timers: {
+        setTimeout() {
+          return 1;
+        },
+        clearTimeout() {}
+      }
+    });
+
+    await acquisition.tryUpgradeLiveCaptureToTranscript(1);
+
+    assert.equal(bridgeEnsured, 1);
+    assert.equal(probes, 1);
+    assert.equal(owner.transcriptUpgradeInFlight, false);
+    assert.equal(owner.applied.length, 1);
+    assert.equal(owner.applied[0].response, response);
+    assert.equal(owner.applied[0].options.activityReason, "transcript-upgrade");
+    assert.equal(owner.applied[0].options.preserveOpenCaptionPreference, true);
+    assert.equal(owner.applied[0].options.syncAfterApply, true);
+    assert.equal(owner.getReleasedControllers().length, 1);
+  });
+
+  await runCase("caption acquisition ignores live fallback upgrades that go stale after fetch", async () => {
+    let owner = null;
+    const CaptionAcquisition = loadAcquisitionModule({
+      async acquireFullTimeline() {
+        owner.setActive(false);
+        return {
+          ok: true,
+          videoId: "video123",
+          cues: [{ start: 4, end: 6, text: "Late upgrade" }]
+        };
+      }
+    });
+    owner = createOwner({
+      applyFullTranscriptResponse() {
+        throw new Error("stale upgrade should not be applied");
+      }
+    });
+    const acquisition = new CaptionAcquisition(owner, {
+      diagnostics: { record() {} },
+      timers: {
+        setTimeout() {
+          return 1;
+        },
+        clearTimeout() {}
+      }
+    });
+
+    await acquisition.tryUpgradeLiveCaptureToTranscript(1);
+
+    assert.equal(owner.transcriptUpgradeInFlight, false);
+    assert.equal(owner.applied.length, 0);
+    assert.equal(owner.getReleasedControllers().length, 1);
+  });
   await runCase("caption acquisition records live fallback on transcript failure", async () => {
     const records = [];
     const statuses = [];

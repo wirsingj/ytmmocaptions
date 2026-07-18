@@ -408,7 +408,10 @@
   }
 
   function findNextWordIndex(normalizedWords, normalizedToken, startIndex) {
-    const start = Math.max(0, Math.min(normalizedWords.length - 1, Number(startIndex) || 0));
+    const start = Math.max(0, Number(startIndex) || 0);
+    if (start >= normalizedWords.length) {
+      return -1;
+    }
     for (let index = start; index < normalizedWords.length; index += 1) {
       if (normalizedWords[index] === normalizedToken) {
         return index;

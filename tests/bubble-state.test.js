@@ -345,4 +345,26 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.equal(late.firstWord, 7);
     assert.equal(late.lastWord, 9);
   });
+
+  await runCase("token reading glow does not rematch the final word after rendered text is exhausted", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 5,
+      seekStart: 0,
+      text: "alpha beta gamma",
+      tokens: [
+        { text: "alpha", start: 0, end: 0.5 },
+        { text: "beta", start: 0.5, end: 1.0 },
+        { text: "gamma", start: 1.0, end: 1.5 },
+        { text: "gamma", start: 1.5, end: 2.0 },
+        { text: "gamma", start: 2.0, end: 2.5 }
+      ]
+    };
+
+    const late = bubbleState.getReadingGlowRange(bubble, 2.1, { leadSeconds: 0, windowWords: 3 });
+
+    assert.equal(late.firstWord, 0);
+    assert.equal(late.lastWord, 2);
+  });
 };

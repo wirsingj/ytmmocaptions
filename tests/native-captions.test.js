@@ -109,4 +109,16 @@ exports.run = async function runNativeCaptionsTests(ctx) {
     assert.equal(owner.fallbackClicks, 0);
     assert.equal(controller.isEnsured(), false);
   });
+
+  await runCase("native captions ensure is inert for destroyed apps", () => {
+    const NativeCaptionController = loadNativeController();
+    const owner = createOwner({ destroyed: true });
+    const controller = new NativeCaptionController(owner);
+
+    controller.ensureOnce();
+
+    assert.equal(owner.probes, 0);
+    assert.equal(owner.fallbackClicks, 0);
+    assert.equal(controller.isEnsured(), false);
+  });
 };

@@ -80,6 +80,11 @@ Known limitations and tradeoffs:
 - Added explicit transcript source metadata in `src/transcript.js`; successful acquisition paths now report stable source keys, provider, priority, and source type through `caption-timeline.js`.
 - Added focused coverage for native caption ownership and source metadata. Latest observed test run: `239/239` passing.
 
+2026-07-15 code-pattern review:
+
+- Tightened token-to-word reading glow matching so extra repeated timing tokens cannot rematch the final rendered word after the display text is exhausted.
+- Added behavior coverage for live fallback upgrade success, stale live upgrade responses, and destroyed-app native caption ensure. Latest observed test run: `243/243` passing.
+
 ## Architecture Overview
 
 ### Runtime Entry and Platform Layer
@@ -712,7 +717,7 @@ Missing/weak areas:
 
 Test runner: `tests/run-tests.js`.
 
-Current full suite count from latest run: `239/239` passing.
+Current full suite count from latest run: `243/243` passing.
 
 Major suites:
 
@@ -727,8 +732,8 @@ Major suites:
 - `tests/transcript.test.js`: timedtext parsing, selected/browser language preference, stale metadata filtering, panel/transcript API fallbacks, token timing.
 - `tests/live-bubbles.test.js`: live bubble behavior, route/state guards, native CC restore, preference freeze, fallback upgrades, live memory cap source guard.
 - `tests/settings-store.test.js`: normalization, persistence model, layout lock semantics, migration, cross-tab shared-storage behavior.
-- `tests/caption-acquisition.test.js`: full transcript acquisition, stale-session race behavior, and live fallback failure handling.
-- `tests/native-captions.test.js`: native YouTube CC initial-state capture, ensure/probe behavior, and restore ownership.
+- `tests/caption-acquisition.test.js`: full transcript acquisition, stale-session race behavior, live fallback upgrade behavior, and live fallback failure handling.
+- `tests/native-captions.test.js`: native YouTube CC initial-state capture, ensure/probe destroyed/closed guards, and restore ownership.
 - `tests/ui-panel.test.js`: workspace presets, animated theme presets, layout/fullscreen-style geometry, virtualized history, layout placement preservation.
 - `tests/timeline-scrub.test.js`: timeline scrub math.
 - `tests/universal-captions.test.js`: source-only generic adapter behavior.
