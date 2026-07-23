@@ -64,6 +64,8 @@ exports.run = async function runComplianceTests(ctx) {
       const captionTextIndex = js.findIndex((item) => item.includes("caption-text.js"));
       const bubbleIndex = js.findIndex((item) => item.includes("bubble-state.js"));
       const sessionIndex = js.findIndex((item) => item.includes("caption-session.js"));
+      const acquisitionIndex = js.findIndex((item) => item.includes("caption-acquisition.js"));
+      const nativeCaptionsIndex = js.findIndex((item) => item.includes("native-captions.js"));
       const scrubIndex = js.findIndex((item) => item.includes("timeline-scrub.js"));
       const transcriptIndex = js.findIndex((item) => item.includes("transcript.js"));
       const timelineIndex = js.findIndex((item) => item.includes("caption-timeline.js"));
@@ -75,6 +77,8 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(captionTextIndex >= 0, fileName + " missing caption-text.js");
       assert.ok(bubbleIndex >= 0, fileName + " missing bubble-state.js");
       assert.ok(sessionIndex >= 0, fileName + " missing caption-session.js");
+      assert.ok(acquisitionIndex >= 0, fileName + " missing caption-acquisition.js");
+      assert.ok(nativeCaptionsIndex >= 0, fileName + " missing native-captions.js");
       assert.ok(scrubIndex >= 0, fileName + " missing timeline-scrub.js");
       assert.ok(transcriptIndex >= 0, fileName + " missing transcript.js");
       assert.ok(timelineIndex >= 0, fileName + " missing caption-timeline.js");
@@ -84,6 +88,9 @@ exports.run = async function runComplianceTests(ctx) {
       assert.ok(captionTextIndex < contentIndex, fileName + " loads content-script before caption-text");
       assert.ok(bubbleIndex < contentIndex, fileName + " loads content-script too early");
       assert.ok(sessionIndex < contentIndex, fileName + " loads content-script before caption-session");
+      assert.ok(sessionIndex < acquisitionIndex, fileName + " loads caption acquisition before caption-session");
+      assert.ok(acquisitionIndex < contentIndex, fileName + " loads content-script before caption acquisition");
+      assert.ok(nativeCaptionsIndex < contentIndex, fileName + " loads content-script before native captions");
       assert.ok(bubbleIndex < scrubIndex, fileName + " loads timeline scrub before bubble-state");
       assert.ok(sessionIndex < scrubIndex, fileName + " loads timeline scrub before caption-session");
       assert.ok(scrubIndex < contentIndex, fileName + " loads content-script before timeline scrub");
@@ -260,13 +267,19 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(prepareRelease.includes("npm run release:sanity"));
     assert.ok(prepareRelease.includes("node scripts/verify-release-version.mjs"));
     assert.ok(prepareRelease.includes("git commit -m \"chore: prepare"));
-    assert.ok(prepareRelease.includes("git tag -a"));
-    assert.ok(prepareRelease.includes("git push origin HEAD:main"));
-    assert.ok(prepareRelease.includes("gh release create"));
+    assert.ok(prepareRelease.includes("release/$tag"));
+    assert.ok(prepareRelease.includes("git push origin HEAD:${{ steps.version.outputs.branch }}"));
+    assert.ok(prepareRelease.includes("gh pr create --base main"));
+    assert.ok(!prepareRelease.includes("git push origin HEAD:main"));
+    assert.ok(!prepareRelease.includes("git tag -a"));
+    assert.ok(!prepareRelease.includes("gh release create"));
     assert.ok(!prepareRelease.includes("environment: store-publish"));
     assert.ok(!prepareRelease.includes("CHROME_CLIENT_SECRET"));
     assert.ok(releaseChrome.includes("name: 3) Release Chrome"));
+    assert.ok(releaseChrome.includes("release:"));
+    assert.ok(releaseChrome.includes("types: [published]"));
     assert.ok(releaseChrome.includes("workflow_dispatch:"));
+    assert.ok(releaseChrome.includes("github.event.release.tag_name"));
     assert.ok(!releaseChrome.includes("chrome_action:"));
     assert.ok(releaseChrome.includes("environment: store-publish"));
     assert.ok(releaseChrome.includes("scripts/verify-release-version.mjs"));
@@ -278,7 +291,10 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(releaseChrome.includes("Missing Chrome Web Store secrets"));
     assert.ok(releaseChrome.includes('--mode="publish"'));
     assert.ok(releaseFirefox.includes("name: 2) Release Firefox"));
+    assert.ok(releaseFirefox.includes("release:"));
+    assert.ok(releaseFirefox.includes("types: [published]"));
     assert.ok(releaseFirefox.includes("workflow_dispatch:"));
+    assert.ok(releaseFirefox.includes("github.event.release.tag_name"));
     assert.ok(releaseFirefox.includes("environment: store-publish"));
     assert.ok(releaseFirefox.includes("scripts/verify-release-version.mjs"));
     assert.ok(releaseFirefox.includes("git merge-base --is-ancestor"));
@@ -289,6 +305,9 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(releaseDocs.includes("1) Prepare Release"));
     assert.ok(releaseDocs.includes("2) Release Firefox"));
     assert.ok(releaseDocs.includes("3) Release Chrome"));
+    assert.ok(releaseDocs.includes("Automatically delete head branches"));
+    assert.ok(releaseDocs.includes("Protect `main`"));
+    assert.ok(releaseDocs.includes("Publishing the release"));
     assert.ok(releaseDocs.includes("Repository secrets: `https://github.com/wirsingj/ytmmocaptions/settings/secrets/actions`"));
     assert.ok(releaseDocs.includes("AMO API keys: `https://addons.mozilla.org/en-US/developers/addon/api/key/`"));
     assert.ok(releaseDocs.includes("cocgdaogbkknnhdpmojlmodalmblndgf"));
@@ -515,6 +534,8 @@ exports.run = async function runComplianceTests(ctx) {
 
   await runCase("panel reset preserves the selected theme", () => {
     const panelSource = fs.readFileSync(path.join(ROOT_DIR, "src", "ui-panel.js"), "utf8");
+    assert.ok(panelSource.includes('LAYOUT_PLACEMENT_KEYS = Object.freeze(["panelClosed", "panelPosition", "panelSize", "launcherPosition", "timelineModeEnabled"])'));
+    assert.ok(panelSource.includes("return !LAYOUT_PLACEMENT_KEYS.some((key) => Object.prototype.hasOwnProperty.call(source, key));"));
     const resetStart = panelSource.indexOf("resetPanelDefaults() {");
     const resetEnd = panelSource.indexOf("applyFuturePreviewHeight()", resetStart);
     assert.ok(resetStart >= 0);
@@ -637,13 +658,13 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(panelSource.includes("dc-animated-theme"));
     assert.ok(panelSource.includes("dc-animated-popover"));
     assert.ok(panelSource.includes("applyAnimatedThemePreset"));
-    assert.ok(panelSource.includes("dc-rainbow-toggle"));
     assert.ok(panelSource.includes("pickColorFromWheel"));
-    assert.ok(panelSource.includes("toggleRainbowThemeMode"));
     assert.ok(panelSource.includes("RAINBOW_THEME_CYCLE_MS = 15000"));
     assert.ok(panelSource.includes("RAINBOW_THEME_FRAME_MS = 33"));
-    assert.ok(panelSource.includes("RAINBOW_THEME_SATURATION = 0.84"));
     assert.ok(panelSource.includes("rainbowThemeRestoreSnapshot"));
+    assert.ok(!panelSource.includes("dc-rainbow-toggle"));
+    assert.ok(!panelSource.includes("toggleRainbowThemeMode"));
+    assert.ok(!panelSource.includes("rainbowThemeButton"));
     assert.ok(panelSource.includes("Math.atan2(dx, -dy)"));
     assert.ok(panelSource.includes("Math.sin(radians)"));
     assert.ok(panelSource.includes("50 - Math.cos(radians)"));
@@ -659,7 +680,7 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(css.includes(".dc-animated-theme"));
     assert.ok(css.includes(".dc-animated-popover"));
     assert.ok(css.includes(".dc-animated-option-swatch"));
-    assert.ok(css.includes(".dc-rainbow-toggle"));
+    assert.ok(!css.includes(".dc-rainbow-toggle"));
     assert.ok(css.includes(".dc-help-popover"));
     assert.ok(css.includes(".dc-btn-help"));
     const controlsStart = css.indexOf("\n.dc-controls {");

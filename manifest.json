@@ -23,6 +23,8 @@
         "src/chunker.js",
         "src/bubble-state.js",
         "src/caption-session.js",
+        "src/caption-acquisition.js",
+        "src/native-captions.js",
         "src/timeline-scrub.js",
         "src/transcript.js",
         "src/caption-timeline.js",

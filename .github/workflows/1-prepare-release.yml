@@ -5,10 +5,11 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   prepare-release:
-    name: Bump, validate, tag, and create release
+    name: Bump, validate, and open release PR
     runs-on: windows-latest
     steps:
       - name: Check out main
@@ -23,7 +24,7 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Verify workflow is preparing main
+      - name: Verify workflow is preparing current main
         shell: pwsh
         run: |
           git fetch origin main:refs/remotes/origin/main --tags
@@ -45,11 +46,28 @@ jobs:
             throw "Invalid release version: $version"
           }
           $tag = "v$version"
-          if (git rev-parse -q --verify "refs/tags/$tag") {
-            throw "Release tag already exists: $tag"
+          $branch = "release/$tag"
+          $localTag = git tag --list $tag
+          if (-not [string]::IsNullOrWhiteSpace($localTag)) {
+            throw "Release tag already exists locally: $tag"
+          }
+          $remoteTag = git ls-remote --tags origin "refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not check remote tag state for: $tag"
+          }
+          if (-not [string]::IsNullOrWhiteSpace($remoteTag)) {
+            throw "Release tag already exists on origin: $tag"
+          }
+          $remoteBranch = git ls-remote --heads origin "refs/heads/$branch"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not check remote branch state for: $branch"
+          }
+          if (-not [string]::IsNullOrWhiteSpace($remoteBranch)) {
+            throw "Release branch already exists on origin: $branch"
           }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "branch=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Run release sanity checks
         run: npm run release:sanity
@@ -62,48 +80,33 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${{ steps.version.outputs.branch }}"
           git add package.json package-lock.json manifest.json manifest.chrome.json manifest.firefox.json "downloads/ytmmocaptions-source-${{ steps.version.outputs.tag }}.zip"
           git commit -m "chore: prepare ${{ steps.version.outputs.tag }}"
 
-      - name: Tag release
-        run: git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+      - name: Push release prep branch
+        run: git push origin HEAD:${{ steps.version.outputs.branch }}
 
-      - name: Push main and release tag
-        shell: pwsh
-        run: |
-          git push origin HEAD:main
-          git push origin "${{ steps.version.outputs.tag }}"
-
-      - name: Collect release artifacts
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          New-Item -ItemType Directory -Path release-artifacts -Force | Out-Null
-          Copy-Item "build/chrome/ytmmocaptions-chrome-v$version.zip" "release-artifacts/"
-          Copy-Item "build/firefox/ytmmocaptions-firefox-v$version.xpi" "release-artifacts/"
-          Copy-Item "downloads/ytmmocaptions-source-v$version.zip" "release-artifacts/"
-
-      - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ytmmocaptions-${{ steps.version.outputs.tag }}
-          path: release-artifacts/*
-          if-no-files-found: error
-
-      - name: Create GitHub Release
+      - name: Open release prep PR
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
-          $artifactPaths = Get-ChildItem release-artifacts -File | ForEach-Object { $_.FullName }
-          gh release create $tag @artifactPaths --title "YTMMOCC $tag" --notes "Automated release artifacts for $tag."
+          $branch = "${{ steps.version.outputs.branch }}"
+          $body = @"
+          Prepares $tag from the current main branch.
+
+          After this PR is merged, create and publish the GitHub Release for $tag from main. The Firefox and Chrome store workflows derive their release tag from that GitHub Release event and remain gated by the store-publish environment.
+          "@
+          gh pr create --base main --head $branch --title "chore: prepare $tag" --body $body
 
       - name: Prepare summary
         shell: pwsh
         run: |
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Prepared release"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Prepared release PR"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Version: ``${{ steps.version.outputs.version }}``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Tag: ``${{ steps.version.outputs.tag }}``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Next: run ``2) Release Firefox`` and ``3) Release Chrome`` with this tag."
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Tag to create after merge: ``${{ steps.version.outputs.tag }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Branch: ``${{ steps.version.outputs.branch }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Next: merge the release PR, then create and publish the GitHub Release from ``main``."

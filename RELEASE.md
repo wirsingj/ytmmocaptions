@@ -13,28 +13,31 @@ use three numbered manual workflows:
 ```
 
 `1) Prepare Release` runs from `main`, bumps the patch version, validates and
-packages the release, commits the version/source-package changes back to `main`,
-creates a matching `vX.Y.Z` tag, and creates the GitHub Release artifacts.
-Store publishing lives in separate manual-only workflows, one for Chrome and one
-for Firefox, and is gated by the protected GitHub Environment named
+packages the release, pushes a `release/vX.Y.Z` branch, and opens a release prep
+pull request. After that PR is merged, creating and publishing the matching
+GitHub Release tag starts the Chrome and Firefox publish workflows. Store
+publishing remains gated by the protected GitHub Environment named
 `store-publish`.
 
-If store credentials are not configured yet, the release workflow still builds,
-validates, packages, and attaches GitHub Release artifacts. The publish workflows
-print which required secret names are configured or missing without printing
-secret values.
+If store credentials are not configured yet, the prepare workflow still builds,
+validates, and packages the release candidate before opening the release PR. The
+publish workflows print which required secret names are configured or missing
+without printing secret values.
 
 ## Release Flow
 
 1. Merge the release-ready work to `main`.
 2. Run the `1) Prepare Release` workflow from `main`.
-3. Confirm the workflow-created GitHub Release and artifacts.
-4. Run `2) Release Firefox` with the new tag.
-5. Run `3) Release Chrome` with the new tag.
+3. Review and merge the generated `release/vX.Y.Z` pull request.
+4. Create and publish a GitHub Release for `vX.Y.Z` from the merged `main`
+   commit.
+5. Approve `2) Release Firefox` and `3) Release Chrome` when GitHub asks for
+   the `store-publish` environment.
 
 ## Prepare Release
 
-Use this workflow to turn current `main` into the next patch release.
+Use this workflow to open a branch-protection-friendly patch release PR from
+current `main`.
 
 1. Open GitHub Actions.
 2. Select `1) Prepare Release`.
@@ -51,29 +54,34 @@ The workflow:
    - `manifest.chrome.json`
    - `manifest.firefox.json`;
 2. runs `npm run release:sanity`;
-3. commits the bumped version and source package to `main`;
-4. creates and pushes the matching `vX.Y.Z` tag;
+3. pushes a `release/vX.Y.Z` branch;
+4. opens a pull request against `main`;
 5. packages:
    - Chrome ZIP;
    - Firefox XPI;
-   - source ZIP for AMO/source review;
-6. uploads the artifacts to the GitHub Release.
+   - source ZIP for AMO/source review.
 
 The workflow auto-increments the patch version only. For minor or major releases,
 make the version change intentionally in a normal PR instead of using the
 auto-bump path.
 
+After the generated release PR merges, create and publish a GitHub Release with
+the matching `vX.Y.Z` tag from the merged `main` commit. Publishing the release
+is the normal trigger for the store workflows.
+
 ## Release To Stores
 
-Use the manual publish workflows only after the release tag workflow succeeds and
-the release checklist/manual QA is complete.
+Use the store workflows after the GitHub Release is published and the release
+checklist/manual QA is complete. They normally start from the published release
+event and derive the tag automatically. Manual dispatch remains available for
+retrying a failed store with an existing tag.
 
 ### Firefox
 
 1. Open GitHub Actions.
 2. Select `2) Release Firefox`.
 3. Choose `Run workflow`.
-4. Enter the release tag, for example:
+4. For a manual retry, enter the release tag, for example:
 
    ```text
    v1.1.4
@@ -85,12 +93,15 @@ Firefox AMO does not have a separate safe upload-only path through `web-ext`.
 Firefox release runs `web-ext sign --channel=listed` and submits the version to
 AMO. The workflow uploads the source ZIP along with the AMO submission.
 
+For the normal release path, no tag input is needed; the workflow reads the tag
+from the published GitHub Release.
+
 ### Chrome
 
 1. Open GitHub Actions.
 2. Select `3) Release Chrome`.
 3. Choose `Run workflow`.
-4. Enter the release tag, for example:
+4. For a manual retry, enter the release tag, for example:
 
    ```text
    v1.1.4
@@ -98,9 +109,28 @@ AMO. The workflow uploads the source ZIP along with the AMO submission.
 
 5. Approve the `store-publish` environment when GitHub asks.
 
+For the normal release path, no tag input is needed; the workflow reads the tag
+from the published GitHub Release.
+
 Chrome release uploads the package, waits for Chrome's upload processing to
 finish, then submits the item for review. Chrome may still take time to approve
 and publish after the workflow succeeds.
+
+## Repository Hygiene
+
+Recommended repository settings:
+
+- Enable `Automatically delete head branches` after pull requests merge.
+- Protect `main`.
+- Require pull requests before merging to `main`.
+- Require status checks to pass before merging, including the release sanity
+  check workflow.
+- Require conversation resolution before merging.
+- Block force pushes and branch deletion for `main`.
+
+With these settings, normal code changes and release version bumps both flow
+through pull requests. Release tags are created only after the release prep PR is
+merged to protected `main`.
 
 ## GitHub Environment
 

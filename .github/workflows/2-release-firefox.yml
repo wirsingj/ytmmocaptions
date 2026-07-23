@@ -1,11 +1,13 @@
 name: 2) Release Firefox
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing release tag to publish, for example v1.1.4"
-        required: true
+        description: "Existing release tag to publish for a manual retry, for example v1.1.4"
+        required: false
         type: string
 
 permissions:
@@ -23,8 +25,19 @@ jobs:
       - name: Normalize release tag
         shell: pwsh
         run: |
-          $tag = "${{ inputs.release_tag }}"
+          if ("${{ github.event_name }}" -eq "release") {
+            $tag = "${{ github.event.release.tag_name }}"
+          } else {
+            $tag = "${{ inputs.release_tag }}"
+          }
+          $tag = "$tag".Trim()
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw "Release tag is required for manual runs."
+          }
           if ($tag -match '^V') { $tag = 'v' + $tag.Substring(1) }
+          if (-not ($tag -match '^v\d+\.\d+\.\d+$')) {
+            throw "Release tag must look like v1.2.3, received: $tag"
+          }
           "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Check out release tag

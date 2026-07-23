@@ -96,6 +96,20 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.ok, true);
     assert.equal(result.cues.length, 2);
     assert.equal(result.cues[0].text, "Line one from witness.");
+    assert.equal(result.sourceMeta.key, "youtube_timedtext");
+    assert.equal(result.sourceMeta.provider, "youtube");
+    assert.equal(result.sourceMeta.priority, 10);
+    assert.deepEqual(
+      transcript.listTranscriptSources().map((source) => source.key),
+      [
+        "youtube_timedtext",
+        "youtube_panel",
+        "youtube_transcript_api",
+        "html5_text_track",
+        "player_caption_intercept",
+        "youtube_dom_transcript"
+      ]
+    );
   });
 
   await runCase("transcript prefers browser language before translated manual tracks", async () => {
@@ -601,6 +615,8 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.mode, "intercepted player-caption mode");
     assert.equal(result.cues.length, 2);
     assert.equal(result.track.kind, "intercepted_player_caption");
+    assert.equal(result.sourceMeta.key, "player_caption_intercept");
+    assert.equal(result.sourceMeta.sourceType, "intercepted player-caption mode");
   });
 
   await runCase("transcript prefers direct timedtext over intercepted captures when both exist", async () => {
@@ -766,6 +782,8 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.ok, true);
     assert.equal(result.mode, "direct transcript mode");
     assert.equal(result.track.kind, "get_panel");
+    assert.equal(result.sourceMeta.key, "youtube_panel");
+    assert.equal(result.sourceMeta.priority, 20);
     assert.deepEqual(result.cues.map((cue) => cue.text), [
       "first panel line.",
       "second panel line for future preview."
@@ -1081,5 +1099,44 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.equal(result.ok, false);
     assert.ok(panelRequest, "expected get_panel fallback to be attempted");
     assert.notEqual(JSON.parse(panelRequest.init.body).params, "stale-panel-params");
+  });
+
+  await runCase("transcript DOM fallback rejects entries after current video changes", async () => {
+    const segment = {
+      querySelector(selector) {
+        if (selector.includes("segment-text")) {
+          return { textContent: "stale DOM transcript line" };
+        }
+        if (selector.includes("start-offset") || selector.includes("segment-timestamp")) {
+          return { textContent: "0:04" };
+        }
+        return null;
+      }
+    };
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        location: { href: "https://www.youtube.com/watch?v=previous123" }
+      },
+      document: {
+        querySelectorAll(selector) {
+          if (selector === "script") {
+            return [];
+          }
+          if (selector === "ytd-transcript-segment-renderer") {
+            return [segment];
+          }
+          return [];
+        }
+      },
+      fetch: async () => makeTextResponse("<html><body>no current metadata</body></html>")
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=current123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, false);
+    assert.notEqual(result.track && result.track.kind, "dom_transcript");
   });
 };

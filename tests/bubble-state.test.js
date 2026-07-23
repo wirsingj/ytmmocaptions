@@ -53,6 +53,36 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.ok(trimmed.seekStart < chunk.end);
   });
 
+  await runCase("trimmed overlap drops stale token timings before live chunks merge", () => {
+    const bubbleState = loadBubbleState();
+    const chunk = {
+      start: 10,
+      end: 15,
+      seekStart: 10,
+      text: "one two three four five",
+      tokens: [
+        { text: "one", start: 10, end: 11 },
+        { text: "two", start: 11, end: 12 },
+        { text: "three", start: 12, end: 13 },
+        { text: "four", start: 13, end: 14 },
+        { text: "five", start: 14, end: 15 }
+      ]
+    };
+    const trimmed = bubbleState.trimChunkAgainstPrevious(
+      "zero one two three",
+      chunk,
+      {
+        normalizeText: (value) => String(value || "").trim(),
+        normalizeToken: (value) => String(value || "").toLowerCase(),
+        fallbackDurationSeconds: 4
+      }
+    );
+
+    assert.equal(trimmed.text, "four five");
+    assert.deepEqual(trimmed.tokens.map((token) => token.text), ["four", "five"]);
+    assert.equal(trimmed.seekStart, 13);
+  });
+
   await runCase("trim overlap handles empty and non-overlap edges", () => {
     const bubbleState = loadBubbleState();
     const options = {
@@ -284,5 +314,90 @@ exports.run = async function runBubbleStateTests(ctx) {
 
     assert.equal(range.firstWord, 2);
     assert.equal(range.lastWord, 4);
+  });
+
+  await runCase("token reading glow walks repeated words forward without snapping back", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 8,
+      seekStart: 0,
+      text: "we can test and we can ship and we can learn",
+      tokens: [
+        { text: "we", start: 0, end: 0.6 },
+        { text: "can", start: 0.6, end: 1.2 },
+        { text: "test", start: 1.2, end: 1.8 },
+        { text: "and", start: 1.8, end: 2.4 },
+        { text: "we", start: 2.4, end: 3.0 },
+        { text: "can", start: 3.0, end: 3.6 },
+        { text: "ship", start: 3.6, end: 4.2 },
+        { text: "and", start: 4.2, end: 4.8 },
+        { text: "we", start: 4.8, end: 5.4 },
+        { text: "can", start: 5.4, end: 6.0 },
+        { text: "learn", start: 6.0, end: 6.6 }
+      ]
+    };
+    const middle = bubbleState.getReadingGlowRange(bubble, 3.1, { leadSeconds: 0, windowWords: 3 });
+    const late = bubbleState.getReadingGlowRange(bubble, 5.0, { leadSeconds: 0, windowWords: 3 });
+
+    assert.equal(middle.firstWord, 4);
+    assert.equal(middle.lastWord, 6);
+    assert.equal(late.firstWord, 7);
+    assert.equal(late.lastWord, 9);
+  });
+
+  await runCase("token reading glow does not rematch the final word after rendered text is exhausted", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 5,
+      seekStart: 0,
+      text: "alpha beta gamma",
+      tokens: [
+        { text: "alpha", start: 0, end: 0.5 },
+        { text: "beta", start: 0.5, end: 1.0 },
+        { text: "gamma", start: 1.0, end: 1.5 },
+        { text: "gamma", start: 1.5, end: 2.0 },
+        { text: "gamma", start: 2.0, end: 2.5 }
+      ]
+    };
+
+    const late = bubbleState.getReadingGlowRange(bubble, 2.1, { leadSeconds: 0, windowWords: 3 });
+
+    assert.equal(late.firstWord, 0);
+    assert.equal(late.lastWord, 2);
+  });
+
+  await runCase("token reading glow advances through unrendered active tokens", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 13,
+      seekStart: 0,
+      text: "zero one two three four five six seven eight nine ten eleven twelve",
+      tokens: [
+        { text: "zero", start: 0, end: 1 },
+        { text: "one", start: 1, end: 2 },
+        { text: "two", start: 2, end: 3 },
+        { text: "three", start: 3, end: 4 },
+        { text: "four", start: 4, end: 5 },
+        { text: "five", start: 5, end: 6 },
+        { text: "six", start: 6, end: 7 },
+        { text: "seven", start: 7, end: 8 },
+        { text: "eight", start: 8, end: 9 },
+        { text: "nine", start: 9, end: 10 },
+        { text: "ten", start: 10, end: 11 },
+        { text: "[unrendered]", start: 11, end: 12 },
+        { text: "twelve", start: 12, end: 13 }
+      ]
+    };
+
+    const beforeSkippedToken = bubbleState.getReadingGlowRange(bubble, 10.2, { leadSeconds: 0, windowWords: 3 });
+    const skippedToken = bubbleState.getReadingGlowRange(bubble, 11.2, { leadSeconds: 0, windowWords: 3 });
+    const afterSkippedToken = bubbleState.getReadingGlowRange(bubble, 12.2, { leadSeconds: 0, windowWords: 3 });
+
+    assert.equal(beforeSkippedToken.firstWord, 9);
+    assert.equal(skippedToken.firstWord, 10);
+    assert.equal(afterSkippedToken.firstWord, 10);
   });
 };

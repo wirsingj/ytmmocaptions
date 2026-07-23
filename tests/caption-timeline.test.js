@@ -21,6 +21,13 @@ exports.run = async function runCaptionTimelineTests(ctx) {
                 ok: true,
                 videoId: "abc123",
                 mode: "direct transcript mode",
+                sourceMeta: {
+                  key: "youtube_timedtext",
+                  provider: "youtube",
+                  label: "YouTube timedtext",
+                  priority: 10,
+                  sourceType: "direct transcript mode"
+                },
                 cues: [
                   { start: 8, end: 10, text: "future line" },
                   { start: 1, end: 3, text: "current line", tokens: [{ text: "current", start: 1, end: 2 }] }
@@ -46,13 +53,16 @@ exports.run = async function runCaptionTimelineTests(ctx) {
     assert.equal(result.ok, true);
     assert.equal(result.sourceType, "direct transcript mode");
     assert.equal(result.timeline.sourceType, "direct transcript mode");
+    assert.equal(result.sourceMeta.key, "youtube_timedtext");
+    assert.equal(result.timeline.sourceMeta.key, "youtube_timedtext");
     assert.equal(result.timeline.browser, "chrome");
     assert.deepEqual(result.cues.map((cue) => cue.text), ["current line", "future line"]);
     assert.equal(result.cues[0].startMs, 1000);
     assert.equal(result.cues[0].endMs, 3000);
     assert.equal(result.futureCueCount, 1);
-    assert.equal(result.attempts.some((attempt) => attempt.stage === "accepted"), true);
+    assert.equal(result.attempts.some((attempt) => attempt.stage === "accepted" && attempt.sourceKey === "youtube_timedtext"), true);
     assert.equal(calls.some((call) => call.name === "timeline:acquired"), true);
+    assert.equal(calls.some((call) => call.payload && call.payload.sourceKey === "youtube_timedtext"), true);
   });
 
   await runCase("caption timeline records acquisition failures without falling through silently", async () => {

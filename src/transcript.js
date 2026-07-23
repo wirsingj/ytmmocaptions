@@ -1,6 +1,91 @@
 (function initTranscript(scope) {
   const app = (scope.DialogueCaptions = scope.DialogueCaptions || {});
   const DEBUG_PREFIX = "[Dialogue Captions][Transcript]";
+  const TRANSCRIPT_SOURCES = Object.freeze({
+    youtube_timedtext: Object.freeze({
+      key: "youtube_timedtext",
+      provider: "youtube",
+      label: "YouTube timedtext",
+      priority: 10,
+      sourceType: "direct transcript mode"
+    }),
+    youtube_panel: Object.freeze({
+      key: "youtube_panel",
+      provider: "youtube",
+      label: "YouTube transcript panel",
+      priority: 20,
+      sourceType: "direct transcript mode"
+    }),
+    youtube_transcript_api: Object.freeze({
+      key: "youtube_transcript_api",
+      provider: "youtube",
+      label: "YouTube transcript API",
+      priority: 30,
+      sourceType: "direct transcript mode"
+    }),
+    html5_text_track: Object.freeze({
+      key: "html5_text_track",
+      provider: "browser",
+      label: "HTML5 text track",
+      priority: 40,
+      sourceType: "direct transcript mode"
+    }),
+    player_caption_intercept: Object.freeze({
+      key: "player_caption_intercept",
+      provider: "youtube",
+      label: "Intercepted player captions",
+      priority: 50,
+      sourceType: "intercepted player-caption mode"
+    }),
+    youtube_dom_transcript: Object.freeze({
+      key: "youtube_dom_transcript",
+      provider: "youtube",
+      label: "YouTube transcript DOM",
+      priority: 60,
+      sourceType: "direct transcript mode"
+    })
+  });
+
+  function cloneSourceMeta(sourceKey) {
+    const source = TRANSCRIPT_SOURCES[sourceKey];
+    if (!source) {
+      return {
+        key: "unknown",
+        provider: "unknown",
+        label: "Unknown transcript source",
+        priority: 999,
+        sourceType: "direct transcript mode"
+      };
+    }
+    return {
+      key: source.key,
+      provider: source.provider,
+      label: source.label,
+      priority: source.priority,
+      sourceType: source.sourceType
+    };
+  }
+
+  function listTranscriptSources() {
+    return Object.keys(TRANSCRIPT_SOURCES)
+      .map(cloneSourceMeta)
+      .sort((left, right) => left.priority - right.priority);
+  }
+
+  function makeTranscriptResult(sourceKey, videoId, cues, track, options) {
+    const sourceMeta = cloneSourceMeta(sourceKey);
+    return {
+      ok: true,
+      videoId: videoId,
+      cues: cues,
+      track: track || {
+        languageCode: "",
+        kind: ""
+      },
+      mode: options && options.mode ? options.mode : sourceMeta.sourceType,
+      sourceMeta: sourceMeta
+    };
+  }
 
   function isDebugEnabled() {
     try {
@@ -317,6 +402,14 @@
   function isWatchPage(url) {
     const parsed = parseAllowedYouTubeUrl(url);
     return Boolean(parsed && parsed.pathname === "/watch");
+  }
+
+  function isCurrentWatchVideoId(videoId) {
+    const href = scope.location && typeof scope.location.href === "string" ? scope.location.href : "";
+    if (!href) {
+      return true;
+    }
+    return isWatchPage(href) && getVideoId(href) === String(videoId || "");
   }
 
   function getPlayerResponseVideoId(playerResponse) {
@@ -1386,9 +1479,17 @@
     return [];
   }
 
-  async function loadFromTranscriptDom(signal) {
+  async function loadFromTranscriptDom(signal, videoId) {
+    if (!isCurrentWatchVideoId(videoId)) {
+      logDebug("transcript DOM rejected: current video changed before DOM read");
+      return null;
+    }
     const existingEntries = collectTranscriptDomEntries();
     if (existingEntries.length) {
+      if (!isCurrentWatchVideoId(videoId)) {
+        logDebug("transcript DOM rejected: current video changed before existing entries were used");
+        return null;
+      }
       logDebug("transcript DOM found existing entries", { entries: existingEntries.length });
       return mapTranscriptDomEntriesToCues(existingEntries);
     }
@@ -1416,6 +1517,10 @@
     const entries = await waitForTranscriptDomEntries(signal, 4200);
     if (!entries.length) {
       logDebug("transcript DOM rejected: panel opened but no entries");
+      return null;
+    }
+    if (!isCurrentWatchVideoId(videoId)) {
+      logDebug("transcript DOM rejected: current video changed after panel opened");
       return null;
     }
     logDebug("transcript DOM parsed", { entries: entries.length });
@@ -2319,15 +2424,15 @@
           return null;
         }
         logDebug("accepted source: youtubei/get_panel", { cues: panelCues.length });
-        return {
-          ok: true,
-          videoId: videoId,
-          cues: panelCues,
-          track: {
+        return makeTranscriptResult(
+          "youtube_panel",
+          videoId,
+          panelCues,
+          {
             languageCode: "",
             kind: "get_panel"
           }
-        };
+        );
       };
 
       const runFallbacks = async () => {
@@ -2340,52 +2445,46 @@
         const transcriptApiCues = await fetchCuesFromGetTranscript(pageUrl, signal);
         if (transcriptApiCues && transcriptApiCues.length) {
           logDebug("accepted source: youtubei/get_transcript", { cues: transcriptApiCues.length });
-          return {
-            ok: true,
-            videoId: videoId,
-            cues: transcriptApiCues,
-            track: {
+          return makeTranscriptResult(
+            "youtube_transcript_api",
+            videoId,
+            transcriptApiCues,
+            {
               languageCode: "",
               kind: "get_transcript"
             }
-          };
+          );
         }
 
         const trackFallback = await loadFromTextTracks(videoElement, signal);
         if (trackFallback && trackFallback.cues.length) {
           logDebug("accepted source: textTracks", { cues: trackFallback.cues.length });
-          return {
-            ok: true,
-            videoId: videoId,
-            cues: trackFallback.cues,
-            track: trackFallback.track
-          };
+          return makeTranscriptResult("html5_text_track", videoId, trackFallback.cues, trackFallback.track);
         }
 
         const interceptedResult = await loadFromInterceptedTimedtext(videoId, signal, 900);
         if (interceptedResult && interceptedResult.cues && interceptedResult.cues.length) {
           logDebug("accepted source: intercepted player captions", { cues: interceptedResult.cues.length });
-          return {
-            ok: true,
-            videoId: videoId,
-            cues: interceptedResult.cues,
-            track: interceptedResult.track,
-            mode: "intercepted player-caption mode"
-          };
+          return makeTranscriptResult(
+            "player_caption_intercept",
+            videoId,
+            interceptedResult.cues,
+            interceptedResult.track
+          );
         }
 
-        const transcriptDomCues = await loadFromTranscriptDom(signal);
+        const transcriptDomCues = await loadFromTranscriptDom(signal, videoId);
         if (transcriptDomCues && transcriptDomCues.length) {
           logDebug("accepted source: transcript DOM", { cues: transcriptDomCues.length });
-          return {
-            ok: true,
-            videoId: videoId,
-            cues: transcriptDomCues,
-            track: {
+          return makeTranscriptResult(
+            "youtube_dom_transcript",
+            videoId,
+            transcriptDomCues,
+            {
               languageCode: "",
               kind: "dom_transcript"
             }
-          };
+          );
         }
         return null;
       };
@@ -2456,16 +2555,15 @@
         return { ok: false, reason: "No subtitle cues were found in available tracks." };
       }
 
-      return {
-        ok: true,
-        videoId: videoId,
-        cues: cues,
-        track: {
+      return makeTranscriptResult(
+        "youtube_timedtext",
+        videoId,
+        cues,
+        {
           languageCode: selectedTrack.languageCode || "",
           kind: selectedTrack.kind || ""
-        },
-        mode: "direct transcript mode"
-      };
+        }
+      );
     } catch (error) {
       if (error && error.name === "AbortError") {
         throw error;
@@ -2477,6 +2575,7 @@
   app.transcript = {
     getVideoId,
     isWatchPage,
+    listTranscriptSources,
     loadTranscript
   };
 })(window);

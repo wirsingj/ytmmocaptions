@@ -39,8 +39,7 @@
   const HISTORY_RENDER_EDGE_PX = 72;
   const RAINBOW_THEME_CYCLE_MS = 15000;
   const RAINBOW_THEME_FRAME_MS = 33;
-  const RAINBOW_THEME_SATURATION = 0.84;
-  const RAINBOW_THEME_VALUE = 0.88;
+  const LAYOUT_PLACEMENT_KEYS = Object.freeze(["panelClosed", "panelPosition", "panelSize", "launcherPosition", "timelineModeEnabled"]);
   const ANIMATED_THEME_PRESETS = Object.freeze({
     rainbow: Object.freeze({
       label: "Rainbow",
@@ -153,7 +152,6 @@
       this.colorPickerPopover = null;
       this.colorWheel = null;
       this.colorPickerIndicator = null;
-      this.rainbowThemeButton = null;
       this.centerFadeInput = null;
       this.futurePreviewInput = null;
       this.caseFixInput = null;
@@ -215,7 +213,6 @@
       this.rainbowThemeStartTime = 0;
       this.rainbowThemeStartHue = 0;
       this.rainbowThemeLastFrameTime = 0;
-      this.rainbowThemeEnabled = false;
       this.rainbowThemePreviewColor = null;
       this.rainbowThemeRestoreSnapshot = null;
 
@@ -409,14 +406,7 @@
       this.colorPickerIndicator = document.createElement("span");
       this.colorPickerIndicator.className = "dc-color-indicator";
       this.colorWheel.append(this.colorPickerIndicator);
-      this.rainbowThemeButton = document.createElement("button");
-      this.rainbowThemeButton.type = "button";
-      this.rainbowThemeButton.className = "dc-rainbow-toggle";
-      this.rainbowThemeButton.textContent = ">";
-      this.rainbowThemeButton.title = "Cycle theme color";
-      this.rainbowThemeButton.setAttribute("aria-label", "Cycle theme color");
-      this.rainbowThemeButton.setAttribute("aria-pressed", "false");
-      this.colorPickerPopover.append(this.colorWheel, this.rainbowThemeButton);
+      this.colorPickerPopover.append(this.colorWheel);
 
       const opacityWrap = document.createElement("label");
       opacityWrap.className = "dc-opacity-wrap";
@@ -666,7 +656,6 @@
         this.colorPickerPopover = null;
         this.colorWheel = null;
         this.colorPickerIndicator = null;
-        this.rainbowThemeButton = null;
       }
       this.removeExistingUiNodes();
       if (this.mountElement) {
@@ -888,12 +877,6 @@
           this.pickColorFromWheel(event);
         }
       });
-      this.addListener(this.rainbowThemeButton, "click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.toggleRainbowThemeMode();
-      });
-
       const onColorPickerEscape = (event) => {
         if (event.key === "Escape") {
           this.closeColorPicker();
@@ -1107,8 +1090,7 @@
 
     shouldPreservePanelPlacement(patch) {
       const source = patch && typeof patch === "object" ? patch : {};
-      const layoutKeys = ["panelClosed", "panelPosition", "panelSize", "launcherPosition", "timelineModeEnabled"];
-      return !layoutKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key));
+      return !LAYOUT_PLACEMENT_KEYS.some((key) => Object.prototype.hasOwnProperty.call(source, key));
     }
 
     normalizeWorkspacePresetId(value) {
@@ -1531,7 +1513,6 @@
         this.themeColorButton.classList.toggle("is-active", this.getThemeName() === "custom");
       }
       this.updateColorPickerIndicator();
-      this.updateRainbowThemeButton();
       this.updateAnimatedThemeButton();
       this.updateAnimatedThemeControls();
       this.syncRainbowThemeCycle();
@@ -1641,7 +1622,7 @@
     }
 
     isAnimatedThemeActive() {
-      return Boolean(this.rainbowThemeEnabled || this.getAnimatedThemeName());
+      return Boolean(this.getAnimatedThemeName());
     }
 
     isRestorablePanelLayout(position, size) {
@@ -1771,15 +1752,6 @@
       }
     }
 
-    toggleRainbowThemeMode() {
-      if (this.isAnimatedThemeActive()) {
-        this.cancelRainbowThemePreview(false);
-        this.updateSettings({ themeName: "custom", animatedThemeName: null });
-        return;
-      }
-      this.applyAnimatedThemePreset("rainbow");
-    }
-
     applyAnimatedThemePreset(name) {
       const presetName = this.normalizeAnimatedThemeName(name);
       const preset = this.getAnimatedThemePreset(presetName);
@@ -1797,36 +1769,8 @@
       this.closeAnimatedThemePopover();
     }
 
-    startRainbowThemePreview() {
-      if (this.isRainbowThemeEnabled()) {
-        return;
-      }
-      this.rainbowThemeRestoreSnapshot = {
-        themeName: this.settings.themeName || "stone",
-        customThemeColor: this.settings.customThemeColor || "#ded6c3"
-      };
-      const hsv = this.hexToHsv(this.getCustomThemeColor());
-      this.rainbowThemePreviewColor = this.hsvToHex(hsv.h, RAINBOW_THEME_SATURATION, RAINBOW_THEME_VALUE);
-      this.rainbowThemeEnabled = true;
-      this.updateRainbowThemeButton();
-      this.applyRainbowThemeColor(this.rainbowThemePreviewColor);
-      this.startRainbowThemeCycle();
-    }
-
     isRainbowThemeEnabled() {
       return this.isAnimatedThemeActive();
-    }
-
-    updateRainbowThemeButton() {
-      if (!this.rainbowThemeButton) {
-        return;
-      }
-      const enabled = this.isRainbowThemeEnabled();
-      this.rainbowThemeButton.classList.toggle("is-active", enabled);
-      this.rainbowThemeButton.textContent = enabled ? "||" : ">";
-      this.rainbowThemeButton.title = enabled ? "Stop animated theme" : "Use rainbow animated theme";
-      this.rainbowThemeButton.setAttribute("aria-label", this.rainbowThemeButton.title);
-      this.rainbowThemeButton.setAttribute("aria-pressed", enabled ? "true" : "false");
     }
 
     syncRainbowThemeCycle() {
@@ -1872,10 +1816,8 @@
       const restore = Boolean(restorePrevious && this.rainbowThemeRestoreSnapshot);
       const snapshot = this.rainbowThemeRestoreSnapshot;
       this.stopRainbowThemeCycle();
-      this.rainbowThemeEnabled = false;
       this.rainbowThemePreviewColor = null;
       this.rainbowThemeRestoreSnapshot = null;
-      this.updateRainbowThemeButton();
       this.updateAnimatedThemeButton();
       this.updateAnimatedThemeControls();
       if (restore && snapshot) {

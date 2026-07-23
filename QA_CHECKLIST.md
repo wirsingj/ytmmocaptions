@@ -2,6 +2,17 @@
 
 Use this checklist before marketplace uploads or public demos. The extension is intentionally local-only: no accounts, analytics, remote telemetry, or transcript uploads.
 
+## Minimal Release Smoke
+
+Run this before creating the GitHub Release tag, even when the full checklist is deferred:
+
+- Build the extension with `npm run build`.
+- Chrome: load `build/chrome` unpacked. Firefox: load `build/firefox/manifest.json`.
+- Open one captioned YouTube video and confirm the MMOCC pill, panel, and caption bubbles appear.
+- Navigate to a second captioned YouTube video through normal YouTube navigation.
+- Confirm old captions, future previews, active highlight, and timeline data do not carry over.
+- Confirm YouTube's selected caption language is not changed by opening or closing the panel.
+
 ## Browser Loading
 
 - Chrome: load `build/chrome` with Developer Mode > Load unpacked.
