@@ -367,4 +367,37 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.equal(late.firstWord, 0);
     assert.equal(late.lastWord, 2);
   });
+
+  await runCase("token reading glow advances through unrendered active tokens", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 13,
+      seekStart: 0,
+      text: "zero one two three four five six seven eight nine ten eleven twelve",
+      tokens: [
+        { text: "zero", start: 0, end: 1 },
+        { text: "one", start: 1, end: 2 },
+        { text: "two", start: 2, end: 3 },
+        { text: "three", start: 3, end: 4 },
+        { text: "four", start: 4, end: 5 },
+        { text: "five", start: 5, end: 6 },
+        { text: "six", start: 6, end: 7 },
+        { text: "seven", start: 7, end: 8 },
+        { text: "eight", start: 8, end: 9 },
+        { text: "nine", start: 9, end: 10 },
+        { text: "ten", start: 10, end: 11 },
+        { text: "[unrendered]", start: 11, end: 12 },
+        { text: "twelve", start: 12, end: 13 }
+      ]
+    };
+
+    const beforeSkippedToken = bubbleState.getReadingGlowRange(bubble, 10.2, { leadSeconds: 0, windowWords: 3 });
+    const skippedToken = bubbleState.getReadingGlowRange(bubble, 11.2, { leadSeconds: 0, windowWords: 3 });
+    const afterSkippedToken = bubbleState.getReadingGlowRange(bubble, 12.2, { leadSeconds: 0, windowWords: 3 });
+
+    assert.equal(beforeSkippedToken.firstWord, 9);
+    assert.equal(skippedToken.firstWord, 10);
+    assert.equal(afterSkippedToken.firstWord, 10);
+  });
 };

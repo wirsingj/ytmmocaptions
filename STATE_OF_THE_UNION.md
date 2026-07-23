@@ -85,6 +85,11 @@ Known limitations and tradeoffs:
 - Tightened token-to-word reading glow matching so extra repeated timing tokens cannot rematch the final rendered word after the display text is exhausted.
 - Added behavior coverage for live fallback upgrade success, stale live upgrade responses, and destroyed-app native caption ensure. Latest observed test run: `243/243` passing.
 
+2026-07-22 reading-glow release fix:
+
+- Tightened token-to-word reading glow fallback so an active token that is cleaned out or otherwise not render-matchable advances by proportional position instead of snapping back to the last matched word in the chunk.
+- Added regression coverage for unrendered active tokens in token reading glow. Latest observed test run: `244/244` passing.
+
 ## Architecture Overview
 
 ### Runtime Entry and Platform Layer
@@ -717,7 +722,7 @@ Missing/weak areas:
 
 Test runner: `tests/run-tests.js`.
 
-Current full suite count from latest run: `243/243` passing.
+Current full suite count from latest run: `244/244` passing.
 
 Major suites:
 
@@ -725,7 +730,7 @@ Major suites:
 - `tests/caption-text.test.js`: overlay chrome cleanup, dedupe, case fix, natural split behavior, lyric-like detection.
 - `tests/caption-timeline.test.js`: timeline normalization and acquisition failure reporting.
 - `tests/chunker.test.js` and `tests/chunker-regression.test.js`: cue grouping, pause boundaries, active index lookup.
-- `tests/bubble-state.test.js`: immutable bubble records, seek trimming, reading glow, token timing.
+- `tests/bubble-state.test.js`: immutable bubble records, seek trimming, reading glow, token timing, and unrendered-token fallback.
 - `tests/platform.test.js`: browser/chrome storage adapters.
 - `tests/page-context.test.js`: bridge token behavior, video-scoped snapshots/captures/fetch responses.
 - `tests/page-bridge.test.js`: bridge request allowlist, token reload, stale track filtering, selected-track read-only behavior.

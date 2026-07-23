@@ -401,10 +401,11 @@
       }
     }
 
+    const fallback = getProportionalWordFallback(wordCount, tokenCount, targetIndex);
     if (lastMatchedWord >= 0) {
-      return Math.max(0, Math.min(wordCount - 1, lastMatchedWord));
+      return Math.max(0, Math.min(wordCount - 1, Math.max(fallback, lastMatchedWord)));
     }
-    return getWordIndexForToken(words, tokens[targetIndex], getProportionalWordFallback(wordCount, tokenCount, targetIndex));
+    return getWordIndexForToken(words, tokens[targetIndex], fallback);
   }
 
   function findNextWordIndex(normalizedWords, normalizedToken, startIndex) {
