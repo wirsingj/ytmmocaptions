@@ -28,6 +28,7 @@ function parseArgs(argv) {
     urls: [],
     headed: false,
     leaveOpen: false,
+    expectLatinCaptions: false,
     artifactsDir: path.join(PROJECT_ROOT, "tests", "artifacts"),
     timeoutMs: 60000
   };
@@ -38,6 +39,8 @@ function parseArgs(argv) {
     } else if (raw === "--leave-open" || raw === "--keep-open") {
       options.leaveOpen = true;
       options.headed = true;
+    } else if (raw === "--expect-latin-captions") {
+      options.expectLatinCaptions = true;
     } else if (raw.startsWith("--browser=")) {
       options.browser = raw.slice("--browser=".length).toLowerCase();
     } else if (raw.startsWith("--url=")) {
@@ -228,6 +231,58 @@ async function launchFirefoxInjected(playwright, headed) {
   };
 }
 
+async function installDiagnosticStorageSeed(context) {
+  await withTimeout(
+    context.addInitScript({
+      content: `
+        (function installDialogueCaptionsDiagnosticStorage() {
+          const storageKey = "dialogueCaptions.settings.v1";
+          const store = {
+            [storageKey]: {
+              schemaVersion: 1,
+              panelClosed: false
+            }
+          };
+          function pick(keys) {
+            if (typeof keys === "string") {
+              return { [keys]: store[keys] };
+            }
+            if (Array.isArray(keys)) {
+              return keys.reduce((result, key) => {
+                result[key] = store[key];
+                return result;
+              }, {});
+            }
+            if (keys && typeof keys === "object") {
+              return Object.keys(keys).reduce((result, key) => {
+                result[key] = Object.prototype.hasOwnProperty.call(store, key) ? store[key] : keys[key];
+                return result;
+              }, {});
+            }
+            return { ...store };
+          }
+          window.chrome = window.chrome || {};
+          window.chrome.runtime = window.chrome.runtime || { getURL(path) { return path; } };
+          window.chrome.storage = window.chrome.storage || {};
+          window.chrome.storage.local = {
+            get(keys, callback) {
+              callback(pick(keys));
+            },
+            set(values, callback) {
+              Object.assign(store, values || {});
+              if (typeof callback === "function") {
+                callback();
+              }
+            }
+          };
+        })();
+      `
+    }),
+    5000,
+    "Diagnostic storage seed"
+  );
+}
+
 async function installSharedSourceForDiagnostic(context) {
   for (const fileName of SOURCE_ORDER) {
     const sourcePath = path.join(PROJECT_ROOT, "src", fileName);
@@ -311,16 +366,47 @@ async function muteAndStart(page) {
 async function openPanel(page) {
   const launcher = page.locator("#dc-launcher");
   const panel = page.locator("#dc-panel");
+  async function panelIsStarted() {
+    if (!(await panel.count())) {
+      return false;
+    }
+    return page.evaluate(() => {
+      const panelNode = document.querySelector("#dc-panel");
+      const status = panelNode ? panelNode.querySelector(".dc-status") : null;
+      const statusText = status ? status.textContent || "" : "";
+      return Boolean(
+        panelNode &&
+          panelNode.offsetParent !== null &&
+          !/Open panel to start/i.test(statusText)
+      );
+    }).catch(() => false);
+  }
+  if (await panelIsStarted()) {
+    return true;
+  }
   if (await panel.count()) {
-    const visible = await panel.first().isVisible().catch(() => false);
-    if (visible) {
-      return true;
+    const needsLauncherReopen = await page.evaluate(() => {
+      const panelNode = document.querySelector("#dc-panel");
+      const status = panelNode ? panelNode.querySelector(".dc-status") : null;
+      return Boolean(status && /Open panel to start/i.test(status.textContent || ""));
+    }).catch(() => false);
+    if (needsLauncherReopen) {
+      await page.locator("#dc-panel .dc-btn-close").first().click({ timeout: 5000 }).catch(() => {});
+      await launcher.first().waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
     }
   }
   if (await launcher.count()) {
     await launcher.first().click({ timeout: 5000 }).catch(() => {});
   }
-  return panel.first().waitFor({ state: "visible", timeout: 15000 }).then(() => true).catch(() => false);
+  await panel.first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if (await panelIsStarted()) {
+      return true;
+    }
+    await page.waitForTimeout(500);
+  }
+  return panelIsStarted();
 }
 
 async function waitForBubbles(page, timeoutMs) {
@@ -347,8 +433,29 @@ async function getState(page) {
     const divider = document.querySelector("#dc-panel .dc-future-divider");
     const current = document.querySelector("#dc-panel .dc-chunk.is-current");
     const panelRect = panel ? panel.getBoundingClientRect() : null;
+    const launcherRect = launcher ? launcher.getBoundingClientRect() : null;
     const playerRect = player ? player.getBoundingClientRect() : null;
     const videoRect = video ? video.getBoundingClientRect() : null;
+    const captionText = chunks.slice(0, 8).map((node) => {
+      const text = node.querySelector(".dc-chunk-text");
+      return text ? text.textContent || "" : "";
+    }).join(" ");
+    const textStats = Array.from(captionText).reduce((stats, char) => {
+      if (/[A-Za-z]/.test(char)) {
+        stats.latinLetters += 1;
+      }
+      if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(char)) {
+        stats.cjk += 1;
+      }
+      if (/[\uac00-\ud7af]/.test(char)) {
+        stats.hangul += 1;
+      }
+      if (char.charCodeAt(0) > 127) {
+        stats.nonAscii += 1;
+      }
+      stats.total += 1;
+      return stats;
+    }, { total: 0, latinLetters: 0, cjk: 0, hangul: 0, nonAscii: 0 });
     const report =
       window.DialogueCaptions &&
       window.DialogueCaptions.diagnostics &&
@@ -370,6 +477,9 @@ async function getState(page) {
       panelRect: panelRect
         ? { left: panelRect.left, top: panelRect.top, right: panelRect.right, bottom: panelRect.bottom, width: panelRect.width, height: panelRect.height }
         : null,
+      launcherRect: launcherRect
+        ? { left: launcherRect.left, top: launcherRect.top, right: launcherRect.right, bottom: launcherRect.bottom, width: launcherRect.width, height: launcherRect.height }
+        : null,
       playerRect: playerRect
         ? { left: playerRect.left, top: playerRect.top, right: playerRect.right, bottom: playerRect.bottom, width: playerRect.width, height: playerRect.height }
         : null,
@@ -377,6 +487,7 @@ async function getState(page) {
         ? { left: videoRect.left, top: videoRect.top, right: videoRect.right, bottom: videoRect.bottom, width: videoRect.width, height: videoRect.height }
         : null,
       currentTimeLabel: current && current.querySelector(".dc-chunk-time") ? current.querySelector(".dc-chunk-time").textContent || "" : "",
+      textStats,
       sampleRows: chunks.slice(0, 8).map((node) => {
         const time = node.querySelector(".dc-chunk-time");
         const text = node.querySelector(".dc-chunk-text");
@@ -389,6 +500,37 @@ async function getState(page) {
       diagnostics: report
     };
   });
+}
+
+async function measureClosedLauncher(page) {
+  const panel = page.locator("#dc-panel");
+  const closeButton = page.locator("#dc-panel .dc-btn-close");
+  const launcher = page.locator("#dc-launcher");
+  if (!(await panel.count()) || !(await closeButton.count())) {
+    return { status: "unsupported", reason: "panel_or_close_button_missing" };
+  }
+  await closeButton.first().click({ timeout: 5000 }).catch(() => {});
+  const visible = await launcher.first().waitFor({ state: "visible", timeout: 10000 }).then(() => true).catch(() => false);
+  if (!visible) {
+    return { status: "fail", reason: "launcher_did_not_appear" };
+  }
+  await page.waitForTimeout(350);
+  const state = await getState(page);
+  const launcherRect = state.launcherRect;
+  const player = state.playerRect || state.videoRect;
+  const safelyAboveControls =
+    launcherRect &&
+    player &&
+    launcherRect.left >= player.left - 16 &&
+    launcherRect.right <= player.right + 16 &&
+    launcherRect.bottom <= player.bottom - 56;
+  return {
+    status: safelyAboveControls ? "pass" : "fail",
+    reason: safelyAboveControls ? "" : "launcher_overlaps_control_safe_zone",
+    launcherRect,
+    player,
+    panelVisible: state.panelVisible
+  };
 }
 
 async function measureClickSeek(page) {
@@ -456,7 +598,7 @@ async function measureKeyboardOwnership(page) {
   };
 }
 
-function buildHealth(browserName, installMode, state, afterScrollState, clickSeek, keyboard, logs, screenshotPaths) {
+function buildHealth(browserName, installMode, state, afterScrollState, clickSeek, keyboard, closedLauncher, logs, screenshotPaths, options) {
   const checks = {};
   checks.extensionLoaded = makeScore(
     state.hasPanel || state.hasLauncher ? "pass" : "fail",
@@ -529,6 +671,23 @@ function buildHealth(browserName, installMode, state, afterScrollState, clickSee
     keyboard.status === "pass" ? "Space and Shift+Space did not trigger extension-owned seek" : "Keyboard ownership behavior needs review",
     keyboard
   );
+  checks.closedLauncherControls = makeScore(
+    closedLauncher.status,
+    8,
+    closedLauncher.status === "pass" ? "Closed launcher stays above the player controls" : "Closed launcher placement needs review",
+    closedLauncher
+  );
+  if (options && options.expectLatinCaptions) {
+    const stats = state.textStats || { total: 0, latinLetters: 0, cjk: 0, hangul: 0, nonAscii: 0 };
+    const hasLatinSignal = stats.latinLetters >= 12;
+    const hasLargeNonLatinSignal = stats.cjk + stats.hangul > stats.latinLetters;
+    checks.captionLanguageShape = makeScore(
+      hasLatinSignal && !hasLargeNonLatinSignal ? "pass" : "warn",
+      6,
+      hasLatinSignal && !hasLargeNonLatinSignal ? "Caption text shape looks compatible with English/Latin output" : "Caption text shape does not look like English/Latin output",
+      stats
+    );
+  }
   const seriousErrors = logs.filter((entry) => entry.kind === "pageerror" || (entry.type === "error" && !/googleads|doubleclick|CORS/i.test(entry.text)));
   checks.consoleErrors = makeScore(
     seriousErrors.length === 0 ? "pass" : "warn",
@@ -576,6 +735,7 @@ async function runBrowser(playwright, browserName, url, options, runRoot) {
     page.setDefaultTimeout(Math.min(options.timeoutMs, 20000));
     page.setDefaultNavigationTimeout(options.timeoutMs);
     if (installMode.indexOf("shared-source-injected-diagnostic") >= 0) {
+      await installDiagnosticStorageSeed(context);
       await installSharedSourceForDiagnostic(context);
     }
 
@@ -632,7 +792,17 @@ async function runBrowser(playwright, browserName, url, options, runRoot) {
     );
     screenshotPaths.push(path.join(runDir, "02-after-scroll.png"));
 
-    const health = buildHealth(browserName, installMode, state, afterScrollState, clickSeek, keyboard, logs, screenshotPaths);
+    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+    await page.waitForTimeout(500);
+    const closedLauncher = await measureClosedLauncher(page);
+    await bestEffortStep(
+      "closed launcher screenshot",
+      page.screenshot({ path: path.join(runDir, "03-closed-launcher.png"), fullPage: false }),
+      10000
+    );
+    screenshotPaths.push(path.join(runDir, "03-closed-launcher.png"));
+
+    const health = buildHealth(browserName, installMode, state, afterScrollState, clickSeek, keyboard, closedLauncher, logs, screenshotPaths, options);
     if (options.leaveOpen) {
       leaveOpen = true;
       console.log(browserName + " leave-open mode: close the browser manually when done.");
@@ -645,6 +815,7 @@ async function runBrowser(playwright, browserName, url, options, runRoot) {
       afterScrollState,
       clickSeek,
       keyboard,
+      closedLauncher,
       logs: logs.slice(-120),
       screenshots: screenshotPaths,
       health
@@ -742,6 +913,7 @@ async function main() {
       urls: options.urls,
       headed: options.headed,
       leaveOpen: options.leaveOpen,
+      expectLatinCaptions: options.expectLatinCaptions,
       artifactsDir: options.artifactsDir
     },
     notes: [

@@ -26,6 +26,7 @@
   let bridgeEnsureTimer = 0;
   let bridgeScriptPathIndex = 0;
   let bridgeAttemptVideoId = "";
+  let bridgeTrustedTypesPolicy = null;
 
   function isObject(value) {
     return Boolean(value && typeof value === "object");
@@ -228,6 +229,32 @@
     return Boolean(getCurrentWatchVideoId());
   }
 
+  function getBridgeScriptUrl(path) {
+    const url = platform.runtimeGetURL(path);
+    const trustedTypes = scope.trustedTypes;
+    if (!trustedTypes || typeof trustedTypes.createPolicy !== "function") {
+      return url;
+    }
+    try {
+      if (!bridgeTrustedTypesPolicy) {
+        bridgeTrustedTypesPolicy = trustedTypes.createPolicy(
+          `dialogue-captions-page-bridge-${bridgeToken.slice(0, 8)}`,
+          {
+            createScriptURL(value) {
+              return value;
+            }
+          }
+        );
+      }
+      if (bridgeTrustedTypesPolicy && typeof bridgeTrustedTypesPolicy.createScriptURL === "function") {
+        return bridgeTrustedTypesPolicy.createScriptURL(url);
+      }
+    } catch {
+      // Fall back to the plain extension URL where Trusted Types are unavailable or already policy-locked.
+    }
+    return url;
+  }
+
   function ensureBridgeInjected() {
     if (!platform || typeof platform.runtimeGetURL !== "function") {
       return;
@@ -255,7 +282,7 @@
     const script = document.createElement("script");
     script.id = BRIDGE_SCRIPT_ID;
     script.dataset.dcBridgeToken = bridgeToken;
-    script.src = platform.runtimeGetURL(BRIDGE_SCRIPT_PATHS[bridgeScriptPathIndex]);
+    script.src = getBridgeScriptUrl(BRIDGE_SCRIPT_PATHS[bridgeScriptPathIndex]);
     script.async = false;
     script.onload = function () {
       script.remove();

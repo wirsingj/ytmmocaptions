@@ -373,10 +373,14 @@ exports.run = async function runComplianceTests(ctx) {
     assert.ok(source.includes("e2e-report.json"));
     assert.ok(source.includes("shared-source-injected-diagnostic"));
     assert.ok(source.includes("textLength"));
+    assert.ok(source.includes("textStats"));
+    assert.ok(source.includes("closedLauncherControls"));
+    assert.ok(source.includes("--expect-latin-captions"));
     assert.ok(source.includes("scorePercent"));
     assert.ok(!source.includes("document.title"));
     assert.ok(!source.includes("dQw4w9WgXcQ"));
     assert.ok(readme.includes("npm run diagnostic:e2e -- --browser=both --url=https://www.youtube.com/watch?v=VIDEO_ID --headed"));
+    assert.ok(readme.includes("--expect-latin-captions"));
     assert.ok(readme.includes("tests/artifacts/e2e-report.json"));
     assert.ok(gitignore.includes("tests/artifacts/"));
   });

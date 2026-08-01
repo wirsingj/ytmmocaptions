@@ -76,9 +76,10 @@ Optional browser diagnostics:
 
 ```powershell
 npm run diagnostic:e2e
+npm run diagnostic:e2e -- --browser=chrome --headed --url=https://www.youtube.com/watch?v=VIDEO_ID --expect-latin-captions
 ```
 
-The diagnostic flow is explicit/local and is not the normal release gate.
+The diagnostic flow is explicit/local and is not the normal release gate. It is best at catching activation, anchoring, launcher placement, keyboard ownership, console, and obvious caption-source regressions. Headless/shared-source runs can fail to prove caption bubbles when YouTube serves HTML/empty timedtext responses or blocks playback; use headed Chrome unpacked-extension smoke when real caption acquisition is the question.
 
 Ignored local browser artifacts live under `tests/artifacts/`. They can become large during diagnostics and are intentionally not tracked. When doing broad source audits on a machine with diagnostic output, prefer:
 

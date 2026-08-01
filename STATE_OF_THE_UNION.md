@@ -13,7 +13,7 @@ agent-guidance: Verify implementation claims against code/tests. Preserve human 
 
 # State of the Union
 
-Current branch reviewed: `main`.
+Current branch reviewed: `codex/sot-next-audit-pass`.
 
 Current package version in manifests and `package.json`: `1.1.6`.
 
@@ -104,6 +104,14 @@ Known limitations and tradeoffs:
 - Language-opaque transcript fallbacks (`youtubei/get_panel`, `youtubei/get_transcript`, and transcript DOM) are no longer accepted after a preferred-language translation path is available but fails; this avoids showing original Korean text to an English-preference viewer as a false success.
 - Preferred-language guards now also apply to HTML5 text-track and intercepted timedtext fallback paths when the opaque transcript sources are suppressed.
 - Added regression coverage for generated preferred-language timedtext, rejected original-language panel fallback, throttled/hidden live polling, diagnostic source order, and static launcher safe-zone geometry. Latest observed test run: `248/248` passing.
+
+2026-08-01 diagnostic continuation:
+
+- Re-pulled `main` after the release-fix merge and continued SOT work on `codex/sot-next-audit-pass`.
+- The optional Playwright diagnostic now seeds local extension settings in shared-source mode so the panel starts open, captures a closed-launcher screenshot, checks the launcher's static clearance above YouTube controls, and supports `--expect-latin-captions` for privacy-safe translated-caption smoke checks using character-shape counts instead of raw transcript text.
+- The page-world bridge injection now uses a Trusted Types `TrustedScriptURL` policy when YouTube enforces Trusted Types, with a bridge-token-scoped policy name so extension reloads do not collide on long-lived watch pages.
+- Live Chrome and Firefox diagnostics against a current YouTube watch URL verified extension activation UI, player anchoring, keyboard ownership, screenshots, and closed-launcher control clearance in both engines.
+- Those diagnostics did not prove caption bubbles or future timeline behavior in headless/shared-source mode on the default URL because current YouTube/headless responses returned HTML/empty timedtext bodies and playback remained paused at 0. Manual headed Chrome unpacked-extension smoke is still needed for real caption acquisition, especially translated captions. Latest observed unit/source test run: `249/249` passing.
 
 ## Architecture Overview
 
@@ -740,7 +748,7 @@ Missing/weak areas:
 
 Test runner: `tests/run-tests.js`.
 
-Current full suite count from latest run: `248/248` passing.
+Current full suite count from latest run: `249/249` passing.
 
 Major suites:
 
@@ -750,7 +758,7 @@ Major suites:
 - `tests/chunker.test.js` and `tests/chunker-regression.test.js`: cue grouping, pause boundaries, active index lookup.
 - `tests/bubble-state.test.js`: immutable bubble records, seek trimming, reading glow, token timing, and unrendered-token fallback.
 - `tests/platform.test.js`: browser/chrome storage adapters.
-- `tests/page-context.test.js`: bridge token behavior, video-scoped snapshots/captures/fetch responses.
+- `tests/page-context.test.js`: bridge token behavior, video-scoped snapshots/captures/fetch responses, and Trusted Types bridge injection.
 - `tests/page-bridge.test.js`: bridge request allowlist, token reload, stale track filtering, selected-track read-only behavior.
 - `tests/transcript.test.js`: timedtext parsing, selected/browser language preference, generated preferred-language translations, stale metadata filtering, panel/transcript API fallback guards, token timing.
 - `tests/live-bubbles.test.js`: live bubble behavior, route/state guards, native CC restore, preference freeze, fallback upgrades, live memory cap source guard.
@@ -780,6 +788,8 @@ Areas with little/no meaningful release-gate coverage:
 Optional e2e:
 
 - `tests/e2e-extension-debug.js` uses Playwright and screenshots/reports.
+- It checks activation, player anchoring, keyboard ownership, scroll drift, closed-launcher controls clearance, and caption-source health where YouTube/browser conditions allow.
+- `--expect-latin-captions` adds privacy-safe character-shape checks for English/Latin translated-caption smoke runs.
 - README states it is intentionally not part of `release:check`.
 
 ## Recent Hardening Work
@@ -996,8 +1006,8 @@ Closed in the 2026-08-01 SoT pass:
 
 Next useful audit targets:
 
-1. Run optional Playwright diagnostics against live YouTube in Chrome and Firefox, especially translated-caption videos and launcher placement near the current control bar.
+1. Run a headed/unpacked Chrome smoke against one English-caption video and one auto-translated non-English video with `--expect-latin-captions`, then record whether real caption bubbles, future preview, and click-to-seek work outside shared-source/headless limits.
 
-2. Consider a small nightly or manual e2e smoke around one English-caption video and one auto-translated non-English video before store publishing.
+2. Identify or maintain a reliable public diagnostic video URL whose timedtext responses work in automation, or keep the Playwright diagnostic framed as layout/activation signal rather than caption-acquisition proof.
 
 3. Continue extracting bounded route/live/panel coordination out of `src/content-script.js` only when a concrete bug or testable boundary appears.

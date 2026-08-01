@@ -178,6 +178,7 @@ Useful flags:
 - `--browser=firefox`, `--browser=chrome`, or `--browser=both`
 - `--headed`
 - `--leave-open`
+- `--expect-latin-captions` for English/Latin translated-caption smoke runs
 - `--artifacts-dir=tests/artifacts/my-run`
 
 For local debugging, add `dcdebug=1` to a YouTube watch URL to enable concise
@@ -193,6 +194,10 @@ Firefox remains shared-source diagnostic mode because Playwright does not
 provide equivalent Firefox WebExtension install control. It still provides
 useful Firefox engine, layout, caption-source, console, and interaction health
 signal without becoming a release blocker.
+
+For translated-caption smoke checks, pick a non-English video after setting
+YouTube auto-translate to English and run with `--expect-latin-captions`. The
+report records character-shape counts and screenshots, not raw caption text.
 
 ## Load Unpacked
 

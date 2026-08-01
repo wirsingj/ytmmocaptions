@@ -13,6 +13,7 @@ exports.run = async function runPageContextTests(ctx) {
     const module = loadModule("page-context.js", {
       windowProps: {
         location,
+        trustedTypes: opts.trustedTypes,
         setTimeout,
         clearTimeout,
         postMessage(message) {
@@ -149,6 +150,29 @@ exports.run = async function runPageContextTests(ctx) {
     pageContext.ensureBridgeInjected();
     assert.equal(appendedScripts.length, 5);
     assert.equal(pageContext.getCurrentWatchVideoId(), "video-b");
+  });
+
+  await runCase("page context uses Trusted Types when injecting the bridge script", () => {
+    const createdPolicies = [];
+    const { pageContext, appendedScripts } = loadContext({
+      trustedTypes: {
+        createPolicy(name, rules) {
+          createdPolicies.push(name);
+          return {
+            createScriptURL(value) {
+              return { trustedScriptUrl: rules.createScriptURL(value) };
+            }
+          };
+        }
+      }
+    });
+
+    pageContext.ensureBridgeInjected();
+
+    assert.equal(createdPolicies.length, 1);
+    assert.equal(createdPolicies[0].startsWith("dialogue-captions-page-bridge-"), true);
+    assert.equal(appendedScripts.length, 1);
+    assert.equal(appendedScripts[0].src.trustedScriptUrl, "moz-extension://example/scripts/page-bridge.js");
   });
 
   await runCase("page context requests a read-only selected caption snapshot", async () => {
