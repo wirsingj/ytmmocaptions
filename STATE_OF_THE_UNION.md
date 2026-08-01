@@ -13,9 +13,9 @@ agent-guidance: Verify implementation claims against code/tests. Preserve human 
 
 # State of the Union
 
-Current branch reviewed: `1.1.6-work`.
+Current branch reviewed: `main`.
 
-Current package version in manifests and `package.json`: `1.1.5`.
+Current package version in manifests and `package.json`: `1.1.6`.
 
 This document describes the current codebase state as observed in source, tests, and project metadata. It is intended for architecture review, risk assessment, audit planning, feature planning, and bug hunting.
 
@@ -55,7 +55,7 @@ Known limitations and tradeoffs:
 - Most tests are VM/unit/source-inspection tests. Optional Playwright diagnostics exist, but they are not part of the normal release gate.
 - Live fallback uses overlay/text-track state and is inherently less precise than full timedtext timelines.
 - Some tests assert source substrings, which catches architectural invariants but can be brittle during refactors.
-- Version metadata says `1.1.5` while current branch work is for `1.1.6`.
+- Live fallback is intentionally polling-based while the panel is open and a full transcript is unavailable; keep its DOM/layout reads throttled and gated because it is the clearest YouTube-tab performance risk.
 
 2026-06-29 audit notes:
 
@@ -89,6 +89,21 @@ Known limitations and tradeoffs:
 
 - Tightened token-to-word reading glow fallback so an active token that is cleaned out or otherwise not render-matchable advances by proportional position instead of snapping back to the last matched word in the chunk.
 - Added regression coverage for unrendered active tokens in token reading glow. Latest observed test run: `244/244` passing.
+
+2026-07-26 performance audit:
+
+- Confirmed runtime remains YouTube-only with no background worker; performance risk is scoped to YouTube tabs where content scripts and the page-world bridge are active.
+- Reduced live fallback polling pressure by moving the poll interval from 120 ms to a named 200 ms throttle and skipping caption probing/capture while the document is hidden.
+- Added regression coverage that live fallback polling stays throttled and hidden-tab-gated. Latest observed test run: `245/245` passing.
+
+2026-08-01 SoT audit pass:
+
+- Fixed the optional e2e diagnostic module inventory so the debug harness checks every release content-script dependency now required by startup.
+- Launcher pill positioning now reserves a static safe strip above YouTube controls instead of drifting into the play/pause area when YouTube's control bar hides or reappears.
+- Transcript acquisition now synthesizes preferred-language timedtext candidates with `tlang=` before falling back to original-language tracks when only non-preferred source tracks are advertised.
+- Language-opaque transcript fallbacks (`youtubei/get_panel`, `youtubei/get_transcript`, and transcript DOM) are no longer accepted after a preferred-language translation path is available but fails; this avoids showing original Korean text to an English-preference viewer as a false success.
+- Preferred-language guards now also apply to HTML5 text-track and intercepted timedtext fallback paths when the opaque transcript sources are suppressed.
+- Added regression coverage for generated preferred-language timedtext, rejected original-language panel fallback, throttled/hidden live polling, diagnostic source order, and static launcher safe-zone geometry. Latest observed test run: `248/248` passing.
 
 ## Architecture Overview
 
@@ -202,17 +217,19 @@ Acquisition order in `src/transcript.js`:
 
 1. Validate YouTube watch URL and video id.
 2. Read page-context snapshot for logs and metadata.
-3. Prefer timedtext candidates derived from player response / page snapshot.
-4. Use `youtubei/v1/get_panel`.
-5. Use `youtubei/v1/get_transcript`.
-6. Use `HTMLMediaElement.textTracks`.
-7. Use intercepted timedtext captures.
-8. Use transcript DOM.
+3. Prefer natural preferred-language timedtext candidates derived from player response / page snapshot.
+4. Try generated preferred-language timedtext candidates with `tlang=` when only non-preferred source tracks are advertised.
+5. Use `youtubei/v1/get_panel` when language-opaque fallbacks are safe for the current candidate set.
+6. Use `youtubei/v1/get_transcript` when language-opaque fallbacks are safe for the current candidate set.
+7. Use `HTMLMediaElement.textTracks`.
+8. Use intercepted timedtext captures.
+9. Use transcript DOM when language-opaque fallbacks are safe for the current candidate set.
 
 Important implementation details:
 
 - `caption-timeline.js` wraps `transcript.loadTranscript()`, normalizes cues, counts future cues, records attempts, and returns `timeline` metadata.
-- Track candidate ordering prefers selected YouTube caption language, then browser languages, then manual/non-translated tracks.
+- Track candidate ordering prefers selected YouTube caption language and browser languages, then generated preferred-language `tlang=` candidates, then remaining tracks only when no better candidate exists.
+- When generated preferred-language transcript candidates exist but fail, language-opaque panel/API/DOM transcript fallbacks are suppressed so the UI can fall back cleanly instead of presenting original-language transcript text as if it matched the viewer preference.
 - `transcript.js` blocks non-YouTube and malformed caption URLs.
 - Stale `ytInitialPlayerResponse`, page snapshot tracks, timedtext captures, and selected caption tracks are filtered by video id.
 - `ytInitialData` is now required to reference the current video id before its panel params are trusted.
@@ -327,6 +344,7 @@ Important implementation details:
 - `mount()` builds the UI directly with DOM APIs.
 - `destroy()` removes DOM nodes, cancels animation frames, and unregisters listeners.
 - Panel and launcher are anchored to player-local coordinates where possible.
+- The closed launcher pill uses a static bottom safe strip above YouTube controls so it does not cover the play/pause area as controls auto-hide or reappear.
 - Fullscreen/resize handling calls layout refresh routines instead of treating passive resize as user layout intent.
 - `persistLayout` and `layoutLocked` control whether geometry is saved.
 - Animated color sweep presets are chosen from a separate animated theme menu. Rainbow is one named preset, not a static color-wheel shortcut.
@@ -498,13 +516,13 @@ Sequence:
 1. `ui-panel.js` registers `fullscreenchange` and layout refresh listeners.
 2. Panel geometry is based on player/anchor local coordinates.
 3. Passive fullscreen/resize refreshes recompute local positions without treating them as user-authored persisted layout changes.
-4. Launcher default position is calculated near the player bottom-left above YouTube controls.
+4. Launcher default position is calculated near the player bottom-left with a static safe strip above YouTube controls.
 5. Saved player-local ratios preserve bottom-left intent across fullscreen and resolution changes.
 
 Key implementation areas:
 
 - `ui-panel.js` layout restoration and launcher positioning near `panelPositionToLocal`, `refreshAnchorLayout`, `positionLauncher`, and `refreshPersistedLayoutPosition`.
-- `tests/ui-panel.test.js` covers default launcher positioning, fullscreen-style resize preservation, and passive layout refresh behavior.
+- `tests/ui-panel.test.js` covers default launcher positioning, static YouTube-controls clearance, fullscreen-style resize preservation, and passive layout refresh behavior.
 
 ### Settings Load/Save Lifecycle
 
@@ -722,7 +740,7 @@ Missing/weak areas:
 
 Test runner: `tests/run-tests.js`.
 
-Current full suite count from latest run: `244/244` passing.
+Current full suite count from latest run: `248/248` passing.
 
 Major suites:
 
@@ -734,7 +752,7 @@ Major suites:
 - `tests/platform.test.js`: browser/chrome storage adapters.
 - `tests/page-context.test.js`: bridge token behavior, video-scoped snapshots/captures/fetch responses.
 - `tests/page-bridge.test.js`: bridge request allowlist, token reload, stale track filtering, selected-track read-only behavior.
-- `tests/transcript.test.js`: timedtext parsing, selected/browser language preference, stale metadata filtering, panel/transcript API fallbacks, token timing.
+- `tests/transcript.test.js`: timedtext parsing, selected/browser language preference, generated preferred-language translations, stale metadata filtering, panel/transcript API fallback guards, token timing.
 - `tests/live-bubbles.test.js`: live bubble behavior, route/state guards, native CC restore, preference freeze, fallback upgrades, live memory cap source guard.
 - `tests/settings-store.test.js`: normalization, persistence model, layout lock semantics, migration, cross-tab shared-storage behavior.
 - `tests/caption-acquisition.test.js`: full transcript acquisition, stale-session race behavior, live fallback upgrade behavior, and live fallback failure handling.
@@ -806,6 +824,8 @@ Transcript loading:
 - Timeout race.
 - One retry for likely reload races.
 - Full timeline upgrade from live fallback is guarded by video id and caption preference.
+- Preferred-language timedtext translations are tried with generated `tlang=` candidates when YouTube advertises only non-preferred source tracks.
+- Language-opaque transcript fallbacks are suppressed after preferred-language translation misses so original-language panel/API/DOM text does not masquerade as the viewer's preferred caption language.
 
 ## Technical Debt
 
@@ -850,11 +870,11 @@ Transcript loading:
 - Risk: regressions in real browser/YouTube interactions may pass unit tests.
 - Difficulty: low-medium. Add a small stable smoke gate or nightly diagnostic rather than making full e2e mandatory.
 
-7. Versioning branch/package mismatch.
+7. Preferred-language transcript availability depends on YouTube translation behavior.
 
-- Why it exists: current work is on `1.1.6-work` while manifests/package remain `1.1.5`.
-- Risk: stale artifact names during manual testing and release prep confusion.
-- Difficulty: low. Use existing `version:bump`/release verification process at release time.
+- Why it exists: YouTube may advertise only original-language tracks while visible captions are auto-translated, or may stop serving generated `tlang=` output for a given video/language.
+- Risk: the extension may fall back to live/current captions or a clean unavailable state instead of a full future timeline; accepting original-language transcript text would be worse and is now guarded.
+- Difficulty: medium. Needs live YouTube QA across translated captions and continued source-specific fallback tests.
 
 ### LOW
 
@@ -932,44 +952,52 @@ Mobile support:
 
 ## Audit Targets
 
-If another engineer had 8 hours, focus here:
+Closed in the 2026-08-01 SoT pass:
 
-1. Extract one caption acquisition boundary from `DialogueCaptionsApp`. Status: addressed for 1.1.6.
+1. Live fallback hidden-tab performance guard.
 
-- Result: `src/caption-acquisition.js` now owns transcript load/upgrade acquisition mechanics while `DialogueCaptionsApp` keeps state application and UI policy.
+- Result: live caption polling skips capture/probing while the document is hidden.
 
-2. Add behavior-level tests for remaining stale async races. Status: addressed for current known races.
+2. Live fallback polling throttle.
 
-- Result: added behavior coverage for stale caption acquisition, DOM transcript route mismatch, bridge token reload, and cross-tab settings behavior.
+- Result: live fallback polling uses a named 200 ms interval instead of the older 120 ms cadence.
 
-3. Add a minimal pre-release browser smoke test. Status: documented.
+3. Hidden-tab polling regression coverage.
 
-- Result: `QA_CHECKLIST.md` now has a Minimal Release Smoke section.
+- Result: `tests/live-bubbles.test.js` covers throttled polling and hidden-tab skip behavior.
 
-4. Audit `src/ui-panel.js` layout persistence boundaries. Status: addressed.
+4. E2E diagnostic source-order drift.
 
-- Result: layout placement keys are named as `LAYOUT_PLACEMENT_KEYS` and covered by behavior/source tests.
+- Result: `tests/e2e-extension-debug.js` now includes the caption session, acquisition, native caption, and timeline scrub modules required by startup.
 
-5. Audit cross-tab settings behavior. Status: documented and tested.
+5. Launcher/control-bar overlap.
 
-- Result: settings tests now cover shared-storage non-overlapping patch merge and last-writer-wins overlap behavior; architecture documents the policy.
+- Result: the closed launcher pill now reserves a static bottom strip above YouTube controls instead of sitting on the play/pause area.
 
-6. Review page bridge security and compatibility. Status: strengthened.
+6. Launcher safe-zone coverage.
 
-- Result: tests now cover reload idempotency for timedtext fetch wrapping and old token eviction from the accepted token window.
+- Result: `tests/ui-panel.test.js` covers the static controls clearance.
 
-7. Strengthen DOM transcript fallback validation. Status: strengthened.
+7. Preferred-language timedtext translation candidates.
 
-- Result: DOM transcript fallback now rejects known current-video mismatches before/after DOM reads.
+- Result: `src/transcript.js` synthesizes YouTube `tlang=` timedtext candidates when only non-preferred source tracks are advertised.
 
-8. Review live fallback memory/performance. Status: capped.
+8. Original-language transcript fallback leak.
 
-- Result: old locked live bubbles and display-cache entries are pruned after a high cap, with lookup maps rebuilt.
+- Result: panel/API/DOM transcript fallbacks are suppressed after preferred-language translation candidates miss, preventing original-language transcript text from being treated as a successful preferred-language transcript.
 
-9. Decide whether generic captions should remain quarantined. Status: decided for 1.1.6.
+9. Preferred-language fallback guard coverage.
 
-- Result: keep `src/universal-captions.js` source-only for 1.1.6.
+- Result: `tests/transcript.test.js` covers generated preferred-language timedtext and rejects language-opaque original-language panel fallback after translation misses.
 
-10. Create a release-version checklist for 1.1.6. Status: added.
+10. Stale release/version documentation.
 
-- Result: added `docs/RELEASE_1.1.6_CHECKLIST.md`; the actual version bump remains a release-prep action.
+- Result: project memory and maintainer/release checklist wording now reflect the current `1.1.6` source state and latest `248/248` test run.
+
+Next useful audit targets:
+
+1. Run optional Playwright diagnostics against live YouTube in Chrome and Firefox, especially translated-caption videos and launcher placement near the current control bar.
+
+2. Consider a small nightly or manual e2e smoke around one English-caption video and one auto-translated non-English video before store publishing.
+
+3. Continue extracting bounded route/live/panel coordination out of `src/content-script.js` only when a concrete bug or testable boundary appears.

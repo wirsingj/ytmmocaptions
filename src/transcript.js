@@ -933,6 +933,44 @@
     }
   }
 
+  function makeTranslatedTrackCandidate(track, preference) {
+    const targetLanguage = String(preference || "").trim().toLowerCase();
+    if (!targetLanguage || !track || typeof track.baseUrl !== "string" || !track.baseUrl) {
+      return null;
+    }
+    if (isPreferredLanguageTrack(track, targetLanguage) || isTranslatedTrack(track)) {
+      return null;
+    }
+    try {
+      const parsed = new URL(track.baseUrl);
+      if (parsed.protocol !== "https:" || parsed.hostname !== "www.youtube.com" || parsed.pathname !== "/api/timedtext") {
+        return null;
+      }
+      parsed.searchParams.set("tlang", targetLanguage);
+      return {
+        ...track,
+        baseUrl: parsed.toString(),
+        languageCode: targetLanguage,
+        translatedFromLanguageCode: getTrackLanguageCode(track),
+        __dcGeneratedTranslation: true
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function hasNaturalPreferredTrack(tracks) {
+    const source = Array.isArray(tracks) ? tracks : [];
+    for (const preference of getPreferredLanguageCodes()) {
+      if (source.some(function (track) {
+        return isPreferredLanguageTrack(track, preference);
+      })) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function buildPreferredTrackOrder(tracks) {
     const normalizedTracks = Array.isArray(tracks) ? tracks : [];
     const ordered = [];
@@ -972,10 +1010,6 @@
     return ordered;
   }
 
-  function chooseTrack(tracks) {
-    return buildPreferredTrackOrder(tracks)[0] || null;
-  }
-
   function buildTrackCandidates(tracks) {
     const used = new Set();
     const candidates = [];
@@ -991,11 +1025,25 @@
       candidates.push(track);
     }
 
-    const primary = chooseTrack(tracks);
-    push(primary);
+    const orderedTracks = buildPreferredTrackOrder(tracks);
+    for (const track of orderedTracks) {
+      if (getPreferredLanguageCodes().some(function (preference) {
+        return isPreferredLanguageTrack(track, preference);
+      })) {
+        push(track);
+      }
+    }
 
-    for (const track of buildPreferredTrackOrder(tracks)) {
-      push(track);
+    for (const preference of getPreferredLanguageCodes()) {
+      for (const track of orderedTracks) {
+        push(makeTranslatedTrackCandidate(track, preference));
+      }
+    }
+
+    if (!candidates.length) {
+      for (const track of orderedTracks) {
+        push(track);
+      }
     }
 
     return candidates;
@@ -2018,12 +2066,13 @@
     return false;
   }
 
-  async function loadFromTextTracks(videoElement, signal) {
+  async function loadFromTextTracks(videoElement, signal, options) {
     if (!videoElement || !videoElement.textTracks || !videoElement.textTracks.length) {
       logDebug("textTracks skipped: none available");
       return null;
     }
 
+    const requirePreferredLanguage = Boolean(options && options.requirePreferredLanguage);
     const tracks = [];
     for (let index = 0; index < videoElement.textTracks.length; index += 1) {
       tracks.push(videoElement.textTracks[index]);
@@ -2032,6 +2081,16 @@
     const orderedTracks = buildPreferredTrackOrder(tracks);
     for (let index = 0; index < orderedTracks.length; index += 1) {
       const track = orderedTracks[index];
+      if (requirePreferredLanguage && !getPreferredLanguageCodes().some(function (preference) {
+        return isPreferredLanguageTrack(track, preference);
+      })) {
+        logDebug("textTracks track skipped: not preferred language", {
+          index: index,
+          language: track && track.language ? track.language : "",
+          kind: track && track.kind ? track.kind : ""
+        });
+        continue;
+      }
       const previousMode = track.mode;
       try {
         if (track.mode === "disabled") {
@@ -2078,11 +2137,12 @@
     return null;
   }
 
-  async function loadFromInterceptedTimedtext(videoId, signal, timeoutMs) {
+  async function loadFromInterceptedTimedtext(videoId, signal, timeoutMs, options) {
     const startedAt = Date.now();
     const deadline = startedAt + (Number.isFinite(timeoutMs) ? timeoutMs : 3400);
     const delayFn = typeof scope.setTimeout === "function" ? scope.setTimeout.bind(scope) : setTimeout;
     const seenCaptureKeys = new Set();
+    const requirePreferredLanguage = Boolean(options && options.requirePreferredLanguage);
     let lastRejectReason = "no_captures_observed";
     let observedCount = 0;
 
@@ -2106,6 +2166,15 @@
           continue;
         }
         seenCaptureKeys.add(key);
+
+        const captureTrack = { baseUrl: capture.url, kind: "intercepted_player_caption" };
+        if (requirePreferredLanguage && !getPreferredLanguageCodes().some(function (preference) {
+          return isPreferredLanguageTrack(captureTrack, preference);
+        })) {
+          lastRejectReason = "not_preferred_language";
+          logDebug("player-caption intercept skipped: not preferred language", summarizeCaptionUrl(capture.url));
+          continue;
+        }
 
         const payloadKind = detectPayloadKind(capture.contentType, capture.body);
         const parserSelected =
@@ -2157,7 +2226,7 @@
         return {
           cues: cues,
           track: {
-            languageCode: "",
+            languageCode: getTrackLanguageCode(captureTrack),
             kind: "intercepted_player_caption"
           }
         };
@@ -2435,34 +2504,44 @@
         );
       };
 
-      const runFallbacks = async () => {
+      const runFallbacks = async (fallbackOptions) => {
+        const allowOpaqueTranscriptFallbacks = !fallbackOptions || fallbackOptions.allowOpaqueTranscriptFallbacks !== false;
+        const requirePreferredLanguage = !allowOpaqueTranscriptFallbacks;
         const videoElement = options && options.videoElement;
-        const panelResult = await getPanelResult();
-        if (panelResult) {
-          return panelResult;
+        if (allowOpaqueTranscriptFallbacks) {
+          const panelResult = await getPanelResult();
+          if (panelResult) {
+            return panelResult;
+          }
         }
 
-        const transcriptApiCues = await fetchCuesFromGetTranscript(pageUrl, signal);
-        if (transcriptApiCues && transcriptApiCues.length) {
-          logDebug("accepted source: youtubei/get_transcript", { cues: transcriptApiCues.length });
-          return makeTranscriptResult(
-            "youtube_transcript_api",
-            videoId,
-            transcriptApiCues,
-            {
-              languageCode: "",
-              kind: "get_transcript"
-            }
-          );
+        if (allowOpaqueTranscriptFallbacks) {
+          const transcriptApiCues = await fetchCuesFromGetTranscript(pageUrl, signal);
+          if (transcriptApiCues && transcriptApiCues.length) {
+            logDebug("accepted source: youtubei/get_transcript", { cues: transcriptApiCues.length });
+            return makeTranscriptResult(
+              "youtube_transcript_api",
+              videoId,
+              transcriptApiCues,
+              {
+                languageCode: "",
+                kind: "get_transcript"
+              }
+            );
+          }
         }
 
-        const trackFallback = await loadFromTextTracks(videoElement, signal);
+        const trackFallback = await loadFromTextTracks(videoElement, signal, {
+          requirePreferredLanguage: requirePreferredLanguage
+        });
         if (trackFallback && trackFallback.cues.length) {
           logDebug("accepted source: textTracks", { cues: trackFallback.cues.length });
           return makeTranscriptResult("html5_text_track", videoId, trackFallback.cues, trackFallback.track);
         }
 
-        const interceptedResult = await loadFromInterceptedTimedtext(videoId, signal, 900);
+        const interceptedResult = await loadFromInterceptedTimedtext(videoId, signal, 900, {
+          requirePreferredLanguage: requirePreferredLanguage
+        });
         if (interceptedResult && interceptedResult.cues && interceptedResult.cues.length) {
           logDebug("accepted source: intercepted player captions", { cues: interceptedResult.cues.length });
           return makeTranscriptResult(
@@ -2473,18 +2552,20 @@
           );
         }
 
-        const transcriptDomCues = await loadFromTranscriptDom(signal, videoId);
-        if (transcriptDomCues && transcriptDomCues.length) {
-          logDebug("accepted source: transcript DOM", { cues: transcriptDomCues.length });
-          return makeTranscriptResult(
-            "youtube_dom_transcript",
-            videoId,
-            transcriptDomCues,
-            {
-              languageCode: "",
-              kind: "dom_transcript"
-            }
-          );
+        if (allowOpaqueTranscriptFallbacks) {
+          const transcriptDomCues = await loadFromTranscriptDom(signal, videoId);
+          if (transcriptDomCues && transcriptDomCues.length) {
+            logDebug("accepted source: transcript DOM", { cues: transcriptDomCues.length });
+            return makeTranscriptResult(
+              "youtube_dom_transcript",
+              videoId,
+              transcriptDomCues,
+              {
+                languageCode: "",
+                kind: "dom_transcript"
+              }
+            );
+          }
         }
         return null;
       };
@@ -2501,6 +2582,10 @@
 
       const tracks = getCaptionTracks(playerResponse);
       const candidates = buildTrackCandidates(tracks);
+      const naturalPreferredTrackAvailable = hasNaturalPreferredTrack(tracks);
+      const generatedPreferredCandidateAvailable = candidates.some(function (candidate) {
+        return Boolean(candidate && candidate.__dcGeneratedTranslation);
+      });
       const richTimedtextProbe = getRichTimedtextProbeForVideo(videoId);
       logDebug("caption track candidates", {
         totalTracks: tracks.length,
@@ -2543,7 +2628,10 @@
       }
 
       if (!selectedTrack || !cues.length) {
-        const fallbackResult = await runFallbacks();
+        const allowOpaqueTranscriptFallbacks = naturalPreferredTrackAvailable || !generatedPreferredCandidateAvailable;
+        const fallbackResult = await runFallbacks({
+          allowOpaqueTranscriptFallbacks: allowOpaqueTranscriptFallbacks
+        });
         if (fallbackResult) {
           fallbackResult.mode = fallbackResult.mode || "direct transcript mode";
           return fallbackResult;
@@ -2551,6 +2639,9 @@
 
         if (!candidates.length) {
           return { ok: false, reason: "No caption tracks were found." };
+        }
+        if (!allowOpaqueTranscriptFallbacks) {
+          return { ok: false, reason: "No subtitle cues were found for the preferred caption language." };
         }
         return { ok: false, reason: "No subtitle cues were found in available tracks." };
       }

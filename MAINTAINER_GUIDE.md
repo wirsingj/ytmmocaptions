@@ -68,7 +68,7 @@ Useful narrow checks while editing:
 
 ```powershell
 node tests/run-tests.js
-node scripts/verify-release-version.mjs v1.1.5
+node scripts/verify-release-version.mjs v1.1.6
 powershell -ExecutionPolicy Bypass -File scripts/verify-release-artifacts.ps1
 ```
 

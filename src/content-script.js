@@ -38,6 +38,7 @@
   const MAX_TRANSCRIPT_RECOVERY_ATTEMPTS = 3;
   const MAX_TRANSCRIPT_HEARTBEAT_READINESS_DEFERRALS = 20;
   const MAX_LIVE_BUBBLE_ENTITIES = 2400;
+  const LIVE_CAPTURE_POLL_INTERVAL_MS = 200;
 
   class DialogueCaptionsApp {
     constructor(videoId) {
@@ -1587,10 +1588,13 @@
         return;
       }
       this.liveCapturePollId = window.setInterval(() => {
+        if (document.visibilityState === "hidden") {
+          return;
+        }
         this.maybeProbeCaptions();
         this.captureLiveCaptionLine();
         this.maybeUpgradeLiveCaptureToTranscript();
-      }, 120);
+      }, LIVE_CAPTURE_POLL_INTERVAL_MS);
     }
 
     stopLiveCapturePolling() {

@@ -4,20 +4,21 @@ Use this when 1.1.6 work is ready to become a release candidate. Do not run the 
 
 ## Scope
 
-- Branch: `1.1.6-work`.
-- Current source version before release prep: `1.1.5`.
+- Source line: `main` or the release prep branch for `v1.1.6`.
+- Current source version in this checkout: `1.1.6`.
 - Release target: `v1.1.6`.
 - Runtime scope remains YouTube-only.
 - Generic captions stay source-only and are not promoted into release manifests for 1.1.6.
 
-## Before Version Bump
+## Before Release Tag
 
-- Confirm all intended 1.1.6 source changes are merged into `1.1.6-work`.
+- Confirm all intended 1.1.6 source changes are merged into the release source line.
 - Run `npm test`.
 - Run or manually complete the Minimal Release Smoke in `QA_CHECKLIST.md`.
 - Confirm `manifest*.json` content scripts remain YouTube-only.
 - Confirm `src/universal-captions.js` remains absent from release manifests.
 - Confirm no raw transcript text, video ids, or diagnostics are newly persisted.
+- Do not rerun the 1.1.6 version bump if the source is already at `1.1.6`; prepare a new patch version only when package contents need to change after one store has received 1.1.6.
 
 ## Prepare Release PR
 

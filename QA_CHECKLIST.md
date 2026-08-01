@@ -29,6 +29,7 @@ Run this before creating the GitHub Release tag, even when the full checklist is
 - Confirm YouTube native captions are hidden while the panel is open, then restored if MMOCC enabled them.
 - Confirm the panel stays anchored to the video area and hides instead of floating over comments when the player scrolls away.
 - Confirm resizing/dragging the panel keeps it within the video frame and remains responsive.
+- Close the panel and confirm the launcher pill stays above the play/pause/progress controls whether YouTube controls are visible or auto-hidden.
 
 ## Caption State
 
@@ -37,6 +38,7 @@ Run this before creating the GitHub Release tag, even when the full checklist is
 - Toggle Future / Next Up off and confirm the divider and preview rows disappear.
 - Toggle Future / Next Up back on and confirm previews return when transcript/timeline data is available.
 - Confirm future bubbles are absent, not stale, when captions are unavailable or live-only.
+- On a non-English video with YouTube auto-translate set to English, confirm MMOCC uses English captions or a clean unavailable/live-fallback state, not original-language transcript text in the panel.
 - Confirm the future-preview separator is just a subtle line and is not clickable as a caption row.
 - Confirm long captions wrap inside rows and the scroll container owns overflow.
 - Navigate to another video using YouTube recommendations, playlist next, browser back/forward, and page reload.
