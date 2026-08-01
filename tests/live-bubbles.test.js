@@ -453,6 +453,15 @@ exports.run = async function runLiveBubbleTests(ctx) {
     assert.ok(source.includes("this.disableLiveCaptureMode();"));
   });
 
+  await runCase("live fallback polling is throttled and skips hidden tabs", () => {
+    const pollStart = source.indexOf("    startLiveCapturePolling()");
+    const pollBody = source.slice(pollStart, source.indexOf("    stopLiveCapturePolling()", pollStart));
+    assert.ok(source.includes("LIVE_CAPTURE_POLL_INTERVAL_MS = 200"));
+    assert.ok(pollBody.includes("document.visibilityState === \"hidden\""));
+    assert.ok(pollBody.includes("LIVE_CAPTURE_POLL_INTERVAL_MS"));
+    assert.ok(!pollBody.includes("}, 120);"));
+  });
+
   await runCase("panel seek callback forwards options for latest jump", () => {
     assert.ok(source.includes("onSeek: (target, options) => this.seekToChunk(target, options)"));
   });

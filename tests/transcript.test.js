@@ -421,6 +421,175 @@ exports.run = async function runTranscriptTests(ctx) {
     assert.ok(!requested.some((entry) => entry.url.includes("/youtubei/v1/get_panel")));
   });
 
+  await runCase("transcript synthesizes preferred-language timedtext translations", async () => {
+    const requested = [];
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        navigator: { languages: ["en-US"], language: "en-US" },
+        ytInitialPlayerResponse: {
+          videoDetails: { videoId: "abc123" },
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=ko",
+                  languageCode: "ko",
+                  kind: "asr"
+                }
+              ]
+            }
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=abc123" }
+      },
+      DOMParser: SimpleXmlParser,
+      fetch: async (url) => {
+        requested.push(String(url));
+        const value = String(url);
+        if (value.includes("/api/timedtext") && value.includes("fmt=json3")) {
+          const parsed = new URL(value);
+          const translatedLanguage = parsed.searchParams.get("tlang");
+          if (translatedLanguage === "en") {
+            return makeJsonResponse({
+              events: [
+                {
+                  tStartMs: 1000,
+                  dDurationMs: 1000,
+                  segs: [{ utf8: "English translation wins." }]
+                }
+              ]
+            });
+          }
+          return makeJsonResponse({ events: [] });
+        }
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.track.languageCode, "en");
+    assert.equal(result.cues[0].text, "English translation wins.");
+    assert.ok(requested.some((url) => url.includes("tlang=en-us") && url.includes("fmt=json3")));
+    assert.ok(requested.some((url) => url.includes("tlang=en") && url.includes("fmt=json3")));
+    assert.ok(!requested.some((url) => !url.includes("tlang=") && url.includes("lang=ko") && url.includes("fmt=json3")));
+  });
+
+  await runCase("transcript rejects opaque original-language fallbacks after preferred translation misses", async () => {
+    const requested = [];
+    const panelPayload = {
+      actions: [
+        {
+          updateEngagementPanelAction: {
+            content: {
+              transcriptRenderer: {
+                body: {
+                  transcriptBodyRenderer: {
+                    cueGroups: [
+                      {
+                        transcriptCueGroupRenderer: {
+                          formattedStartOffset: { simpleText: "1:13" },
+                          cues: [
+                            {
+                              transcriptCueRenderer: {
+                                cue: { simpleText: "그냥 불에" }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    };
+    const transcript = loadModule("transcript.js", {
+      windowProps: {
+        navigator: { languages: ["en-US"], language: "en-US" },
+        ytInitialPlayerResponse: {
+          videoDetails: { videoId: "abc123" },
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=ko",
+                  languageCode: "ko",
+                  kind: "asr"
+                }
+              ]
+            }
+          }
+        },
+        location: { href: "https://www.youtube.com/watch?v=abc123" },
+        DialogueCaptions: {
+          pageContext: {
+            getSnapshot() {
+              return {
+                hasPlayerResponse: true,
+                captionTracks: [],
+                transcriptPanelParams: "panel-params",
+                ytcfg: {
+                  INNERTUBE_API_KEY: "fake-key",
+                  INNERTUBE_CONTEXT: { client: { clientName: "WEB", clientVersion: "2.test" } },
+                  INNERTUBE_CONTEXT_CLIENT_NAME: "1",
+                  INNERTUBE_CONTEXT_CLIENT_VERSION: "2.test"
+                }
+              };
+            },
+            getTimedtextCaptures() {
+              return [];
+            },
+            async pageFetch(url, init) {
+              requested.push({ url: String(url), init });
+              if (String(url).includes("/youtubei/v1/get_panel")) {
+                return {
+                  ok: true,
+                  status: 200,
+                  url: String(url),
+                  contentType: "application/json",
+                  body: JSON.stringify(panelPayload)
+                };
+              }
+              return {
+                ok: true,
+                status: 200,
+                url: String(url),
+                contentType: "text/plain",
+                body: ""
+              };
+            }
+          }
+        }
+      },
+      DOMParser: SimpleXmlParser,
+      fetch: async (url) => {
+        requested.push({ url: String(url), init: {} });
+        if (String(url).includes("/api/timedtext") && String(url).includes("fmt=json3")) {
+          return makeJsonResponse({ events: [] });
+        }
+        return makeTextResponse("", 200, "text/plain");
+      }
+    }).transcript;
+
+    const result = await transcript.loadTranscript(
+      "https://www.youtube.com/watch?v=abc123",
+      new AbortController().signal
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "No subtitle cues were found for the preferred caption language.");
+    assert.ok(requested.some((entry) => entry.url.includes("tlang=en") && entry.url.includes("fmt=json3")));
+    assert.ok(!requested.some((entry) => entry.url.includes("/youtubei/v1/get_panel")));
+  });
+
   await runCase("transcript handles missing metadata safely", async () => {
     const transcript = loadModule("transcript.js", {
       fetch: async () => makeTextResponse("<html><body>no player response</body></html>")

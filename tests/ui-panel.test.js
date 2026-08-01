@@ -280,9 +280,22 @@ exports.run = async function runUiPanelTests(ctx) {
     );
 
     assert.equal(frame.left, 40);
-    assert.equal(frame.bottom, 745 - 50 - 54);
+    assert.equal(frame.bottom, 745 - 50 - 88);
     assert.equal(position.left, 54);
-    assert.equal(position.top, 745 - 50 - 54 - 32 - 14);
+    assert.equal(position.top, 745 - 50 - 88 - 32 - 14);
+  });
+
+  await runCase("launcher reserves a static bottom strip for YouTube controls", () => {
+    const module = loadPanelModule();
+    const panel = new module.DialoguePanel({ settings: module.settingsStore.normalizeSettings({}) });
+    panel.getMountViewportRect = () => ({ left: 0, top: 0, right: 640, bottom: 360 });
+    panel.getYouTubeFrameRect = () => ({ left: 0, top: 0, right: 640, bottom: 180 });
+
+    const frame = panel.getLauncherFrameRect();
+    const position = panel.clampLauncherPosition(frame.left + 14, frame.bottom, 96, 32);
+
+    assert.equal(frame.bottom, 92);
+    assert.ok(position.top + 32 <= 92 - 14);
   });
 
   await runCase("saved panel position preserves bottom-left intent above fullscreen controls", () => {
