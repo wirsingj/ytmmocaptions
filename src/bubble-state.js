@@ -330,12 +330,16 @@
     if (!tokens.length || !Array.isArray(words) || !words.length) {
       return null;
     }
+    if (!hasUsableTokenWordShape(tokens, words)) {
+      return null;
+    }
     const leadSeconds =
       Number.isFinite(opts.leadSeconds) && opts.leadSeconds >= 0
         ? Number(opts.leadSeconds)
         : 0;
     const targetTime = now + leadSeconds;
     let activeTokenIndex = -1;
+    let previousEndedTokenIndex = -1;
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index];
       const start = asNumber(token && token.start, NaN);
@@ -349,9 +353,13 @@
       }
       if (targetTime > end) {
         activeTokenIndex = index;
+        previousEndedTokenIndex = index;
       }
     }
     if (activeTokenIndex < 0) {
+      return null;
+    }
+    if (activeTokenIndex === previousEndedTokenIndex && isInTokenTimingGap(tokens, activeTokenIndex, targetTime)) {
       return null;
     }
     const firstWord = getWordIndexForTokenSequence(words, tokens, activeTokenIndex);
@@ -370,6 +378,32 @@
       lastWord,
       progress: clamp(activeTokenIndex / Math.max(1, tokens.length - 1), 0, 0.999)
     };
+  }
+
+  function hasUsableTokenWordShape(tokens, words) {
+    const normalizedTokenCount = tokens.reduce((count, token) => {
+      return normalizeWordText(token && token.text) ? count + 1 : count;
+    }, 0);
+    const wordCount = Array.isArray(words) ? words.length : 0;
+    if (!normalizedTokenCount || !wordCount) {
+      return false;
+    }
+    const ratio = normalizedTokenCount / wordCount;
+    return ratio >= 0.65 && ratio <= 1.8;
+  }
+
+  function isInTokenTimingGap(tokens, tokenIndex, targetTime) {
+    const previous = tokens[tokenIndex];
+    const next = tokens[tokenIndex + 1];
+    if (!previous || !next) {
+      return false;
+    }
+    const previousEnd = asNumber(previous.end, NaN);
+    const nextStart = asNumber(next.start, NaN);
+    if (!Number.isFinite(previousEnd) || !Number.isFinite(nextStart) || nextStart <= previousEnd) {
+      return false;
+    }
+    return targetTime > previousEnd + 0.08 && targetTime < nextStart;
   }
 
   function getWordIndexForTokenSequence(words, tokens, activeTokenIndex) {
@@ -391,7 +425,8 @@
         continue;
       }
 
-      const found = findNextWordIndex(normalizedWords, normalizedToken, cursor);
+      const expected = getProportionalWordFallback(wordCount, tokenCount, tokenIndex);
+      const found = findNextWordIndexNear(normalizedWords, normalizedToken, cursor, expected);
       if (found >= 0) {
         lastMatchedWord = found;
         cursor = Math.min(wordCount, found + 1);
@@ -408,12 +443,15 @@
     return getWordIndexForToken(words, tokens[targetIndex], fallback);
   }
 
-  function findNextWordIndex(normalizedWords, normalizedToken, startIndex) {
+  function findNextWordIndexNear(normalizedWords, normalizedToken, startIndex, expectedIndex) {
     const start = Math.max(0, Number(startIndex) || 0);
     if (start >= normalizedWords.length) {
       return -1;
     }
-    for (let index = start; index < normalizedWords.length; index += 1) {
+    const expected = Math.max(0, Math.min(normalizedWords.length - 1, Number.isFinite(expectedIndex) ? Math.floor(expectedIndex) : start));
+    const searchStart = Math.max(start, expected - 3);
+    const searchEnd = Math.min(normalizedWords.length - 1, Math.max(searchStart, expected + 3));
+    for (let index = searchStart; index <= searchEnd; index += 1) {
       if (normalizedWords[index] === normalizedToken) {
         return index;
       }
@@ -425,7 +463,7 @@
     const words = Math.max(1, Number(wordCount) || 1);
     const tokens = Math.max(1, Number(tokenCount) || 1);
     const index = Math.max(0, Number(tokenIndex) || 0);
-    return Math.max(0, Math.min(words - 1, Math.round((index / tokens) * words)));
+    return Math.max(0, Math.min(words - 1, Math.round((index / Math.max(1, tokens - 1)) * (words - 1))));
   }
 
   function getWordIndexForToken(words, token, fallbackIndex) {

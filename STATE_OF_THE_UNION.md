@@ -113,6 +113,12 @@ Known limitations and tradeoffs:
 - Live Chrome and Firefox diagnostics against a current YouTube watch URL verified extension activation UI, player anchoring, keyboard ownership, screenshots, and closed-launcher control clearance in both engines.
 - Those diagnostics did not prove caption bubbles or future timeline behavior in headless/shared-source mode on the default URL because current YouTube/headless responses returned HTML/empty timedtext bodies and playback remained paused at 0. Manual headed Chrome unpacked-extension smoke is still needed for real caption acquisition, especially translated captions. Latest observed unit/source test run: `249/249` passing.
 
+2026-08-08 local regression pass:
+
+- User testing on Firefox showed reading glow could start correctly and then jump to much later words lower in the bubble. The token matcher now rejects partial token streams, falls back to smooth chunk progress during cue timing gaps, and bounds token-to-word matching near the expected proportional position instead of chasing a repeated/common word far down the caption.
+- The closed launcher pill safe strip was overcorrected and placed the pill awkwardly high above the current YouTube controls. The launcher-only control-bar gap was reduced while keeping panel clearance behavior separate.
+- Added regression coverage for partial token streams, cue timing gaps, and the adjusted launcher safe strip. Latest observed test run: `251/251` passing.
+
 ## Architecture Overview
 
 ### Runtime Entry and Platform Layer
@@ -748,7 +754,7 @@ Missing/weak areas:
 
 Test runner: `tests/run-tests.js`.
 
-Current full suite count from latest run: `249/249` passing.
+Current full suite count from latest run: `251/251` passing.
 
 Major suites:
 
@@ -756,7 +762,7 @@ Major suites:
 - `tests/caption-text.test.js`: overlay chrome cleanup, dedupe, case fix, natural split behavior, lyric-like detection.
 - `tests/caption-timeline.test.js`: timeline normalization and acquisition failure reporting.
 - `tests/chunker.test.js` and `tests/chunker-regression.test.js`: cue grouping, pause boundaries, active index lookup.
-- `tests/bubble-state.test.js`: immutable bubble records, seek trimming, reading glow, token timing, and unrendered-token fallback.
+- `tests/bubble-state.test.js`: immutable bubble records, seek trimming, reading glow, token timing, partial/misaligned token fallback, cue-gap fallback, and unrendered-token fallback.
 - `tests/platform.test.js`: browser/chrome storage adapters.
 - `tests/page-context.test.js`: bridge token behavior, video-scoped snapshots/captures/fetch responses, and Trusted Types bridge injection.
 - `tests/page-bridge.test.js`: bridge request allowlist, token reload, stale track filtering, selected-track read-only behavior.

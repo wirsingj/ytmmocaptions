@@ -346,6 +346,52 @@ exports.run = async function runBubbleStateTests(ctx) {
     assert.equal(late.lastWord, 9);
   });
 
+  await runCase("token reading glow ignores partial token streams instead of jumping to later text", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 15,
+      seekStart: 0,
+      text: "one two three four five six seven eight nine ten eleven twelve bottom fourteen fifteen",
+      tokens: [
+        { text: "one", start: 0, end: 1 },
+        { text: "two", start: 1, end: 2 },
+        { text: "three", start: 2, end: 3 },
+        { text: "bottom", start: 3, end: 4 }
+      ]
+    };
+
+    const range = bubbleState.getReadingGlowRange(bubble, 3.2, { leadSeconds: 0, windowWords: 3 });
+
+    assert.ok(range.lastWord < 8);
+  });
+
+  await runCase("token reading glow uses smooth progress during cue timing gaps", () => {
+    const bubbleState = loadBubbleState();
+    const bubble = {
+      start: 0,
+      end: 10,
+      seekStart: 0,
+      text: "zero one two three four five six seven eight nine",
+      tokens: [
+        { text: "zero", start: 0, end: 0.8 },
+        { text: "one", start: 0.8, end: 1.6 },
+        { text: "two", start: 1.6, end: 2.4 },
+        { text: "three", start: 2.4, end: 3.2 },
+        { text: "four", start: 3.2, end: 4.0 },
+        { text: "five", start: 5.8, end: 6.4 },
+        { text: "six", start: 6.4, end: 7.0 },
+        { text: "seven", start: 7.0, end: 7.6 },
+        { text: "eight", start: 7.6, end: 8.2 },
+        { text: "nine", start: 8.2, end: 9.0 }
+      ]
+    };
+
+    const gap = bubbleState.getReadingGlowRange(bubble, 5.2, { leadSeconds: 0, windowWords: 3 });
+
+    assert.ok(gap.firstWord >= 4);
+  });
+
   await runCase("token reading glow does not rematch the final word after rendered text is exhausted", () => {
     const bubbleState = loadBubbleState();
     const bubble = {
